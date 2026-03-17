@@ -1,0 +1,89 @@
+"use client";
+import { useState, useEffect } from "react";
+import { ShoppingCart, ClipboardList, Package, BarChart2, Settings, Zap, FileText, LogOut, History } from "lucide-react";
+import { Screen } from "@/app/page";
+import { User } from "@/lib/db";
+import { useAuthStore } from "@/lib/stores";
+
+const allNavItems = [
+  { id: "pos" as Screen, label: "POS", icon: ShoppingCart, adminOnly: false },
+  { id: "dashboard" as Screen, label: "Dashboard", icon: BarChart2, adminOnly: false },
+  { id: "orders" as Screen, label: "Orders", icon: ClipboardList, adminOnly: false },
+  { id: "products" as Screen, label: "Products", icon: Package, adminOnly: false },
+  { id: "reports" as Screen, label: "Reports", icon: FileText, adminOnly: true },
+  { id: "logs" as Screen, label: "Logs", icon: History, adminOnly: true },
+  { id: "settings" as Screen, label: "Settings", icon: Settings, adminOnly: true },
+];
+
+export default function Sidebar({ activeScreen, setScreen, user }: { activeScreen: Screen; setScreen: (s: Screen) => void; user?: User | null }) {
+  const { logout } = useAuthStore();
+  const isAdmin = user?.role === "admin";
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatDate = (d: Date) => d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const formatTime = (d: Date) => d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  
+  const nav = allNavItems.filter(item => !item.adminOnly || isAdmin);
+
+  const handleLogout = () => {
+    logout();
+  };
+
+  return (
+    <aside style={{ width: 72 }} className="flex flex-col items-center py-4 bg-surface border-r border-border h-full shrink-0" role="navigation" aria-label="Main navigation">
+      <div className="mb-4">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#F5C842" }} role="img" aria-label="POS Application Logo">
+          <Zap size={20} color="#0D0D0F" fill="#0D0D0F" aria-hidden="true" />
+        </div>
+      </div>
+      <div className="mb-4 text-center px-1">
+        <div style={{ fontSize: 9, fontWeight: 600, color: "#F5C842" }}>{formatDate(currentTime)}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#4A4A5A", fontFamily: "monospace" }}>{formatTime(currentTime)}</div>
+      </div>
+      <nav className="flex flex-col gap-1 flex-1 w-full px-2" role="menubar" aria-label="Navigation menu">
+        {nav.map(({ id, label, icon: Icon }) => {
+          const active = activeScreen === id;
+          return (
+            <button 
+              key={id} 
+              onClick={() => setScreen(id)} 
+              title={label}
+              role="menuitem"
+              aria-current={active ? "page" : undefined}
+              aria-label={label}
+              className="relative flex flex-col items-center justify-center rounded-xl py-3 gap-1 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] focus-visible:ring-offset-2 focus-visible:ring-offset-[#141418]"
+              style={{ background: active ? "rgba(245,200,66,0.1)" : "transparent", color: active ? "#F5C842" : "#4A4A5A" }}
+            >
+              {active && <div className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r" style={{ background: "#F5C842" }} />}
+              <Icon size={18} aria-hidden="true" />
+              <span style={{ fontSize: 9, fontWeight: 600 }}>{label}</span>
+            </button>
+          );
+        })}
+      </nav>
+      <div className="w-full px-2">
+        {user && (
+          <div className="mb-2 p-2 rounded-lg text-center" style={{ background: "#1E1E26" }}>
+            <div style={{ fontSize: 9, color: "#9090A8" }}>{user.name}</div>
+            <div style={{ fontSize: 8, color: "#4A4A5A" }}>{user.role}</div>
+          </div>
+        )}
+        <button 
+          onClick={handleLogout} 
+          title="Logout"
+          className="w-full flex flex-col items-center justify-center rounded-xl py-2 gap-1 transition-all hover:bg-red-500/10"
+          style={{ color: "#E74C3C" }}
+          aria-label="Logout"
+        >
+          <LogOut size={16} aria-hidden="true" />
+          <span style={{ fontSize: 8, fontWeight: 600 }}>Logout</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
