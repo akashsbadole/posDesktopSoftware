@@ -11,21 +11,31 @@ import LoginScreen from "@/components/LoginScreen";
 import ActivityLogsScreen from "@/components/ActivityLogsScreen";
 import KeyboardShortcutsModal from "@/components/KeyboardShortcutsModal";
 import CrashRecovery from "@/components/CrashRecovery";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import KDSScreen from "@/components/KDSScreen";
+import ExpenseScreen from "@/components/ExpenseScreen";
+import StaffAttendance from "@/components/StaffAttendance";
+import CustomerCRM from "@/components/CustomerCRM";
+import TableManager from "@/components/TableManager";
+import CouponsScreen from "@/components/CouponsScreen";
+import WalletScreen from "@/components/WalletScreen";
+import GstReportsScreen from "@/components/GstReportsScreen";
 import { dbGetPendingOrdersCount } from "@/lib/db";
 import { useAuthStore } from "@/lib/stores";
 
-export type Screen = "pos" | "orders" | "products" | "dashboard" | "settings" | "reports" | "logs";
+export type Screen = "pos" | "orders" | "products" | "dashboard" | "settings" | "reports" | "logs" | "kds" | "expenses" | "staff" | "customers" | "tables" | "coupons" | "wallet" | "gst";
 
-const adminScreens: Screen[] = ["settings", "reports", "logs"];
+const adminScreens: Screen[] = ["settings", "reports", "logs", "expenses", "staff", "coupons", "wallet", "gst"];
 
 const screenShortcuts: Record<string, Screen> = {
   "F1": "pos",
   "F2": "dashboard",
   "F3": "orders",
   "F4": "products",
-  "F5": "reports",
-  "F6": "logs",
-  "F7": "settings",
+  "F5": "kds",
+  "F6": "reports",
+  "F7": "logs",
+  "F8": "settings",
 };
 
 export default function Home() {
@@ -106,23 +116,35 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-bg" role="application" aria-label="POS Application">
-      {showRecovery && <CrashRecovery onComplete={() => setShowRecovery(false)} />}
-      <Sidebar activeScreen={screen} setScreen={setScreen} user={user!} />
-      <main id="main-content" className="flex-1 overflow-hidden" role="main" aria-label="Main content">
-        {screen === "pos" && <POSScreen />}
-        {screen === "orders" && <OrdersScreen />}
-        {screen === "products" && <ProductsScreen />}
-        {screen === "dashboard" && <DashboardScreen />}
-        {screen === "settings" && <SettingsScreen />}
-        {screen === "reports" && <ReportsScreen />}
-        {screen === "logs" && <ActivityLogsScreen />}
-      </main>
-      <KeyboardShortcutsModal 
-        isOpen={showShortcuts} 
-        onClose={() => setShowShortcuts(false)}
-        showPOS={screen === "pos"}
-      />
-    </div>
+    <ErrorBoundary>
+      <div className="flex h-screen overflow-hidden bg-bg" role="application" aria-label="POS Application">
+        {showRecovery && <CrashRecovery onComplete={() => setShowRecovery(false)} />}
+        <Sidebar activeScreen={screen} setScreen={setScreen} user={user!} />
+        <main id="main-content" className="flex-1 overflow-hidden" role="main" aria-label="Main content">
+          <ErrorBoundary>
+            {screen === "pos" && <POSScreen />}
+            {screen === "orders" && <OrdersScreen />}
+            {screen === "products" && <ProductsScreen />}
+            {screen === "dashboard" && <DashboardScreen />}
+            {screen === "settings" && <SettingsScreen />}
+            {screen === "reports" && <ReportsScreen />}
+            {screen === "logs" && <ActivityLogsScreen />}
+            {screen === "kds" && <KDSScreen />}
+            {screen === "expenses" && <ExpenseScreen />}
+            {screen === "staff" && <StaffAttendance />}
+            {screen === "customers" && <CustomerCRM />}
+            {screen === "tables" && <TableManager />}
+            {screen === "coupons" && <CouponsScreen />}
+            {screen === "wallet" && <WalletScreen />}
+            {screen === "gst" && <GstReportsScreen />}
+          </ErrorBoundary>
+        </main>
+        <KeyboardShortcutsModal 
+          isOpen={showShortcuts} 
+          onClose={() => setShowShortcuts(false)}
+          showPOS={screen === "pos"}
+        />
+      </div>
+    </ErrorBoundary>
   );
 }

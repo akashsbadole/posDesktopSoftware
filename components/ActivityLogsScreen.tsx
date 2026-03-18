@@ -6,11 +6,12 @@ import { getActivityLogs, ActivityLog as ActivityLogType } from "@/lib/db";
 export default function ActivityLogsScreen() {
   const [logs, setLogs] = useState<ActivityLogType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [limit, setLimit] = useState(50);
 
   const load = async () => {
     setLoading(true);
     try {
-      const data = await getActivityLogs(100);
+      const data = await getActivityLogs(limit);
       setLogs(data);
     } catch (e) {
       console.error("Failed to load logs", e);
@@ -18,7 +19,7 @@ export default function ActivityLogsScreen() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [limit]);
 
   const getActionColor = (action: string) => {
     switch (action.toLowerCase()) {
@@ -102,6 +103,14 @@ export default function ActivityLogsScreen() {
           </div>
         )}
       </div>
+
+      {!loading && logs.length >= limit && (
+        <div className="text-center mt-4">
+          <button onClick={() => setLimit(l => l + 50)} className="btn-ghost text-sm">
+            Load More
+          </button>
+        </div>
+      )}
     </div>
   );
 }

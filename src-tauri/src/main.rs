@@ -844,7 +844,7 @@ fn create_compressed_backup() -> Result<Vec<u8>, String> {
 
 #[tauri::command]
 async fn send_whatsapp_message(phone: String, message: String) -> Result<(), String> {
-    let (whatsapp_enabled, whatsapp_api_url) = {
+    let whatsapp_api_url = {
         let db = get_db().lock().map_err(|e| e.to_string())?;
         let settings = db.get_settings().map_err(|e| e.to_string())?;
         
@@ -852,7 +852,7 @@ async fn send_whatsapp_message(phone: String, message: String) -> Result<(), Str
             return Err("WhatsApp not configured. Set API URL in Settings.".to_string());
         }
         
-        (settings.whatsapp_enabled, settings.whatsapp_api_url.clone())
+        settings.whatsapp_api_url.clone()
     };
     
     let url = format!("{}/send", whatsapp_api_url);

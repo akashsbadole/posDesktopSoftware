@@ -626,12 +626,52 @@ export async function openCashDrawer(): Promise<void> {
 }
 
 // ─── Neon Sync ────────────────────────────────────────────────────────────────
+
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = MAX_RETRIES,
+  delay: number = RETRY_DELAY_MS
+): Promise<T> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt < maxRetries) {
+        await sleep(delay * attempt);
+      }
+    }
+  }
+  throw lastError;
+}
+
 export async function syncToNeon(): Promise<{ synced: number; error?: string }> {
-  return sql("sync_to_neon");
+  try {
+    return await retryWithBackoff(() => sql("sync_to_neon"));
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("Neon sync failed after retries:", errorMsg);
+    return { synced: 0, error: `Sync failed: ${errorMsg}. Please check your connection and try again.` };
+  }
 }
 
 export async function syncFromNeon(): Promise<{ imported: number; error?: string }> {
-  return sql("sync_from_neon");
+  try {
+    return await retryWithBackoff(() => sql("sync_from_neon"));
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("Neon import failed after retries:", errorMsg);
+    return { imported: 0, error: `Import failed: ${errorMsg}. Please check your connection and try again.` };
+  }
 }
 
 // ─── Cart Calculation (pure JS, no DB needed) ─────────────────────────────────

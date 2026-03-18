@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { ShoppingCart, ClipboardList, Package, BarChart2, Settings, Zap, FileText, LogOut, History } from "lucide-react";
+import { ShoppingCart, ClipboardList, Package, BarChart2, Settings, Zap, FileText, LogOut, History, ChefHat, DollarSign, Users, UsersRound, Tag, Wallet } from "lucide-react";
 import { Screen } from "@/app/page";
 import { User } from "@/lib/db";
 import { useAuthStore } from "@/lib/stores";
@@ -10,7 +10,15 @@ const allNavItems = [
   { id: "dashboard" as Screen, label: "Dashboard", icon: BarChart2, adminOnly: false },
   { id: "orders" as Screen, label: "Orders", icon: ClipboardList, adminOnly: false },
   { id: "products" as Screen, label: "Products", icon: Package, adminOnly: false },
+  { id: "tables" as Screen, label: "Tables", icon: UsersRound, adminOnly: false },
+  { id: "kds" as Screen, label: "Kitchen", icon: ChefHat, adminOnly: false },
+  { id: "customers" as Screen, label: "Customers", icon: Users, adminOnly: false },
+  { id: "wallet" as Screen, label: "Wallet", icon: Wallet, adminOnly: false },
+  { id: "coupons" as Screen, label: "Coupons", icon: Tag, adminOnly: false },
+  { id: "expenses" as Screen, label: "Expenses", icon: DollarSign, adminOnly: true },
+  { id: "staff" as Screen, label: "Staff", icon: Users, adminOnly: true },
   { id: "reports" as Screen, label: "Reports", icon: FileText, adminOnly: true },
+  { id: "gst" as Screen, label: "GST", icon: FileText, adminOnly: true },
   { id: "logs" as Screen, label: "Logs", icon: History, adminOnly: true },
   { id: "settings" as Screen, label: "Settings", icon: Settings, adminOnly: true },
 ];
@@ -45,7 +53,7 @@ export default function Sidebar({ activeScreen, setScreen, user }: { activeScree
         <div style={{ fontSize: 9, fontWeight: 600, color: "#F5C842" }}>{formatDate(currentTime)}</div>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#4A4A5A", fontFamily: "monospace" }}>{formatTime(currentTime)}</div>
       </div>
-      <nav className="flex flex-col gap-1 flex-1 w-full px-2" role="menubar" aria-label="Navigation menu">
+      <nav className="flex flex-col gap-1 flex-1 w-full px-2 overflow-y-auto" role="menubar" aria-label="Navigation menu">
         {nav.map(({ id, label, icon: Icon }) => {
           const active = activeScreen === id;
           return (

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::db::Order;
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct SyncResult {
     pub synced: i64,
     pub error: Option<String>,
@@ -14,12 +15,14 @@ pub struct SyncResult {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct NeonQuery {
     query: String,
     params: Vec<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct NeonResponse {
     rows: Option<Vec<serde_json::Value>>,
     #[serde(rename = "rowCount")]

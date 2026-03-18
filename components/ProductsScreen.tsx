@@ -1,18 +1,43 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, X, Check, Search, RefreshCw } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, Search, RefreshCw, AlertCircle } from "lucide-react";
 import { dbSaveProduct, dbDeleteProduct, Product } from "@/lib/db";
 import { useProductsStore, useSettingsStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
 
 const EMPTY: Product = { id: "", name: "", price: 0, category: "Food", stock: 0, barcode: "", tax: 18 };
 const CATEGORIES = ["Beverages", "Food", "Snacks", "Bakery", "Electronics", "Other"];
+const ITEMS_PER_PAGE = 30;
+
+const validateProduct = (product: Product): Record<string, string> => {
+  const errors: Record<string, string> = {};
+  
+  if (!product.name || product.name.trim().length === 0) {
+    errors.name = "Product name is required";
+  }
+  
+  if (isNaN(product.price) || product.price < 0) {
+    errors.price = "Price must be a positive number";
+  }
+  
+  if (isNaN(product.tax) || product.tax < 0 || product.tax > 100) {
+    errors.tax = "Tax must be between 0 and 100";
+  }
+  
+  if (isNaN(product.stock) || product.stock < 0) {
+    errors.stock = "Stock must be a non-negative number";
+  }
+  
+  return errors;
+};
 
 export default function ProductsScreen() {
   const { products, isLoading, fetchProducts, addProduct, updateProduct, deleteProduct } = useProductsStore();
   const { settings, fetchSettings } = useSettingsStore();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Product | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [displayLimit, setDisplayLimit] = useState(ITEMS_PER_PAGE);
 
   useEffect(() => { 
     fetchProducts(); 
@@ -24,6 +49,11 @@ export default function ProductsScreen() {
     p.category.toLowerCase().includes(search.toLowerCase()) ||
     p.barcode?.includes(search)
   );
+
+  const displayedProducts = filtered.slice(0, displayLimit);
+  const hasMore = displayLimit < filtered.length;
+
+  useEffect(() => { setDisplayLimit(ITEMS_PER_PAGE); }, [search]);
 
   const handleSave = async () => {
     if (!editing || !editing.name) return;
@@ -77,7 +107,7 @@ export default function ProductsScreen() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => (
+                {displayedProducts.map((p) => (
                   <tr key={p.id} className="card-hover" style={{ borderTop: "1px solid #141418" }}>
                     <td className="py-3 pl-3">
                       <div className="font-medium">{p.name}</div>
@@ -106,6 +136,11 @@ export default function ProductsScreen() {
               </tbody>
             </table>
           )}
+          {hasMore && <div className="text-center py-4">
+            <button onClick={() => setDisplayLimit(d => d + ITEMS_PER_PAGE)} className="btn-ghost text-sm">
+              Show More ({filtered.length - displayLimit} more)
+            </button>
+          </div>}
         </div>
       </div>
 

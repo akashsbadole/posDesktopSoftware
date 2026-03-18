@@ -1,7 +1,53 @@
 // src-tauri/src/db.rs
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
+};
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use flate2::Compression;
+use rand::Rng;
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::path::Path;
+
+const ENCRYPTION_KEY: &[u8; 32] = b"POS_BILLING_SECURE_KEY_32BYTES!!";
+
+fn encrypt_value(value: &str) -> String {
+    if value.is_empty() {
+        return String::new();
+    }
+    let cipher = Aes256Gcm::new(ENCRYPTION_KEY.into());
+    let nonce_bytes: [u8; 12] = rand::thread_rng().gen();
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let ciphertext = cipher
+        .encrypt(nonce, value.as_bytes())
+        .unwrap_or_else(|_| value.as_bytes().to_vec());
+    let mut combined = nonce_bytes.to_vec();
+    combined.extend(ciphertext);
+    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &combined)
+}
+
+fn decrypt_value(encrypted: &str) -> String {
+    if encrypted.is_empty() {
+        return String::new();
+    }
+    let data = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encrypted)
+        .unwrap_or_else(|_| encrypted.as_bytes().to_vec());
+    if data.len() < 12 {
+        return encrypted.to_string();
+    }
+    let cipher = Aes256Gcm::new(ENCRYPTION_KEY.into());
+    let nonce = Nonce::from_slice(&data[..12]);
+    let ciphertext = &data[12..];
+    String::from_utf8(
+        cipher
+            .decrypt(nonce, ciphertext)
+            .unwrap_or_else(|_| ciphertext.to_vec()),
+    )
+    .unwrap_or_else(|_| encrypted.to_string())
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -141,6 +187,7 @@ pub struct Table {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[allow(dead_code)]
 pub struct TableOrder {
     pub id: String,
     pub table_id: String,
@@ -171,6 +218,7 @@ pub struct Customer {
     pub created_at: String,
 }
 
+#[allow(dead_code)]
 pub struct OrderModifier {
     pub id: String,
     pub order_item_id: i64,
@@ -1111,19 +1159,19 @@ impl Database {
             tax_system: get("tax_system", "none"),
             address: get("address", "123 Main Street"),
             phone: get("phone", "+1 234 567 8900"),
-            neon_url: get("neon_url", ""),
+            neon_url: decrypt_value(&get("neon_url", "")),
             business_name: get("business_name", ""),
             tax_id: get("tax_id", ""),
             receipt_save_path: get("receipt_save_path", ""),
-            twilio_sid: get("twilio_sid", ""),
-            twilio_token: get("twilio_token", ""),
-            twilio_phone: get("twilio_phone", ""),
+            twilio_sid: decrypt_value(&get("twilio_sid", "")),
+            twilio_token: decrypt_value(&get("twilio_token", "")),
+            twilio_phone: decrypt_value(&get("twilio_phone", "")),
             lan_sync_enabled: get("lan_sync_enabled", "false") == "true",
             lan_server_port: get("lan_server_port", "8765").parse().unwrap_or(8765),
             dark_mode: get("dark_mode", "true") == "true",
             language: get("language", "en"),
             whatsapp_enabled: get("whatsapp_enabled", "false") == "true",
-            whatsapp_api_url: get("whatsapp_api_url", ""),
+            whatsapp_api_url: decrypt_value(&get("whatsapp_api_url", "")),
             offline_mode: get("offline_mode", "false") == "true",
             logo_url: get("logo_url", ""),
             primary_color: get("primary_color", "#F5C842"),
@@ -1147,19 +1195,19 @@ impl Database {
             ("tax_system", s.tax_system.clone()),
             ("address", s.address.clone()),
             ("phone", s.phone.clone()),
-            ("neon_url", s.neon_url.clone()),
+            ("neon_url", encrypt_value(&s.neon_url)),
             ("business_name", s.business_name.clone()),
             ("tax_id", s.tax_id.clone()),
             ("receipt_save_path", s.receipt_save_path.clone()),
-            ("twilio_sid", s.twilio_sid.clone()),
-            ("twilio_token", s.twilio_token.clone()),
-            ("twilio_phone", s.twilio_phone.clone()),
+            ("twilio_sid", encrypt_value(&s.twilio_sid)),
+            ("twilio_token", encrypt_value(&s.twilio_token)),
+            ("twilio_phone", encrypt_value(&s.twilio_phone)),
             ("lan_sync_enabled", s.lan_sync_enabled.to_string()),
             ("lan_server_port", s.lan_server_port.to_string()),
             ("dark_mode", s.dark_mode.to_string()),
             ("language", s.language.clone()),
             ("whatsapp_enabled", s.whatsapp_enabled.to_string()),
-            ("whatsapp_api_url", s.whatsapp_api_url.clone()),
+            ("whatsapp_api_url", encrypt_value(&s.whatsapp_api_url)),
             ("offline_mode", s.offline_mode.to_string()),
             ("logo_url", s.logo_url.clone()),
             ("primary_color", s.primary_color.clone()),
@@ -1409,37 +1457,43 @@ impl Database {
     // ─── Users ─────────────────────────────────────────────────────────────
 
     pub fn init_users(&self) -> Result<()> {
+        let admin_hash = bcrypt::hash("1234", bcrypt::DEFAULT_COST).unwrap_or_default();
+        let cashier_hash = bcrypt::hash("0000", bcrypt::DEFAULT_COST).unwrap_or_default();
+
         self.conn.execute(
-            "INSERT OR IGNORE INTO users (id, pin, name, role) VALUES ('admin', '1234', 'Administrator', 'admin')",
-            [],
+            "INSERT OR IGNORE INTO users (id, pin, name, role) VALUES ('admin', ?1, 'Administrator', 'admin')",
+            params![admin_hash],
         )?;
         self.conn.execute(
-            "INSERT OR IGNORE INTO users (id, pin, name, role) VALUES ('cashier', '0000', 'Cashier', 'cashier')",
-            [],
+            "INSERT OR IGNORE INTO users (id, pin, name, role) VALUES ('cashier', ?1, 'Cashier', 'cashier')",
+            params![cashier_hash],
         )?;
         Ok(())
     }
 
     pub fn verify_pin(&self, pin: &str) -> Result<Option<User>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT id, pin, name, role FROM users WHERE pin = ?1")?;
-        let mut rows = stmt.query(params![pin])?;
-        if let Some(row) = rows.next()? {
-            Ok(Some(User {
-                id: row.get(0)?,
-                name: row.get(2)?,
-                role: row.get(3)?,
-            }))
-        } else {
-            Ok(None)
+        let mut stmt = self.conn.prepare("SELECT id, pin, name, role FROM users")?;
+        let users: Vec<(String, String, String, String)> = stmt
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for (id, stored_hash, name, role) in users {
+            if bcrypt::verify(pin, &stored_hash).unwrap_or(false) {
+                return Ok(Some(User { id, name, role }));
+            }
         }
+        Ok(None)
     }
 
     pub fn change_pin(&self, user_id: &str, new_pin: &str) -> Result<()> {
+        let hashed = bcrypt::hash(new_pin, bcrypt::DEFAULT_COST)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         self.conn.execute(
             "UPDATE users SET pin = ?1 WHERE id = ?2",
-            params![new_pin, user_id],
+            params![hashed, user_id],
         )?;
         Ok(())
     }
@@ -1472,12 +1526,39 @@ impl Database {
             exported_at: chrono::Utc::now().to_rfc3339(),
         };
 
-        serde_json::to_string_pretty(&backup)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
+        let json = serde_json::to_string(&backup)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(json.as_bytes())
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let compressed = encoder
+            .finish()
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        Ok(base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            compressed,
+        ))
     }
 
-    pub fn import_backup(&self, backup_json: &str) -> Result<ImportResult> {
-        let backup: BackupData = serde_json::from_str(backup_json)
+    pub fn import_backup(&self, backup_data: &str) -> Result<ImportResult> {
+        let json = if let Ok(decoded) =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, backup_data)
+        {
+            let mut decoder = GzDecoder::new(&decoded[..]);
+            let mut decompressed = String::new();
+            use std::io::Read;
+            decoder
+                .read_to_string(&mut decompressed)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            decompressed
+        } else {
+            backup_data.to_string()
+        };
+
+        let backup: BackupData = serde_json::from_str(&json)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
         let mut products_imported = 0i64;
@@ -1547,6 +1628,7 @@ impl Database {
         Ok(logs)
     }
 
+    #[allow(dead_code)]
     pub fn get_order_activity_logs(&self, order_id: &str) -> Result<Vec<ActivityLog>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, order_id, action, previous_data, new_data, reason, user_id, user_name, created_at 
@@ -1745,7 +1827,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_customer_orders(&self, customer_phone: &str) -> Result<Vec<Order>> {
+    pub fn get_customer_orders(&self, _customer_phone: &str) -> Result<Vec<Order>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, subtotal, tax_amount, discount_amount, total, payment_method,
                     amount_paid, change_amount, customer_name, status, order_type, delivery_status,
@@ -2179,11 +2261,13 @@ impl Database {
 
     // ─── Database Maintenance ────────────────────────────────────────────────
 
+    #[allow(dead_code)]
     pub fn vacuum(&self) -> Result<()> {
         self.conn.execute_batch("VACUUM")?;
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get_db_size(&self) -> Result<i64> {
         let page_count: i64 = self.conn.query_row("PRAGMA page_count", [], |r| r.get(0))?;
         let page_size: i64 = self.conn.query_row("PRAGMA page_size", [], |r| r.get(0))?;
@@ -3064,11 +3148,11 @@ impl Database {
 
     pub fn export_to_tally(&self, start_date: &str, end_date: &str) -> Result<String> {
         let orders = self.get_orders_by_date(start_date, end_date)?;
-        let expenses = self.get_expenses_by_range(start_date, end_date)?;
+        let _expenses = self.get_expenses_by_range(start_date, end_date)?;
 
         let mut tally_xml = String::from("<ENVELOPE>\n<HEADER>\n<VERSION>1</VERSION>\n<TYPE>Data</TYPE>\n<CLASS>Export Vouchers</CLASS>\n</HEADER>\n<BODY>\n<DESC>\n<STATICVARIABLES>\n<SVCURRENTCOMPANY>My Company</SVCURRENTCOMPANY>\n</STATICVARIABLES>\n</DESC>\n");
 
-        for order in &orders {
+        for _order in &orders {
             tally_xml.push_str(&format!(
                 "<IMPORTDATA>\n<REQUESTDESC>\n<REPORTNAME>All Masters</REPORTNAME>\n</REQUESTDESC>\n<REQUESTDATA>\n< tann:{}  xmlns:tann=\"TallyVoucher\">\n",
                 ""
@@ -3108,7 +3192,7 @@ impl Database {
              FROM orders WHERE status='completed' AND DATE(created_at) BETWEEN ?1 AND ?2",
         )?;
 
-        let mut orders: Vec<Order> = stmt
+        let orders: Vec<Order> = stmt
             .query_map(params![start_date, end_date], |row| {
                 Ok(Order {
                     id: row.get(0)?,

@@ -56,6 +56,7 @@ export default function POSScreen() {
   const [isGridFocused, setIsGridFocused] = useState(false);
   const [heldOrders, setHeldOrders] = useState<Order[]>([]);
   const [showHeldOrders, setShowHeldOrders] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const productGridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { 
@@ -162,7 +163,28 @@ export default function POSScreen() {
 
   const handleCheckout = async () => {
     if (cart.length === 0 || processing) return;
-    if (paymentMethod === "cash" && (amountPaid || 0) < totals.total) return;
+    
+    const newErrors: Record<string, string> = {};
+    
+    if (orderType === "delivery") {
+      if (!customerInfo?.phone || customerInfo.phone.trim().length < 7) {
+        newErrors.phone = "Phone number required for delivery";
+      }
+      if (!customerInfo?.address || customerInfo.address.trim().length < 5) {
+        newErrors.address = "Delivery address required";
+      }
+    }
+    
+    if (paymentMethod === "cash" && (amountPaid || 0) < totals.total) {
+      newErrors.amount = "Insufficient amount tendered";
+    }
+    
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    
+    setErrors({});
     setProcessing(true);
 
     const order = toOrder(uuid(), user?.id || "system", user?.name || "System");
@@ -530,17 +552,27 @@ export default function POSScreen() {
                 id="delivery-address"
                 placeholder="Delivery address" 
                 value={customerInfo?.address || ""}
-                onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value, name: customerInfo?.name || "", phone: customerInfo?.phone || "" } as any)}
+                onChange={(e) => {
+                  setCustomerInfo({ ...customerInfo, address: e.target.value, name: customerInfo?.name || "", phone: customerInfo?.phone || "" } as any);
+                  setErrors(prev => ({ ...prev, address: "" }));
+                }}
                 style={{ fontSize: 13, padding: "7px 12px" }} 
+                className={errors.address ? "error" : ""}
               />
+              {errors.address && <div className="text-xs px-1" style={{ color: "#E74C3C" }}>{errors.address}</div>}
               <label htmlFor="delivery-phone" className="sr-only">Phone number</label>
               <input 
                 id="delivery-phone"
                 placeholder="Phone number" 
                 value={customerInfo?.phone || ""}
-                onChange={(e) => setCustomerInfo({ ...customerInfo, phone: e.target.value, name: customerInfo?.name || "", address: customerInfo?.address || "" } as any)}
+                onChange={(e) => {
+                  setCustomerInfo({ ...customerInfo, phone: e.target.value, name: customerInfo?.name || "", address: customerInfo?.address || "" } as any);
+                  setErrors(prev => ({ ...prev, phone: "" }));
+                }}
                 style={{ fontSize: 13, padding: "7px 12px" }} 
+                className={errors.phone ? "error" : ""}
               />
+              {errors.phone && <div className="text-xs px-1" style={{ color: "#E74C3C" }}>{errors.phone}</div>}
             </div>
           )}
           
@@ -679,9 +711,13 @@ export default function POSScreen() {
                      type="number" 
                      placeholder={`Amount tendered (${curr})`} 
                      value={amountPaid}
-                     onChange={(e) => setAmountPaid(parseFloat(e.target.value) || 0)} 
+                     onChange={(e) => {
+                       setAmountPaid(parseFloat(e.target.value) || 0);
+                       setErrors(prev => ({ ...prev, amount: "" }));
+                     }} 
                      style={{ fontSize: 14, flex: 1 }} 
                      aria-describedby="change-display"
+                     className={errors.amount ? "error" : ""}
                    />
                    <button 
                      onClick={() => setAmountPaid(totals.total)}
@@ -691,6 +727,8 @@ export default function POSScreen() {
                      Copy Total
                    </button>
                  </div>
+
+                 {errors.amount && <div className="text-xs px-1 mb-2" style={{ color: "#E74C3C" }}>{errors.amount}</div>}
 
                  {amountPaid >= totals.total && (
                    <div id="change-display" className="text-sm mt-1.5 font-semibold" style={{ color: "#2ECC71" }} role="status" aria-live="polite">

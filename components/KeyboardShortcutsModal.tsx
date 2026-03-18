@@ -34,25 +34,47 @@ function ShortcutGroup({ title, shortcuts }: { title: string; shortcuts: Keyboar
 
 export default function KeyboardShortcutsModal({ isOpen, onClose, showPOS = false }: KeyboardShortcutsModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
 
+    previousFocusRef.current = document.activeElement as HTMLElement;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         onClose();
+        return;
+      }
+
+      if (e.key === "Tab" && modalRef.current) {
+        const focusableElements = modalRef.current.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        const firstElement = focusableElements[0] as HTMLElement;
+        const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+        if (e.shiftKey && document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement?.focus();
+        } else if (!e.shiftKey && document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement?.focus();
+        }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     
     const timer = setTimeout(() => {
-      modalRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      const closeBtn = modalRef.current?.querySelector('button[aria-label="Close"]') as HTMLButtonElement;
+      closeBtn?.focus();
     }, 50);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       clearTimeout(timer);
+      previousFocusRef.current?.focus();
     };
   }, [isOpen, onClose]);
 

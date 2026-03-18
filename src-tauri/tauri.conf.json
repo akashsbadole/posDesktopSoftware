@@ -17,13 +17,26 @@
       "dialog": { "all": true },
       "fs": {
         "all": true,
-        "scope": ["$APPDATA/*", "$DOCUMENT/*", "$DOWNLOAD/*"]
+        "scope": [
+          "$APPDATA/*", 
+          "$DOCUMENT/*", 
+          "$DOWNLOAD/*",
+          "$APPDATA/**",
+          "$DOCUMENT/**", 
+          "$DOWNLOAD/**"
+        ]
       },
       "path": { "all": true },
       "window": { "all": true },
       "http": {
         "all": true,
-        "scope": ["https://*.neon.tech/*", "https://*.neon.tech"]
+        "scope": [
+          "https://*.neon.tech/*",
+          "https://api.twilio.com/*",
+          "https://*.twilio.com/*",
+          "https://*whatsapp*/*",
+          "http://localhost:3000"
+        ]
       }
     },
     "bundle": {
@@ -45,7 +58,9 @@
         }
       }
     },
-    "security": { "csp": null },
+    "security": { 
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://*.neon.tech https://api.twilio.com https://*.twilio.com https://*whatsapp*"
+    },
     "windows": [
       {
         "fullscreen": false,

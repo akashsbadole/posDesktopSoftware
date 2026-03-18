@@ -14,6 +14,7 @@ pub struct LanServerStatus {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct LanOrder {
     pub id: String,
     pub items: Vec<LanOrderItem>,
@@ -29,6 +30,7 @@ pub struct LanOrder {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct LanOrderItem {
     pub product_id: String,
     pub product_name: String,
@@ -37,18 +39,21 @@ pub struct LanOrderItem {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct LanSyncRequest {
     pub device_id: String,
     pub orders: Vec<LanOrder>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct LanSyncResponse {
     pub success: bool,
     pub message: String,
     pub orders: Option<Vec<LanOrder>>,
 }
 
+#[allow(dead_code)]
 pub fn is_server_running() -> bool {
     SERVER_RUNNING.load(Ordering::SeqCst)
 }
@@ -127,6 +132,7 @@ async fn handle_client(mut socket: tokio::net::TcpStream) {
     }
 }
 
+#[allow(dead_code)]
 pub fn broadcast_order(_order: &super::db::Order) {
     if !SERVER_RUNNING.load(Ordering::SeqCst) {
         return;

@@ -30,6 +30,10 @@ open = "5"
 dirs = "5"
 base64 = "0.22"
 zip = "2"
+flate2 = "1"
+bcrypt = "0.15"
+aes-gcm = "0.10"
+rand = "0.8"
 
 [dev-dependencies]
 tempfile = "3"

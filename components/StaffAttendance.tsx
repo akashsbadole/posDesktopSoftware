@@ -6,7 +6,7 @@ import { X, Clock, LogIn, LogOut } from "lucide-react";
 import { useStaffStore, useAuthStore } from "@/lib/stores";
 
 interface StaffAttendanceProps {
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 export default function StaffAttendance({ onClose }: StaffAttendanceProps) {

@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Search, RotateCcw, ChevronDown, ChevronUp, RefreshCw, Truck, MapPin, Phone, Edit2, Plus, Minus, X } from "lucide-react";
+import { Search, RotateCcw, ChevronDown, ChevronUp, RefreshCw, Truck, MapPin, Phone, Edit2, Plus, Minus, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { updateDeliveryStatus, Order, OrderItem } from "@/lib/db";
 import { useOrdersStore, useSettingsStore, useProductsStore, useCartStore, useAuthStore } from "@/lib/stores";
+
+const ITEMS_PER_PAGE = 20;
 
 export default function OrdersScreen() {
   const { orders, isLoading, fetchOrders, refundOrder, updateDeliveryStatus: updateStatus, updateOrder, filterStatus, setFilterStatus } = useOrdersStore();
@@ -15,6 +17,7 @@ export default function OrdersScreen() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editItems, setEditItems] = useState<{ productId: string; productName: string; price: number; quantity: number; discount: number }[]>([]);
+  const [displayLimit, setDisplayLimit] = useState(ITEMS_PER_PAGE);
 
   useEffect(() => { 
     fetchOrders(); 
@@ -104,6 +107,11 @@ export default function OrdersScreen() {
     const mf = filterStatus === "all" || o.status === filterStatus;
     return ms && mf;
   });
+
+  const displayedOrders = filtered.slice(0, displayLimit);
+  const hasMore = displayLimit < filtered.length;
+
+  useEffect(() => { setDisplayLimit(ITEMS_PER_PAGE); }, [search, filterStatus]);
 
   const curr = settings?.currency ?? "₹";
 
@@ -208,7 +216,7 @@ export default function OrdersScreen() {
               <p>No orders found</p>
             </div>
           ) : (
-            filtered.map((order) => (
+            displayedOrders.map((order) => (
               <div key={order.id} className="card p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
@@ -309,6 +317,17 @@ export default function OrdersScreen() {
                 )}
               </div>
             ))
+          )}
+
+          {hasMore && (
+            <div className="text-center pt-4">
+              <button 
+                onClick={() => setDisplayLimit(d => d + ITEMS_PER_PAGE)}
+                className="btn-ghost text-sm"
+              >
+                Show More ({filtered.length - displayLimit} more)
+              </button>
+            </div>
           )}
         </div>
       )}

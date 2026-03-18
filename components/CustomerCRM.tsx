@@ -5,7 +5,7 @@ import { v4 as uuid } from "uuid";
 import { X, Users, Star, History, Plus, Search, Phone, Mail } from "lucide-react";
 
 interface CustomerCRMProps {
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 export default function CustomerCRM({ onClose }: CustomerCRMProps) {

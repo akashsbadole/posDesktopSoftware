@@ -6,7 +6,7 @@ import { Plus, Trash2, Users, X, Check, GripVertical } from "lucide-react";
 import { useTablesStore } from "@/lib/stores";
 
 interface TableManagerProps {
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 export default function TableManager({ onClose }: TableManagerProps) {

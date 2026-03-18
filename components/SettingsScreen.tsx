@@ -1,9 +1,50 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { Check, Store, Database, Trash2, CloudUpload, CloudDownload, RefreshCw, Info, Moon, Sun, Download, Upload, Save, Palette, Mail, Globe } from "lucide-react";
-import { syncToNeon, syncFromNeon, Settings } from "@/lib/db";
+import { Check, Store, Database, CloudUpload, CloudDownload, RefreshCw, Info, Moon, Sun, Download, Upload, Save, Palette, Mail, AlertCircle } from "lucide-react";
+import { syncToNeon, syncFromNeon, sendSmsNotification, Settings } from "@/lib/db";
 import { invoke } from "@tauri-apps/api/tauri";
 import { useSettingsStore } from "@/lib/stores";
+
+const validatePhone = (phone: string): string | null => {
+  if (!phone) return null;
+  const cleaned = phone.replace(/[\s\-\(\)]/g, '');
+  if (!/^\+?[\d]{7,15}$/.test(cleaned)) {
+    return "Invalid phone number format";
+  }
+  return null;
+};
+
+const validateEmail = (email: string): string | null => {
+  if (!email) return null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return "Invalid email format";
+  }
+  return null;
+};
+
+const validateUrl = (url: string): string | null => {
+  if (!url) return null;
+  try {
+    new URL(url);
+    return null;
+  } catch {
+    return "Invalid URL format";
+  }
+};
+
+const validateTaxRate = (rate: number): string | null => {
+  if (isNaN(rate) || rate < 0 || rate > 100) {
+    return "Tax rate must be between 0 and 100";
+  }
+  return null;
+};
+
+const validatePort = (port: number): string | null => {
+  if (isNaN(port) || port < 1 || port > 65535) {
+    return "Port must be between 1 and 65535";
+  }
+  return null;
+};
 
 interface CountryPreset {
   currency: string;
@@ -54,6 +95,10 @@ export default function SettingsScreen() {
   const [syncMsg, setSyncMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [backingUp, setBackingUp] = useState(false);
   const [backupMsg, setBackupMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [sendingSms, setSendingSms] = useState(false);
+  const [smsMsg, setSmsMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [testPhone, setTestPhone] = useState("");
+  const [testMessage, setTestMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [localSettings, setLocalSettings] = useState<Settings>(settings || {
     store_name: 'My POS Store',
@@ -89,6 +134,8 @@ export default function SettingsScreen() {
     contact_website: '',
   });
 
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
   useEffect(() => { 
     fetchSettings();
   }, []);
@@ -105,6 +152,33 @@ export default function SettingsScreen() {
   };
 
   const handleSave = async () => {
+    const newErrors: Record<string, string> = {};
+    
+    const phoneError = validatePhone(localSettings.phone);
+    if (phoneError) newErrors.phone = phoneError;
+    
+    const emailError = validateEmail(localSettings.contact_email);
+    if (emailError) newErrors.contact_email = emailError;
+    
+    const websiteError = validateUrl(localSettings.contact_website);
+    if (websiteError) newErrors.contact_website = websiteError;
+    
+    const taxRateError = validateTaxRate(localSettings.tax_rate);
+    if (taxRateError) newErrors.tax_rate = taxRateError;
+    
+    const portError = validatePort(localSettings.lan_server_port);
+    if (portError) newErrors.lan_server_port = portError;
+    
+    const whatsappUrlError = validateUrl(localSettings.whatsapp_api_url);
+    if (whatsappUrlError) newErrors.whatsapp_api_url = whatsappUrlError;
+    
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    
+    setErrors({});
+    
     try {
       await saveSettings(localSettings);
       setSaved(true);
@@ -136,15 +210,20 @@ export default function SettingsScreen() {
   const handleExportBackup = async () => {
     setBackingUp(true); setBackupMsg(null);
     try {
-      const backupJson = await invoke<string>("export_backup");
-      const blob = new Blob([backupJson], { type: "application/json" });
+      const backupData = await invoke<string>("export_backup");
+      const binaryString = atob(backupData);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: "application/gzip" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `pos-backup-${new Date().toISOString().split("T")[0]}.json`;
+      a.download = `pos-backup-${new Date().toISOString().split("T")[0]}.gz`;
       a.click();
       URL.revokeObjectURL(url);
-      setBackupMsg({ text: "✓ Backup exported successfully!", ok: true });
+      setBackupMsg({ text: "✓ Backup exported successfully! (compressed)", ok: true });
     } catch (err) {
       setBackupMsg({ text: `Error: ${err}`, ok: false });
     }
@@ -164,6 +243,24 @@ export default function SettingsScreen() {
     }
     setBackingUp(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleSendTestSms = async () => {
+    if (!testPhone || !testMessage) {
+      setSmsMsg({ text: "Please enter phone number and message", ok: false });
+      return;
+    }
+    setSendingSms(true);
+    setSmsMsg(null);
+    try {
+      await sendSmsNotification(testPhone, testMessage);
+      setSmsMsg({ text: "✓ SMS sent successfully!", ok: true });
+      setTestPhone("");
+      setTestMessage("");
+    } catch (err) {
+      setSmsMsg({ text: `Error: ${err}`, ok: false });
+    }
+    setSendingSms(false);
   };
 
   if (isLoading || !localSettings) return <div className="flex items-center justify-center h-full" style={{ color: "#4A4A5A" }}><RefreshCw className="spin" /></div>;
@@ -190,7 +287,15 @@ export default function SettingsScreen() {
             </div>
             <div>
               <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Phone</label>
-              <input value={localSettings.phone} onChange={(e) => updateLocal("phone", e.target.value)} />
+              <input 
+                value={localSettings.phone} 
+                onChange={(e) => {
+                  updateLocal("phone", e.target.value);
+                  setErrors(prev => ({ ...prev, phone: validatePhone(e.target.value) || "" }));
+                }} 
+                className={errors.phone ? "error" : ""}
+              />
+              {errors.phone && <div className="text-xs mt-1" style={{ color: "#E74C3C" }}><AlertCircle size={12} className="inline mr-1" />{errors.phone}</div>}
             </div>
           </div>
         </div>
@@ -251,6 +356,7 @@ export default function SettingsScreen() {
                 value={localSettings.country} 
                 onChange={(e) => {
                   const country = e.target.value;
+                  console.log("Country selected:", country);
                   const presets = countryPresets[country] || countryPresets["US"];
                   updateLocal("country", country);
                   updateLocal("currency", presets.currency);
@@ -321,7 +427,19 @@ export default function SettingsScreen() {
             </div>
             <div>
               <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{localSettings.tax_system === "gst" ? "GST" : localSettings.tax_system === "vat" ? "VAT" : "Tax"} Rate (%)</label>
-              <input type="number" value={localSettings.tax_rate} onChange={(e) => updateLocal("tax_rate", parseFloat(e.target.value) || 0)} min={0} max={100} />
+              <input 
+                type="number" 
+                value={localSettings.tax_rate} 
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 0;
+                  updateLocal("tax_rate", val);
+                  setErrors(prev => ({ ...prev, tax_rate: validateTaxRate(val) || "" }));
+                }} 
+                min={0} 
+                max={100}
+                className={errors.tax_rate ? "error" : ""}
+              />
+              {errors.tax_rate && <div className="text-xs mt-1" style={{ color: "#E74C3C" }}><AlertCircle size={12} className="inline mr-1" />{errors.tax_rate}</div>}
             </div>
             <div>
               <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Tax Name</label>
@@ -532,22 +650,66 @@ export default function SettingsScreen() {
                 <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>WhatsApp API URL</label>
                 <input
                   value={localSettings.whatsapp_api_url}
-                  onChange={(e) => updateLocal("whatsapp_api_url", e.target.value)}
+                  onChange={(e) => {
+                    updateLocal("whatsapp_api_url", e.target.value);
+                    setErrors(prev => ({ ...prev, whatsapp_api_url: validateUrl(e.target.value) || "" }));
+                  }}
                   placeholder="https://api.your-whatsapp-gateway.com"
+                  className={errors.whatsapp_api_url ? "error" : ""}
                 />
+                {errors.whatsapp_api_url && <div className="text-xs mt-1" style={{ color: "#E74C3C" }}><AlertCircle size={12} className="inline mr-1" />{errors.whatsapp_api_url}</div>}
               </div>
             )}
           </div>
+
+          {(localSettings.twilio_sid && localSettings.twilio_token && localSettings.twilio_phone) && (
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: "var(--border)" }}>
+              <div className="font-medium mb-3">Test SMS</div>
+              <div className="space-y-2">
+                <input
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  placeholder="Phone number (e.g., +1234567890)"
+                  className={smsMsg && !smsMsg.ok && !testPhone ? "error" : ""}
+                />
+                <input
+                  value={testMessage}
+                  onChange={(e) => setTestMessage(e.target.value)}
+                  placeholder="Test message"
+                />
+                <button 
+                  onClick={handleSendTestSms}
+                  disabled={sendingSms || !testPhone || !testMessage}
+                  className="btn-success w-full flex items-center justify-center gap-2 text-sm"
+                >
+                  {sendingSms ? <RefreshCw size={14} className="spin" /> : "Send Test SMS"}
+                </button>
+                {smsMsg && (
+                  <div className="text-xs mt-2" style={{ color: smsMsg.ok ? "#2ECC71" : "#E74C3C" }}>
+                    {smsMsg.text}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* LAN Sync */}
-        <div className="card p-5">
+        <div className="card p-5" style={{ opacity: 0.7 }}>
           <div className="flex items-center gap-2 mb-2">
             <span style={{ color: "#9B59B6" }}>🔗</span>
             <h2 className="font-semibold">LAN Sync</h2>
+            <span style={{ 
+              background: "#F39C12", 
+              color: "#fff", 
+              padding: "2px 8px", 
+              borderRadius: "4px", 
+              fontSize: "10px",
+              fontWeight: "600"
+            }}>COMING SOON</span>
           </div>
           <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
-            Enable LAN sync to share orders between devices on the same network.
+            Share orders and data between devices on the same network.
           </p>
           
           <div className="flex items-center justify-between mb-3">
@@ -555,40 +717,23 @@ export default function SettingsScreen() {
               <div className="font-medium">Enable LAN Sync</div>
               <div className="text-xs" style={{ color: "#4A4A5A" }}>Run as server for other devices</div>
             </div>
-            <button
-              onClick={() => updateLocal("lan_sync_enabled", !localSettings.lan_sync_enabled)}
-              style={{
-                width: 48,
-                height: 24,
-                borderRadius: 12,
-                background: localSettings.lan_sync_enabled ? "#9B59B6" : "#1E1E26",
-                border: "none",
-                cursor: "pointer"
-              }}
-            >
+            <div style={{
+              width: 48,
+              height: 24,
+              borderRadius: 12,
+              background: "#1E1E26",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}>
               <div style={{
                 width: 20,
                 height: 20,
                 borderRadius: 10,
-                background: "#fff",
-                position: "relative",
-                left: localSettings.lan_sync_enabled ? 26 : 2,
-                transition: "left 0.2s"
+                background: "#666"
               }} />
-            </button>
-          </div>
-          
-          {localSettings.lan_sync_enabled && (
-            <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Server Port</label>
-              <input
-                type="number"
-                value={localSettings.lan_server_port}
-                onChange={(e) => updateLocal("lan_server_port", parseInt(e.target.value) || 8765)}
-                placeholder="8765"
-              />
             </div>
-          )}
+          </div>
         </div>
 
         {/* Language & Offline */}
@@ -745,19 +890,29 @@ export default function SettingsScreen() {
               <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Contact Email</label>
               <input
                 value={localSettings.contact_email}
-                onChange={(e) => updateLocal("contact_email", e.target.value)}
+                onChange={(e) => {
+                  updateLocal("contact_email", e.target.value);
+                  setErrors(prev => ({ ...prev, contact_email: validateEmail(e.target.value) || "" }));
+                }}
                 placeholder="contact@yourbusiness.com"
                 type="email"
+                className={errors.contact_email ? "error" : ""}
               />
+              {errors.contact_email && <div className="text-xs mt-1" style={{ color: "#E74C3C" }}><AlertCircle size={12} className="inline mr-1" />{errors.contact_email}</div>}
             </div>
             <div>
               <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Website</label>
               <input
                 value={localSettings.contact_website}
-                onChange={(e) => updateLocal("contact_website", e.target.value)}
+                onChange={(e) => {
+                  updateLocal("contact_website", e.target.value);
+                  setErrors(prev => ({ ...prev, contact_website: validateUrl(e.target.value) || "" }));
+                }}
                 placeholder="https://www.yourbusiness.com"
                 type="url"
+                className={errors.contact_website ? "error" : ""}
               />
+              {errors.contact_website && <div className="text-xs mt-1" style={{ color: "#E74C3C" }}><AlertCircle size={12} className="inline mr-1" />{errors.contact_website}</div>}
             </div>
           </div>
         </div>
