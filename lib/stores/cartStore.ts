@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { Product, Order, OrderItem, calcCart } from '@/lib/db';
 import { v4 as uuid } from 'uuid';
 
-export type OrderType = 'dine_in' | 'takeaway' | 'delivery';
-export type PaymentMethod = 'cash' | 'card' | 'upi';
+export type OrderType = 'dine_in' | 'takeaway' | 'delivery' | 'in_store' | 'online';
+export type PaymentMethod = 'cash' | 'card' | 'upi' | 'wallet';
 
 export interface CartItem {
   product: Product;
@@ -12,6 +12,7 @@ export interface CartItem {
 }
 
 interface CustomerInfo {
+  id?: string;
   name: string;
   phone: string;
   address?: string;

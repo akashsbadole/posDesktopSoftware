@@ -6,6 +6,21 @@ import { invoke } from "@tauri-apps/api/tauri";
 
 const IS_TAURI = typeof window !== "undefined" && "__TAURI__" in window;
 
+export function sanitizeInput(input: string): string {
+  return input
+    .replace(/[<>]/g, '')
+    .replace(/[;'"]/g, '')
+    .trim();
+}
+
+export function sanitizePhone(phone: string): string {
+  return phone.replace(/[^0-9+]/g, '');
+}
+
+export function sanitizeEmail(email: string): string {
+  return email.replace(/[^a-zA-Z0-9@._-]/g, '').toLowerCase();
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface Product {
   id: string;
@@ -15,6 +30,7 @@ export interface Product {
   stock: number;
   barcode: string;
   tax: number;
+  variants?: string;
   created_at?: string;
 }
 
@@ -34,12 +50,12 @@ export interface Order {
   tax_amount: number;
   discount_amount: number;
   total: number;
-  payment_method: "cash" | "card" | "upi";
+  payment_method: "cash" | "card" | "upi" | "wallet";
   amount_paid: number;
   change_amount: number;
   customer_name: string;
   status: "completed" | "refunded" | "hold" | "cancelled";
-  order_type: "dine_in" | "takeaway" | "delivery";
+  order_type: "dine_in" | "takeaway" | "delivery" | "in_store" | "online";
   delivery_status: "pending" | "out_for_delivery" | "delivered" | "cancelled";
   delivery_address: string;
   delivery_phone: string;
@@ -128,6 +144,7 @@ export interface RefundRequest {
 
 export interface Settings {
   store_name: string;
+  store_type: string;
   currency: string;
   currency_symbol: string;
   country: string;
@@ -160,6 +177,15 @@ export interface Settings {
   // Contact
   contact_email: string;
   contact_website: string;
+  // SMTP
+  smtp_enabled: boolean;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password: string;
+  smtp_from_email: string;
+  smtp_from_name: string;
+  first_run: boolean;
 }
 
 export interface Ingredient {
@@ -371,6 +397,14 @@ export async function dbGetOrders(): Promise<Order[]> {
   return sql<Order[]>("get_orders");
 }
 
+export async function dbGetOrdersPaginated(page: number, limit: number): Promise<Order[]> {
+  return sql<Order[]>("get_orders_paginated", { page, limit });
+}
+
+export async function dbGetOrdersCount(): Promise<number> {
+  return sql<number>("get_orders_count");
+}
+
 export async function dbSaveOrder(o: Order): Promise<void> {
   return sql("save_order", { order: o });
 }
@@ -390,6 +424,22 @@ export async function dbGetSettings(): Promise<Settings> {
 
 export async function dbSaveSettings(s: Settings): Promise<void> {
   return sql("save_settings", { settings: s });
+}
+
+// ─── License ─────────────────────────────────────────────────────────────────
+export interface LicenseValidationResult {
+  valid: boolean;
+  tier: "free" | "pro" | "business";
+  expires_at: string | null;
+  message: string;
+}
+
+export async function dbValidateLicense(key: string): Promise<LicenseValidationResult> {
+  return sql<LicenseValidationResult>("validate_license", { key });
+}
+
+export async function dbGenerateLicense(tier: string, year: number, month: number, day: number): Promise<string> {
+  return sql<string>("generate_license", { tier, year, month, day });
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
@@ -449,6 +499,10 @@ export async function verifyPin(pin: string): Promise<User | null> {
   return sql<User | null>("verify_pin", { pin });
 }
 
+export async function resetAdminPin(): Promise<void> {
+  return sql("reset_admin_pin");
+}
+
 export async function changePin(userId: string, newPin: string): Promise<void> {
   return sql("change_pin", { userId, newPin });
 }
@@ -460,6 +514,46 @@ export async function getUsers(): Promise<User[]> {
 // ─── Backup ─────────────────────────────────────────────────────────────────
 export async function exportBackup(): Promise<string> {
   return sql<string>("export_backup");
+}
+
+export interface FullImportResult {
+  products_imported: number;
+  orders_imported: number;
+  customers_imported: number;
+  tables_imported: number;
+  ingredients_imported: number;
+  recipes_imported: number;
+  suppliers_imported: number;
+  coupons_imported: number;
+  reservations_imported: number;
+  shifts_imported: number;
+  expenses_imported: number;
+  expense_categories_imported: number;
+  total_tables_restored: number;
+}
+
+export async function importFullBackup(
+  backupJson: string,
+  mode: "merge" | "wipe"
+): Promise<FullImportResult> {
+  return sql<FullImportResult>("import_backup", {
+    backupJson,
+    mode,
+  });
+}
+
+export async function getBackupMetadata(backupJson: string): Promise<BackupMetadata> {
+  return sql<BackupMetadata>("get_backup_metadata", { backupJson });
+}
+
+export interface BackupMetadata {
+  exported_at: string;
+  app_version: string;
+  counts: Record<string, number>;
+}
+
+export async function getTableCounts(): Promise<Record<string, number>> {
+  return sql<Record<string, number>>("get_table_counts");
 }
 
 // ─── Activity Logs ─────────────────────────────────────────────────────────
@@ -767,6 +861,7 @@ function lsSet(key: string, val: unknown) {
 function defaultSettings(): Settings {
   return {
     store_name: "My POS Store",
+    store_type: "food",
     currency: "USD",
     currency_symbol: "$",
     country: "US",
@@ -797,6 +892,14 @@ function defaultSettings(): Settings {
     footer_text: "Powered by POS Billing",
     contact_email: "",
     contact_website: "",
+    smtp_enabled: false,
+    smtp_host: "",
+    smtp_port: 587,
+    smtp_username: "",
+    smtp_password: "",
+    smtp_from_email: "",
+    smtp_from_name: "",
+    first_run: true,
   };
 }
 
@@ -977,6 +1080,178 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       return { synced: 0, error: "Neon sync only available in Tauri desktop app" } as T;
     case "sync_from_neon":
       return { imported: 0, error: "Neon sync only available in Tauri desktop app" } as T;
+    case "export_backup":
+      return JSON.stringify({ message: "Backup export requires Tauri desktop app" }) as T;
+    case "import_backup":
+      return {
+        products_imported: 0, orders_imported: 0, customers_imported: 0,
+        tables_imported: 0, ingredients_imported: 0, recipes_imported: 0,
+        suppliers_imported: 0, coupons_imported: 0, reservations_imported: 0,
+        shifts_imported: 0, expenses_imported: 0, expense_categories_imported: 0,
+        total_tables_restored: 0,
+      } as T;
+    case "get_backup_metadata":
+      return JSON.stringify({
+        exported_at: new Date().toISOString(), app_version: "0.0.0",
+        counts: {},
+      }) as T;
+    case "get_table_counts":
+      return JSON.stringify({
+        products: 0, orders: 0, order_items: 0, settings: 0, users: 0,
+        tables: 0, customers: 0, ingredients: 0, recipes: 0, suppliers: 0,
+        coupons: 0, reservations: 0, shifts: 0, expenses: 0,
+      }) as T;
+    // ─── Browser fallback stubs for remaining commands ─────────────
+    case "verify_pin":
+      return null as T;
+    case "change_pin":
+    case "reset_admin_pin":
+    case "clock_in":
+    case "clock_out":
+    case "update_delivery_status":
+    case "save_table":
+    case "delete_table":
+    case "update_table_status":
+    case "save_customer":
+    case "add_loyalty_points":
+    case "add_order_note":
+    case "create_inventory_alert":
+    case "clear_inventory_alert":
+    case "hold_order":
+    case "cancel_order":
+    case "create_refund_request":
+    case "approve_refund":
+    case "reject_refund":
+    case "delete_pending_order":
+    case "mark_kds_item_done":
+    case "open_kds_window":
+    case "print_to_printer":
+    case "open_cash_drawer":
+    case "save_ingredient":
+    case "delete_ingredient":
+    case "save_recipe":
+    case "save_supplier":
+    case "delete_supplier":
+    case "save_purchase_order":
+    case "update_po_status":
+    case "receive_purchase_order":
+    case "save_reservation":
+    case "delete_reservation":
+    case "save_shift":
+    case "delete_shift":
+    case "save_expense":
+    case "delete_expense":
+    case "save_expense_category":
+    case "add_wallet_balance":
+    case "deduct_wallet_balance":
+    case "save_coupon":
+    case "use_coupon":
+    case "delete_coupon":
+    case "save_day_end_reconciliation":
+    case "send_sms_notification":
+    case "start_lan_server":
+    case "stop_lan_server":
+    case "send_whatsapp_message":
+    case "send_email":
+      return undefined as T;
+    case "get_users":
+      return [{ id: "admin", name: "Administrator", role: "admin" }] as T;
+    case "get_tables":
+      return [] as T;
+    case "is_clocked_in":
+      return false as T;
+    case "get_today_attendance":
+      return [] as T;
+    case "get_customers":
+      return [] as T;
+    case "get_customer_by_phone":
+      return null as T;
+    case "get_customer_orders":
+      return [] as T;
+    case "get_order_notes":
+      return [] as T;
+    case "get_inventory_alerts":
+    case "check_inventory_alerts":
+      return [] as T;
+    case "get_hourly_sales":
+      return [] as T;
+    case "get_staff_performance":
+      return [] as T;
+    case "get_sales_by_item":
+      return [] as T;
+    case "get_held_orders":
+      return [] as T;
+    case "get_refund_requests":
+      return [] as T;
+    case "get_pending_orders_count":
+      return 0 as T;
+    case "get_pending_orders":
+      return [] as T;
+    case "get_kds_orders":
+      return [] as T;
+    case "get_ingredients":
+      return [] as T;
+    case "get_recipes":
+      return [] as T;
+    case "get_suppliers":
+      return [] as T;
+    case "get_purchase_orders":
+      return [] as T;
+    case "get_reservations":
+      return [] as T;
+    case "get_shifts":
+      return [] as T;
+    case "get_expenses":
+    case "get_expenses_by_range":
+      return [] as T;
+    case "get_expense_categories":
+      return [] as T;
+    case "get_customer_wallet":
+      return { customer_id: "", balance: 0, total_loaded: 0, total_spent: 0 } as T;
+    case "get_wallet_transactions":
+      return [] as T;
+    case "get_coupons":
+      return [] as T;
+    case "validate_coupon":
+      throw new Error("Invalid or expired coupon");
+    case "get_day_end_reconciliation":
+      return null as T;
+    case "get_gstr1_report":
+      return [] as T;
+    case "get_gstr3b_report":
+      return [0, 0, 0, 0, 0, 0] as T;
+    case "get_lan_server_status":
+      return { running: false, port: 0, connected_clients: 0 } as T;
+    case "get_activity_logs_range":
+      return [] as T;
+    case "export_to_tally":
+    case "export_to_quickbooks":
+    case "create_compressed_backup":
+      return "" as T;
+    // ─── New feature commands ────────────────────────────────────
+    case "get_quick_sale_presets":
+      return [] as T;
+    case "save_quick_sale_preset":
+    case "delete_quick_sale_preset":
+    case "open_cash_drawer_session":
+    case "close_cash_drawer_session":
+    case "save_receipt_template":
+    case "delete_receipt_template":
+    case "bulk_update_stock":
+    case "bulk_update_price":
+    case "bulk_update_tax":
+      return undefined as T;
+    case "get_cash_drawer_session":
+      return null as T;
+    case "get_receipt_templates":
+      return [{
+        id: "default", name: "Default", show_logo: 0, show_store_name: 1,
+        show_address: 1, show_phone: 1, show_tax_id: 1, show_items: 1,
+        show_subtotal: 1, show_tax: 1, show_discount: 1, show_total: 1,
+        show_payment_method: 1, show_change: 1, show_footer: 1,
+        footer_text: "Thank you! Visit again.", header_text: "",
+        font_size: "normal", active: 1,
+      }] as T;
     default:
       throw new Error(`Unknown command: ${cmd}`);
   }
@@ -1193,4 +1468,111 @@ export async function createCompressedBackup(): Promise<number[]> {
 // ─── WhatsApp Functions ───────────────────────────────────────────────────
 export async function sendWhatsAppMessage(phone: string, message: string): Promise<void> {
   return sql("send_whatsapp_message", { phone, message });
+}
+
+// ─── Email Functions ───────────────────────────────────────────────────────
+export async function sendEmail(to: string, subject: string, body: string): Promise<void> {
+  return sql("send_email", { to, subject, body });
+}
+
+// ─── Quick Sale Presets ─────────────────────────────────────────────────────
+export interface QuickSalePreset {
+  id: string;
+  name: string;
+  product_ids: string;
+  quantities: string;
+  discount: number;
+  color: string;
+  position: number;
+  active: number;
+}
+
+export async function getQuickSalePresets(): Promise<QuickSalePreset[]> {
+  return sql<QuickSalePreset[]>("get_quick_sale_presets");
+}
+
+export async function saveQuickSalePreset(preset: QuickSalePreset): Promise<void> {
+  return sql("save_quick_sale_preset", { preset });
+}
+
+export async function deleteQuickSalePreset(id: string): Promise<void> {
+  return sql("delete_quick_sale_preset", { id });
+}
+
+// ─── Cash Drawer ───────────────────────────────────────────────────────────
+export interface CashDrawerSession {
+  id: string;
+  date: string;
+  opening_balance: number;
+  closing_balance: number;
+  expected_balance: number;
+  cash_in: number;
+  cash_out: number;
+  cash_sales: number;
+  status: string;
+  opened_by: string;
+  closed_by: string;
+  opened_at: string;
+  closed_at: string | null;
+  notes: string;
+}
+
+export async function openCashDrawerSession(date: string, balance: number, userName: string): Promise<string> {
+  return sql<string>("open_cash_drawer_session", { date, balance, userName });
+}
+
+export async function closeCashDrawerSession(date: string, actualBalance: number, notes: string, userName: string): Promise<void> {
+  return sql("close_cash_drawer_session", { date, actualBalance, notes, userName });
+}
+
+export async function getCashDrawerSession(date: string): Promise<CashDrawerSession | null> {
+  return sql<CashDrawerSession | null>("get_cash_drawer_session", { date });
+}
+
+// ─── Receipt Templates ─────────────────────────────────────────────────────
+export interface ReceiptTemplate {
+  id: string;
+  name: string;
+  show_logo: number;
+  show_store_name: number;
+  show_address: number;
+  show_phone: number;
+  show_tax_id: number;
+  show_items: number;
+  show_subtotal: number;
+  show_tax: number;
+  show_discount: number;
+  show_total: number;
+  show_payment_method: number;
+  show_change: number;
+  show_footer: number;
+  footer_text: string;
+  header_text: string;
+  font_size: string;
+  active: number;
+}
+
+export async function getReceiptTemplates(): Promise<ReceiptTemplate[]> {
+  return sql<ReceiptTemplate[]>("get_receipt_templates");
+}
+
+export async function saveReceiptTemplate(tpl: ReceiptTemplate): Promise<void> {
+  return sql("save_receipt_template", { tpl });
+}
+
+export async function deleteReceiptTemplate(id: string): Promise<void> {
+  return sql("delete_receipt_template", { id });
+}
+
+// ─── Bulk Operations ───────────────────────────────────────────────────────
+export async function bulkUpdateStock(updates: [string, number][]): Promise<number> {
+  return sql<number>("bulk_update_stock", { updates: JSON.stringify(updates) });
+}
+
+export async function bulkUpdatePrice(updates: [string, number][]): Promise<number> {
+  return sql<number>("bulk_update_price", { updates: JSON.stringify(updates) });
+}
+
+export async function bulkUpdateTax(category: string, newTax: number): Promise<number> {
+  return sql<number>("bulk_update_tax", { category, newTax });
 }

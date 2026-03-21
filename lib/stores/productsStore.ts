@@ -8,6 +8,7 @@ interface ProductsState {
   error: string | null;
   selectedCategory: string | null;
   searchQuery: string;
+  lastFetch: number | null;
   fetchProducts: () => Promise<void>;
   addProduct: (product: Product) => Promise<void>;
   updateProduct: (product: Product) => Promise<void>;
@@ -19,6 +20,8 @@ interface ProductsState {
   getProductById: (id: string) => Product | undefined;
 }
 
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 export const useProductsStore = create<ProductsState>((set, get) => ({
   products: [],
   categories: [],
@@ -26,13 +29,32 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
   error: null,
   selectedCategory: null,
   searchQuery: '',
+  lastFetch: null,
 
   fetchProducts: async () => {
+    const { lastFetch } = get();
+    const now = Date.now();
+    
+    if (lastFetch && (now - lastFetch) < CACHE_TTL) {
+      return;
+    }
+    
     set({ isLoading: true, error: null });
     try {
       const products = await dbGetProducts();
       const categories = Array.from(new Set(products.map((p) => p.category))).sort();
-      set({ products, categories, isLoading: false });
+      set({ products, categories, isLoading: false, lastFetch: now });
+    } catch (err) {
+      set({ error: (err as Error).message, isLoading: false });
+    }
+  },
+
+  forceFetchProducts: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const products = await dbGetProducts();
+      const categories = Array.from(new Set(products.map((p) => p.category))).sort();
+      set({ products, categories, isLoading: false, lastFetch: Date.now() });
     } catch (err) {
       set({ error: (err as Error).message, isLoading: false });
     }

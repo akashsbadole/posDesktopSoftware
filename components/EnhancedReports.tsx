@@ -48,7 +48,7 @@ export default function EnhancedReports({ onClose }: EnhancedReportsProps) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }} onClick={onClose}>
       <div className="card p-6 w-[700px] max-h-[85vh] overflow-y-auto fade-in" role="dialog" aria-modal="true" aria-labelledby="reports-title">
         <div className="flex items-center justify-between mb-4">
           <h2 id="reports-title" className="font-display text-lg" style={{ color: "#F5C842" }}>Enhanced Reports</h2>

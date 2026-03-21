@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Search, RotateCcw, ChevronDown, ChevronUp, RefreshCw, Truck, MapPin, Phone, Edit2, Plus, Minus, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { updateDeliveryStatus, Order, OrderItem } from "@/lib/db";
+import { Search, RotateCcw, ChevronDown, ChevronUp, RefreshCw, Truck, MapPin, Phone, Edit2, Plus, Minus, X, ChevronLeft, ChevronRight, Ban, MessageSquare, Send } from "lucide-react";
+import { updateDeliveryStatus, dbCancelOrder, dbAddOrderNote, dbGetOrderNotes, Order, OrderItem, OrderNote } from "@/lib/db";
 import { useOrdersStore, useSettingsStore, useProductsStore, useCartStore, useAuthStore } from "@/lib/stores";
 
 const ITEMS_PER_PAGE = 20;
@@ -18,6 +18,10 @@ export default function OrdersScreen() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editItems, setEditItems] = useState<{ productId: string; productName: string; price: number; quantity: number; discount: number }[]>([]);
   const [displayLimit, setDisplayLimit] = useState(ITEMS_PER_PAGE);
+  const [orderNotes, setOrderNotes] = useState<Record<string, OrderNote[]>>({});
+  const [newNote, setNewNote] = useState("");
+  const [cancelReason, setCancelReason] = useState("");
+  const [showCancelModal, setShowCancelModal] = useState<string | null>(null);
 
   useEffect(() => { 
     fetchOrders(); 
@@ -34,6 +38,30 @@ export default function OrdersScreen() {
 
   const handleDeliveryStatus = async (id: string, status: string) => {
     await updateStatus(id, status as any);
+  };
+
+  const handleCancelOrder = async (id: string) => {
+    if (!cancelReason.trim()) return;
+    const userId = user?.id || "system";
+    const userName = user?.name || "System";
+    await dbCancelOrder(id, cancelReason, userId, userName);
+    setShowCancelModal(null);
+    setCancelReason("");
+    await fetchOrders();
+  };
+
+  const handleAddNote = async (orderId: string) => {
+    if (!newNote.trim()) return;
+    await dbAddOrderNote(orderId, newNote);
+    const notes = await dbGetOrderNotes(orderId);
+    setOrderNotes(prev => ({ ...prev, [orderId]: notes }));
+    setNewNote("");
+  };
+
+  const loadNotes = async (orderId: string) => {
+    if (orderNotes[orderId]) return;
+    const notes = await dbGetOrderNotes(orderId);
+    setOrderNotes(prev => ({ ...prev, [orderId]: notes }));
   };
 
   const handleEditOrder = (order: Order) => {
@@ -277,6 +305,13 @@ export default function OrdersScreen() {
                       {expanded === order.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       {expanded === order.id ? "Hide" : "Show"} items
                     </button>
+                    <button
+                      onClick={() => { setExpanded(order.id); loadNotes(order.id); }}
+                      className="text-xs flex items-center gap-1 px-2 py-1 rounded"
+                      style={{ color: "#9090A8", background: "rgba(144,144,168,0.1)" }}
+                    >
+                      <MessageSquare size={12} /> Notes
+                    </button>
                     {order.status === "completed" && (
                       <button
                         onClick={() => handleEditOrder(order)}
@@ -289,12 +324,30 @@ export default function OrdersScreen() {
                   </div>
 
                   {order.status === "completed" && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleRefund(order.id)}
+                        className="text-xs flex items-center gap-1 px-2 py-1 rounded"
+                        style={{ color: "#E74C3C", background: "rgba(231,76,60,0.1)" }}
+                      >
+                        <RotateCcw size={12} /> Refund
+                      </button>
+                      <button
+                        onClick={() => setShowCancelModal(order.id)}
+                        className="text-xs flex items-center gap-1 px-2 py-1 rounded"
+                        style={{ color: "#E67E22", background: "rgba(230,126,34,0.1)" }}
+                      >
+                        <Ban size={12} /> Cancel
+                      </button>
+                    </div>
+                  )}
+                  {order.status === "hold" && (
                     <button
-                      onClick={() => handleRefund(order.id)}
+                      onClick={() => setShowCancelModal(order.id)}
                       className="text-xs flex items-center gap-1 px-2 py-1 rounded"
-                      style={{ color: "#E74C3C", background: "rgba(231,76,60,0.1)" }}
+                      style={{ color: "#E67E22", background: "rgba(230,126,34,0.1)" }}
                     >
-                      <RotateCcw size={12} /> Refund
+                      <Ban size={12} /> Cancel
                     </button>
                   )}
                 </div>
@@ -313,6 +366,44 @@ export default function OrdersScreen() {
                       {order.discount_amount > 0 && <div className="flex justify-between text-sm"><span style={{ color: "#2ECC71" }}>Discount</span><span>-{curr}{order.discount_amount.toFixed(2)}</span></div>}
                       <div className="flex justify-between font-semibold mt-1"><span>Total</span><span style={{ color: "#F5C842" }}>{curr}{order.total.toFixed(2)}</span></div>
                     </div>
+
+                    {/* Order Notes */}
+                    <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <MessageSquare size={14} style={{ color: "#9090A8" }} />
+                        <span className="text-xs font-semibold" style={{ color: "#9090A8" }}>Notes</span>
+                      </div>
+                      {(orderNotes[order.id] || []).length === 0 ? (
+                        <p className="text-xs" style={{ color: "#4A4A5A" }}>No notes yet</p>
+                      ) : (
+                        <div className="space-y-1 mb-2">
+                          {(orderNotes[order.id] || []).map(note => (
+                            <div key={note.id} className="text-xs p-2 rounded" style={{ background: "#16161A" }}>
+                              <div style={{ color: "#fff" }}>{note.note}</div>
+                              <div className="mt-1" style={{ color: "#4A4A5A" }}>{new Date(note.created_at).toLocaleString()}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-2 mt-2">
+                        <input
+                          type="text"
+                          value={newNote}
+                          onChange={e => setNewNote(e.target.value)}
+                          placeholder="Add a note..."
+                          className="flex-1 px-2 py-1 rounded text-xs"
+                          style={{ background: "#16161A", border: "1px solid #2A2A35", color: "#fff" }}
+                          onKeyDown={e => { if (e.key === "Enter") handleAddNote(order.id); }}
+                        />
+                        <button
+                          onClick={() => handleAddNote(order.id)}
+                          className="px-2 py-1 rounded text-xs"
+                          style={{ background: "#F5C842", color: "#0D0D0F" }}
+                        >
+                          <Send size={12} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -329,6 +420,32 @@ export default function OrdersScreen() {
               </button>
             </div>
           )}
+        </div>
+      )}
+      {/* Cancel Order Modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCancelModal(null)}>
+          <div className="rounded-xl p-5 max-w-sm w-full mx-4" style={{ background: "#1E1E26" }} onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-semibold mb-3" style={{ color: "#E67E22" }}>Cancel Order</h3>
+            <p className="text-sm mb-3" style={{ color: "#9090A8" }}>
+              This will cancel order #{showCancelModal.slice(-6).toUpperCase()} and restore stock.
+            </p>
+            <textarea
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              placeholder="Reason for cancellation..."
+              className="w-full px-3 py-2 rounded-lg text-sm mb-3"
+              style={{ background: "#16161A", border: "1px solid #2A2A35", color: "#fff", minHeight: 80 }}
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setShowCancelModal(null)} className="flex-1 py-2 rounded-lg text-sm" style={{ background: "#2A2A35", color: "#9090A8" }}>
+                Back
+              </button>
+              <button onClick={() => handleCancelOrder(showCancelModal)} disabled={!cancelReason.trim()} className="flex-1 py-2 rounded-lg text-sm font-semibold disabled:opacity-50" style={{ background: "#E67E22", color: "#fff" }}>
+                Confirm Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

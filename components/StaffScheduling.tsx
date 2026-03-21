@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Calendar, Clock, User, Save, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Calendar, Clock, Save, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { getShifts, saveShift, deleteShift, getUsers as getStaff } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 
@@ -140,7 +140,7 @@ export default function StaffScheduling() {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => { setShowForm(false); setEditingShift(null); }}>
           <div className="card p-6 w-96">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold">{editingShift ? "Edit Shift" : "Add Shift"}</h2>

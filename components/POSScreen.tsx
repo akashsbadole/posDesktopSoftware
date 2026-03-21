@@ -1,12 +1,14 @@
 "use client";
 import { useEffect, useRef, useCallback, useState } from "react";
-import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen } from "lucide-react";
-import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder } from "@/lib/db";
+import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet } from "lucide-react";
+import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, deductWalletBalance } from "@/lib/db";
 import { invoke } from "@tauri-apps/api/tauri";
-import { useCartStore, useProductsStore, useSettingsStore, useAuthStore } from "@/lib/stores";
+import { useCartStore, useProductsStore, useSettingsStore, useAuthStore, useNotificationStore } from "@/lib/stores";
 import { useGridNavigation } from "@/lib/keyboard";
 import { v4 as uuid } from "uuid";
 import { Order } from "@/lib/db";
+import { getStoreTypeConfig } from "@/lib/storeTypes";
+import QuickSaleButtons from "@/components/QuickSaleButtons";
 
 export default function POSScreen() {
   const { 
@@ -57,7 +59,16 @@ export default function POSScreen() {
   const [heldOrders, setHeldOrders] = useState<Order[]>([]);
   const [showHeldOrders, setShowHeldOrders] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [couponCode, setCouponCode] = useState("");
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponApplied, setCouponApplied] = useState(false);
+  const [couponError, setCouponError] = useState("");
+  const [walletBalance, setWalletBalance] = useState(0);
   const productGridRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const lastInputTime = useRef<number>(0);
+  const barcodeBuffer = useRef<string>("");
+  const barcodeTimer = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => { 
     fetchProducts(); 
@@ -85,9 +96,9 @@ export default function POSScreen() {
           checkoutBtn.click();
         }
       }
-      if (e.key === "1") setOrderType("dine_in");
-      if (e.key === "2") setOrderType("takeaway");
-      if (e.key === "3") setOrderType("delivery");
+      if (e.key === "1") { const ots = storeConfig.orderTypes; if (ots[0]) setOrderType(ots[0].id as any); }
+      if (e.key === "2") { const ots = storeConfig.orderTypes; if (ots[1]) setOrderType(ots[1].id as any); }
+      if (e.key === "3") { const ots = storeConfig.orderTypes; if (ots[2]) setOrderType(ots[2].id as any); }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -108,10 +119,12 @@ export default function POSScreen() {
 
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && searchQuery.trim()) {
-      const exactMatch = products.find((p) => p.barcode === searchQuery.trim());
-      if (exactMatch) {
-        addItem(exactMatch);
+      const barcodeMatch = products.find((p) => p.barcode === searchQuery.trim());
+      if (barcodeMatch) {
+        handleAddToCart(barcodeMatch);
         setSearchQuery("");
+        e.preventDefault();
+        return;
       }
     }
     if (e.key === "Escape") {
@@ -120,6 +133,63 @@ export default function POSScreen() {
       setIsGridFocused(true);
     }
   };
+
+  // Barcode auto-detection: listens for rapid keystrokes globally
+  // Barcode scanners type very fast (all chars within ~100ms) and usually send Enter
+  useEffect(() => {
+    const handleDocumentKeyDown = (e: KeyboardEvent) => {
+      // Skip if user is typing in an input/textarea (other than our search)
+      const target = e.target as HTMLElement;
+      const isSearchInput = target === searchInputRef.current;
+      const isOtherInput = (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT") && !isSearchInput;
+
+      if (isOtherInput) return;
+
+      // If Enter is pressed and search has a barcode match, add to cart
+      if (e.key === "Enter" && isSearchInput && searchQuery.trim()) {
+        const barcodeMatch = products.find((p) => p.barcode === searchQuery.trim());
+        if (barcodeMatch) {
+          handleAddToCart(barcodeMatch);
+          setSearchQuery("");
+          e.preventDefault();
+        }
+        return;
+      }
+
+      // Auto-detect rapid typing (barcode scanner) - characters arrive within 50ms of each other
+      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        const now = Date.now();
+        if (now - lastInputTime.current < 50) {
+          barcodeBuffer.current += e.key;
+        } else {
+          barcodeBuffer.current = e.key;
+        }
+        lastInputTime.current = now;
+
+        // Clear previous timer
+        if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
+
+        // After 80ms of no input, check if accumulated text is a barcode
+        barcodeTimer.current = setTimeout(() => {
+          if (barcodeBuffer.current.length >= 4) {
+            const barcodeMatch = products.find((p) => p.barcode === barcodeBuffer.current.trim());
+            if (barcodeMatch) {
+              handleAddToCart(barcodeMatch);
+              setSearchQuery("");
+              barcodeBuffer.current = "";
+            }
+          }
+          barcodeBuffer.current = "";
+        }, 80);
+      }
+    };
+
+    window.addEventListener("keydown", handleDocumentKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleDocumentKeyDown);
+      if (barcodeTimer.current) clearTimeout(barcodeTimer.current);
+    };
+  }, [products, searchQuery]);
 
   const handleProductGridKeyDown = (e: React.KeyboardEvent) => {
     if (!isGridFocused) {
@@ -161,6 +231,32 @@ export default function POSScreen() {
   };
   const change = Math.max(0, amountPaid - totals.total);
 
+  const handleApplyCoupon = async () => {
+    setCouponError("");
+    if (!couponCode.trim()) return;
+    try {
+      const coupon = await validateCoupon(couponCode.trim().toUpperCase(), totals.subtotal);
+      if (coupon.discount_type === "percentage") {
+        setCouponDiscount(totals.subtotal * coupon.discount_value / 100);
+      } else {
+        setCouponDiscount(coupon.discount_value);
+      }
+      setCouponApplied(true);
+      setCouponError("");
+    } catch (err: any) {
+      setCouponError(typeof err === "string" ? err : "Invalid coupon");
+      setCouponDiscount(0);
+      setCouponApplied(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setCouponCode("");
+    setCouponDiscount(0);
+    setCouponApplied(false);
+    setCouponError("");
+  };
+
   const handleCheckout = async () => {
     if (cart.length === 0 || processing) return;
     
@@ -195,8 +291,22 @@ export default function POSScreen() {
     order.delivery_status = orderType === "delivery" ? "pending" : "delivered";
     order.delivery_address = customerInfo?.address || "";
     order.delivery_phone = customerInfo?.phone || "";
+    if (couponDiscount > 0) {
+      order.discount_amount = couponDiscount;
+      order.total = Math.max(0, order.subtotal + order.tax_amount - couponDiscount);
+    }
 
     await dbSaveOrder(order);
+    
+    // Use coupon if applied
+    if (couponApplied && couponCode) {
+      try { await useCoupon(couponCode.trim().toUpperCase()); } catch {}
+    }
+    
+    // Deduct from wallet if payment method is wallet
+    if (paymentMethod === "wallet" && customerInfo?.id) {
+      try { await deductWalletBalance(customerInfo.id, order.total, order.id); } catch {}
+    }
     
     try {
       await invoke("open_cash_drawer");
@@ -257,7 +367,7 @@ export default function POSScreen() {
         }
       });
       setCustomerInfo({ name: order.customer_name, phone: order.delivery_phone, address: order.delivery_address });
-      setOrderType(order.order_type as "dine_in" | "takeaway" | "delivery");
+      setOrderType(order.order_type as any);
       setShowHeldOrders(false);
     }
   };
@@ -273,6 +383,7 @@ export default function POSScreen() {
   };
 
   const curr = settings?.currency ?? "₹";
+  const storeConfig = getStoreTypeConfig(settings?.store_type || "food");
 
   const handlePrint = async () => {
     if (!receipt) return;
@@ -345,6 +456,20 @@ export default function POSScreen() {
   const handleRemoveItem = (productId: string) => useCartStore.getState().removeItem(productId);
   const itemCount = getItemCount();
 
+  // Escape to close receipt and held orders dialogs
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (receipt) setReceipt(null);
+        else if (showHeldOrders) setShowHeldOrders(false);
+      }
+    };
+    if (receipt || showHeldOrders) {
+      window.addEventListener("keydown", handler);
+      return () => window.removeEventListener("keydown", handler);
+    }
+  }, [receipt, showHeldOrders]);
+
   if (receipt) {
     return (
       <div className="h-full flex items-center justify-center bg-bg" role="region" aria-label="Order complete">
@@ -390,13 +515,14 @@ export default function POSScreen() {
           <div className="relative flex-1">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#4A4A5A" }} aria-hidden="true" />
             <label htmlFor="product-search" className="sr-only">Search or scan barcode</label>
-            <input 
+            <input
+              ref={searchInputRef}
               id="product-search"
-              placeholder="Search or scan barcode..." 
-              value={searchQuery} 
-              onChange={(e) => setSearchQuery(e.target.value)} 
-              onKeyDown={handleSearchKeyDown} 
-              style={{ paddingLeft: 36 }} 
+              placeholder="Search or scan barcode..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              style={{ paddingLeft: 36 }}
               aria-describedby="search-hint"
             />
             <span id="search-hint" className="sr-only">Press Enter to search by barcode, Escape to clear</span>
@@ -421,6 +547,8 @@ export default function POSScreen() {
             <RefreshCw size={15} className={productsLoading ? "spin" : ""} aria-hidden="true" />
           </button>
         </div>
+
+        <QuickSaleButtons products={products} onAddItems={(items) => items.forEach(i => addItem(i.product, i.quantity))} />
 
         {productsLoading ? (
           <div className="flex-1 flex items-center justify-center" style={{ color: "#4A4A5A" }} role="status" aria-live="polite">
@@ -522,27 +650,16 @@ export default function POSScreen() {
 
         <div className="px-4 pt-3">
           <div className="flex gap-2 mb-3" role="group" aria-label="Order type">
-            <button
-              onClick={() => setOrderType("dine_in")}
-              aria-pressed={orderType === "dine_in"}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "dine_in" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
-            >
-              Dine In
-            </button>
-            <button
-              onClick={() => setOrderType("takeaway")}
-              aria-pressed={orderType === "takeaway"}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "takeaway" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
-            >
-              Takeaway
-            </button>
-            <button
-              onClick={() => setOrderType("delivery")}
-              aria-pressed={orderType === "delivery"}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "delivery" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
-            >
-              Delivery
-            </button>
+            {storeConfig.orderTypes.map((ot) => (
+              <button
+                key={ot.id}
+                onClick={() => setOrderType(ot.id as any)}
+                aria-pressed={orderType === ot.id}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === ot.id ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
+              >
+                {ot.label}
+              </button>
+            ))}
           </div>
           
           {orderType === "delivery" && (
@@ -675,14 +792,38 @@ export default function POSScreen() {
               <div className="flex justify-between" style={{ color: "#9090A8" }}><span>Subtotal</span><span>{curr}{totals.subtotal.toFixed(2)}</span></div>
               <div className="flex justify-between" style={{ color: "#9090A8" }}><span>Tax</span><span>+{curr}{totals.tax_amount.toFixed(2)}</span></div>
               {totals.discount_amount > 0 && <div className="flex justify-between" style={{ color: "#2ECC71" }}><span>Discount</span><span>−{curr}{totals.discount_amount.toFixed(2)}</span></div>}
+              {couponDiscount > 0 && <div className="flex justify-between" style={{ color: "#2ECC71" }}><span>Coupon ({couponCode})</span><span className="flex items-center gap-1">−{curr}{couponDiscount.toFixed(2)} <button onClick={handleRemoveCoupon} className="text-xs" style={{ color: "#E74C3C" }}><X size={12} /></button></span></div>}
               <div className="flex justify-between font-bold text-base pt-1 border-t border-border">
-                <span>Total</span><span style={{ color: "#F5C842" }} aria-label={`Total amount: ${curr}${totals.total.toFixed(2)}`}>{curr}{totals.total.toFixed(2)}</span>
+                <span>Total</span><span style={{ color: "#F5C842" }} aria-label={`Total amount: ${curr}${(totals.total - couponDiscount).toFixed(2)}`}>{curr}{(totals.total - couponDiscount).toFixed(2)}</span>
               </div>
             </div>
 
+            {/* Coupon Input */}
+            <div className="flex gap-2 mb-3">
+              <input
+                type="text"
+                value={couponCode}
+                onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                placeholder="Coupon code"
+                className="flex-1 px-3 py-2 rounded-lg text-sm"
+                style={{ background: "#141418", border: "1px solid #2A2A35", color: "#fff" }}
+                disabled={couponApplied}
+              />
+              {!couponApplied ? (
+                <button onClick={handleApplyCoupon} className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1" style={{ background: "#F5C842", color: "#0D0D0F" }}>
+                  <Tag size={14} /> Apply
+                </button>
+              ) : (
+                <button onClick={handleRemoveCoupon} className="px-3 py-2 rounded-lg text-sm" style={{ background: "#E74C3C", color: "#fff" }}>
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            {couponError && <div className="text-xs mb-2 px-1" style={{ color: "#E74C3C" }}>{couponError}</div>}
+
             <div className="flex gap-2" role="group" aria-label="Payment method">
-              {(["cash", "card", "upi"] as const).map((m) => {
-                const icons = { cash: Banknote, card: CreditCard, upi: Smartphone };
+              {(["cash", "card", "upi", "wallet"] as const).map((m) => {
+                const icons = { cash: Banknote, card: CreditCard, upi: Smartphone, wallet: Wallet };
                 const Icon = icons[m];
                 return (
                   <button 
@@ -771,7 +912,7 @@ export default function POSScreen() {
 
       {/* Held Orders Modal */}
       {showHeldOrders && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }} onClick={() => setShowHeldOrders(false)}>
           <div className="card p-6 w-[500px] max-h-[80vh] overflow-y-auto fade-in" role="dialog" aria-modal="true" aria-labelledby="held-orders-title">
             <div className="flex items-center justify-between mb-4">
               <h2 id="held-orders-title" className="font-display text-lg flex items-center gap-2" style={{ color: "#F5C842" }}>

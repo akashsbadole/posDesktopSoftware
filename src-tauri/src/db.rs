@@ -11,6 +11,7 @@ use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::Path;
+use std::result::Result as StdResult;
 
 const ENCRYPTION_KEY: &[u8; 32] = b"POS_BILLING_SECURE_KEY_32BYTES!!";
 
@@ -49,6 +50,75 @@ fn decrypt_value(encrypted: &str) -> String {
     .unwrap_or_else(|_| encrypted.to_string())
 }
 
+// ─── Validation Functions ────────────────────────────────────────────────────
+
+fn validate_url(url: &str) -> StdResult<(), String> {
+    if url.is_empty() {
+        return Ok(());
+    }
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("URL must start with http:// or https://".to_string());
+    }
+    Ok(())
+}
+
+fn validate_port(port: i32) -> StdResult<(), String> {
+    if port < 1 || port > 65535 {
+        return Err("Port must be between 1 and 65535".to_string());
+    }
+    Ok(())
+}
+
+fn validate_email(email: &str) -> StdResult<(), String> {
+    if email.is_empty() {
+        return Ok(());
+    }
+    if !email.contains('@') || !email.contains('.') {
+        return Err("Invalid email format".to_string());
+    }
+    Ok(())
+}
+
+fn validate_phone(phone: &str) -> StdResult<(), String> {
+    if phone.is_empty() {
+        return Ok(());
+    }
+    let cleaned: String = phone.chars().filter(|c| c.is_ascii_digit()).collect();
+    if cleaned.len() < 7 || cleaned.len() > 15 {
+        return Err("Phone number must be between 7 and 15 digits".to_string());
+    }
+    Ok(())
+}
+
+fn validate_settings(s: &Settings) -> StdResult<(), String> {
+    if s.tax_rate < 0.0 || s.tax_rate > 100.0 {
+        return Err("Tax rate must be between 0 and 100".to_string());
+    }
+    if s.lan_sync_enabled {
+        validate_port(s.lan_server_port)?;
+    }
+    if s.smtp_enabled {
+        validate_url(&format!("smtp://{}", s.smtp_host))?;
+        validate_port(s.smtp_port)?;
+        validate_email(&s.smtp_from_email)?;
+    }
+    if !s.neon_url.is_empty() {
+        if !s.neon_url.starts_with("https://") {
+            return Err("Neon URL must use HTTPS".to_string());
+        }
+    }
+    if !s.contact_email.is_empty() {
+        validate_email(&s.contact_email)?;
+    }
+    if !s.contact_website.is_empty() {
+        validate_url(&s.contact_website)?;
+    }
+    if !s.whatsapp_api_url.is_empty() {
+        validate_url(&s.whatsapp_api_url)?;
+    }
+    Ok(())
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -60,6 +130,7 @@ pub struct Product {
     pub stock: i64,
     pub barcode: String,
     pub tax: f64,
+    pub variants: String,
     pub created_at: Option<String>,
 }
 
@@ -99,6 +170,7 @@ pub struct Order {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
     pub store_name: String,
+    pub store_type: String,
     pub currency: String,
     pub currency_symbol: String,
     pub country: String,
@@ -131,6 +203,16 @@ pub struct Settings {
     // Contact
     pub contact_email: String,
     pub contact_website: String,
+    // SMTP
+    pub smtp_enabled: bool,
+    pub smtp_host: String,
+    pub smtp_port: i32,
+    pub smtp_username: String,
+    pub smtp_password: String,
+    pub smtp_from_email: String,
+    pub smtp_from_name: String,
+    // First run
+    pub first_run: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -279,17 +361,61 @@ pub struct RefundRequest {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct BackupData {
+pub struct FullBackup {
     pub products: Vec<Product>,
     pub orders: Vec<Order>,
+    pub order_items: Vec<BackupOrderItem>,
     pub settings: Settings,
+    pub users: Vec<User>,
+    pub tables: Vec<Table>,
+    pub table_orders: Vec<TableOrder>,
+    pub staff_attendance: Vec<StaffAttendance>,
+    pub customers: Vec<Customer>,
+    pub inventory_alerts: Vec<InventoryAlert>,
+    pub refund_requests: Vec<RefundRequest>,
+    pub ingredients: Vec<Ingredient>,
+    pub recipes: Vec<Recipe>,
+    pub suppliers: Vec<Supplier>,
+    pub purchase_orders: Vec<PurchaseOrder>,
+    pub reservations: Vec<Reservation>,
+    pub shifts: Vec<Shift>,
+    pub expenses: Vec<Expense>,
+    pub expense_categories: Vec<ExpenseCategory>,
+    pub customer_wallets: Vec<CustomerWallet>,
+    pub wallet_transactions: Vec<WalletTransaction>,
+    pub coupons: Vec<Coupon>,
+    pub day_end_reconciliations: Vec<DayEndReconciliation>,
+    pub activity_logs: Vec<ActivityLog>,
     pub exported_at: String,
+    pub app_version: String,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct ImportResult {
+pub struct BackupOrderItem {
+    pub order_id: String,
+    pub product_id: String,
+    pub product_name: String,
+    pub price: f64,
+    pub quantity: i64,
+    pub discount: f64,
+    pub tax: f64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct FullImportResult {
     pub products_imported: i64,
     pub orders_imported: i64,
+    pub customers_imported: i64,
+    pub tables_imported: i64,
+    pub ingredients_imported: i64,
+    pub recipes_imported: i64,
+    pub suppliers_imported: i64,
+    pub coupons_imported: i64,
+    pub reservations_imported: i64,
+    pub shifts_imported: i64,
+    pub expenses_imported: i64,
+    pub expense_categories_imported: i64,
+    pub total_tables_restored: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -494,6 +620,59 @@ pub struct ActivityLogEntry {
     pub created_at: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct QuickSalePreset {
+    pub id: String,
+    pub name: String,
+    pub product_ids: String,
+    pub quantities: String,
+    pub discount: f64,
+    pub color: String,
+    pub position: i64,
+    pub active: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CashDrawerSession {
+    pub id: String,
+    pub date: String,
+    pub opening_balance: f64,
+    pub closing_balance: f64,
+    pub expected_balance: f64,
+    pub cash_in: f64,
+    pub cash_out: f64,
+    pub cash_sales: f64,
+    pub status: String,
+    pub opened_by: String,
+    pub closed_by: String,
+    pub opened_at: String,
+    pub closed_at: Option<String>,
+    pub notes: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ReceiptTemplate {
+    pub id: String,
+    pub name: String,
+    pub show_logo: i64,
+    pub show_store_name: i64,
+    pub show_address: i64,
+    pub show_phone: i64,
+    pub show_tax_id: i64,
+    pub show_items: i64,
+    pub show_subtotal: i64,
+    pub show_tax: i64,
+    pub show_discount: i64,
+    pub show_total: i64,
+    pub show_payment_method: i64,
+    pub show_change: i64,
+    pub show_footer: i64,
+    pub footer_text: String,
+    pub header_text: String,
+    pub font_size: String,
+    pub active: i64,
+}
+
 // ─── Database ────────────────────────────────────────────────────────────────
 
 #[derive(Debug)]
@@ -505,8 +684,6 @@ impl Database {
     pub fn new(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
 
-        // Enable WAL mode for better performance and data safety
-        // WAL provides atomic writes and survives crashes better
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA foreign_keys=ON;
@@ -517,14 +694,28 @@ impl Database {
              PRAGMA page_size=4096;",
         )?;
 
+        let integrity: String = conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+        if integrity != "ok" {
+            return Err(rusqlite::Error::InvalidQuery).map_err(|_| rusqlite::Error::InvalidQuery);
+        }
+
         let db = Database { conn };
         db.init_schema()?;
         db.migrate_schema()?;
         db.seed_if_empty()?;
         db.seed_tables()?;
         db.init_users()?;
+        db.seed_customers()?;
+        db.seed_ingredients()?;
+        db.seed_recipes()?;
+        db.seed_suppliers()?;
+        db.seed_expense_categories()?;
+        db.seed_coupons()?;
+        db.seed_shifts()?;
+        db.seed_reservations()?;
+        db.seed_quick_sale_presets()?;
+        db.seed_receipt_template()?;
 
-        // Perform initial checkpoint to ensure data is written
         db.checkpoint()?;
 
         Ok(db)
@@ -537,7 +728,19 @@ impl Database {
     }
 
     fn migrate_schema(&self) -> Result<()> {
-        // Add missing columns for existing databases
+        self.conn
+            .execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+             CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
+             CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+             CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode);
+             CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
+             CREATE INDEX IF NOT EXISTS idx_staff_attendance_user_id ON staff_attendance(user_id);
+             CREATE INDEX IF NOT EXISTS idx_staff_attendance_date ON staff_attendance(date);
+             CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code);",
+            )
+            .ok();
+
         let _ = self.conn.execute(
             "ALTER TABLE orders ADD COLUMN order_type TEXT NOT NULL DEFAULT 'dine_in'",
             [],
@@ -560,6 +763,10 @@ impl Database {
         );
         let _ = self.conn.execute(
             "ALTER TABLE orders ADD COLUMN user_name TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN variants TEXT NOT NULL DEFAULT '{}'",
             [],
         );
         Ok(())
@@ -639,6 +846,18 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
             CREATE INDEX IF NOT EXISTS idx_activity_logs_order_id ON activity_logs(order_id);
             CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);
+            
+            CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+            CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
+            CREATE INDEX IF NOT EXISTS idx_orders_customer_name ON orders(customer_name);
+            CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+            CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode);
+            CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
+            CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
+            CREATE INDEX IF NOT EXISTS idx_staff_attendance_user_id ON staff_attendance(user_id);
+            CREATE INDEX IF NOT EXISTS idx_staff_attendance_date ON staff_attendance(date);
+            CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code);
+            CREATE INDEX IF NOT EXISTS idx_wallet_transactions_customer_id ON wallet_transactions(customer_id);
 
             CREATE TABLE IF NOT EXISTS tables (
                 id TEXT PRIMARY KEY,
@@ -851,6 +1070,56 @@ impl Database {
                 created_by TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS quick_sale_presets (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                product_ids TEXT NOT NULL,
+                quantities TEXT NOT NULL,
+                discount REAL NOT NULL DEFAULT 0,
+                color TEXT NOT NULL DEFAULT '#F5C842',
+                position INTEGER NOT NULL DEFAULT 0,
+                active INTEGER NOT NULL DEFAULT 1
+            );
+
+            CREATE TABLE IF NOT EXISTS cash_drawer_sessions (
+                id TEXT PRIMARY KEY,
+                date TEXT NOT NULL,
+                opening_balance REAL NOT NULL DEFAULT 0,
+                closing_balance REAL NOT NULL DEFAULT 0,
+                expected_balance REAL NOT NULL DEFAULT 0,
+                cash_in REAL NOT NULL DEFAULT 0,
+                cash_out REAL NOT NULL DEFAULT 0,
+                cash_sales REAL NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'open',
+                opened_by TEXT NOT NULL DEFAULT '',
+                closed_by TEXT NOT NULL DEFAULT '',
+                opened_at TEXT NOT NULL DEFAULT (datetime('now')),
+                closed_at TEXT,
+                notes TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS receipt_templates (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL DEFAULT 'Default',
+                show_logo INTEGER NOT NULL DEFAULT 0,
+                show_store_name INTEGER NOT NULL DEFAULT 1,
+                show_address INTEGER NOT NULL DEFAULT 1,
+                show_phone INTEGER NOT NULL DEFAULT 1,
+                show_tax_id INTEGER NOT NULL DEFAULT 1,
+                show_items INTEGER NOT NULL DEFAULT 1,
+                show_subtotal INTEGER NOT NULL DEFAULT 1,
+                show_tax INTEGER NOT NULL DEFAULT 1,
+                show_discount INTEGER NOT NULL DEFAULT 1,
+                show_total INTEGER NOT NULL DEFAULT 1,
+                show_payment_method INTEGER NOT NULL DEFAULT 1,
+                show_change INTEGER NOT NULL DEFAULT 1,
+                show_footer INTEGER NOT NULL DEFAULT 1,
+                footer_text TEXT NOT NULL DEFAULT 'Thank you! Visit again.',
+                header_text TEXT NOT NULL DEFAULT '',
+                font_size TEXT NOT NULL DEFAULT 'normal',
+                active INTEGER NOT NULL DEFAULT 1
+            );
         ",
         )?;
         Ok(())
@@ -863,18 +1132,43 @@ impl Database {
 
         if count == 0 {
             let seeds = vec![
+                // Beverages
                 ("p1", "Coffee", 120.0, "Beverages", 100, "001", 5.0),
                 ("p2", "Tea", 60.0, "Beverages", 150, "002", 5.0),
+                ("p6", "Juice", 90.0, "Beverages", 80, "006", 5.0),
+                ("p9", "Lemonade", 80.0, "Beverages", 60, "009", 5.0),
+                ("p12", "Water", 20.0, "Beverages", 300, "012", 0.0),
+                ("p13", "Cappuccino", 150.0, "Beverages", 90, "013", 5.0),
+                ("p14", "Milkshake", 160.0, "Beverages", 50, "014", 5.0),
+                ("p15", "Iced Latte", 180.0, "Beverages", 70, "015", 5.0),
+                // Food
                 ("p3", "Sandwich", 180.0, "Food", 50, "003", 12.0),
                 ("p4", "Burger", 250.0, "Food", 40, "004", 12.0),
-                ("p5", "Chips", 40.0, "Snacks", 200, "005", 18.0),
-                ("p6", "Juice", 90.0, "Beverages", 80, "006", 5.0),
-                ("p7", "Cake Slice", 150.0, "Bakery", 30, "007", 18.0),
                 ("p8", "Pasta", 220.0, "Food", 45, "008", 12.0),
-                ("p9", "Lemonade", 80.0, "Beverages", 60, "009", 5.0),
-                ("p10", "Cookies", 70.0, "Bakery", 120, "010", 18.0),
                 ("p11", "Pizza Slice", 200.0, "Food", 35, "011", 12.0),
-                ("p12", "Water", 20.0, "Beverages", 300, "012", 0.0),
+                ("p16", "French Fries", 100.0, "Food", 80, "016", 12.0),
+                ("p17", "Grilled Chicken", 350.0, "Food", 25, "017", 12.0),
+                ("p18", "Caesar Salad", 200.0, "Food", 30, "018", 12.0),
+                // Snacks
+                ("p5", "Chips", 40.0, "Snacks", 200, "005", 18.0),
+                ("p19", "Nachos", 120.0, "Snacks", 60, "019", 18.0),
+                ("p20", "Spring Rolls", 130.0, "Snacks", 40, "020", 18.0),
+                // Bakery
+                ("p7", "Cake Slice", 150.0, "Bakery", 30, "007", 18.0),
+                ("p10", "Cookies", 70.0, "Bakery", 120, "010", 18.0),
+                ("p21", "Croissant", 90.0, "Bakery", 40, "021", 18.0),
+                ("p22", "Muffin", 80.0, "Bakery", 55, "022", 18.0),
+                // Desserts
+                (
+                    "p23",
+                    "Ice Cream Sundae",
+                    120.0,
+                    "Desserts",
+                    45,
+                    "023",
+                    18.0,
+                ),
+                ("p24", "Brownie", 100.0, "Desserts", 35, "024", 18.0),
             ];
             for (id, name, price, cat, stock, barcode, tax) in seeds {
                 self.conn.execute(
@@ -890,7 +1184,7 @@ impl Database {
 
     pub fn get_products(&self) -> Result<Vec<Product>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, price, category, stock, barcode, tax, created_at FROM products ORDER BY name"
+            "SELECT id, name, price, category, stock, barcode, tax, variants, created_at FROM products ORDER BY name"
         )?;
         let products = stmt
             .query_map([], |row| {
@@ -902,7 +1196,8 @@ impl Database {
                     stock: row.get(4)?,
                     barcode: row.get(5)?,
                     tax: row.get(6)?,
-                    created_at: row.get(7)?,
+                    variants: row.get::<_, String>(7).unwrap_or_else(|_| "{}".to_string()),
+                    created_at: row.get(8)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -910,13 +1205,43 @@ impl Database {
     }
 
     pub fn upsert_product(&self, p: &Product) -> Result<()> {
+        if p.name.trim().is_empty() {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "Product name cannot be empty".to_string(),
+            ));
+        }
+        if p.price < 0.0 {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "Price cannot be negative".to_string(),
+            ));
+        }
+        if p.stock < 0 {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "Stock cannot be negative".to_string(),
+            ));
+        }
+        if p.tax < 0.0 || p.tax > 100.0 {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "Tax must be between 0 and 100".to_string(),
+            ));
+        }
+
         self.conn.execute(
-            "INSERT INTO products (id, name, price, category, stock, barcode, tax)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "INSERT INTO products (id, name, price, category, stock, barcode, tax, variants)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(id) DO UPDATE SET
                name=excluded.name, price=excluded.price, category=excluded.category,
-               stock=excluded.stock, barcode=excluded.barcode, tax=excluded.tax",
-            params![p.id, p.name, p.price, p.category, p.stock, p.barcode, p.tax],
+               stock=excluded.stock, barcode=excluded.barcode, tax=excluded.tax, variants=excluded.variants",
+            params![
+                p.id,
+                p.name.trim(),
+                p.price,
+                p.category.trim(),
+                p.stock,
+                p.barcode.trim(),
+                p.tax,
+                p.variants
+            ],
         )?;
         Ok(())
     }
@@ -938,15 +1263,19 @@ impl Database {
     // ─── Orders ───────────────────────────────────────────────────────────────
 
     pub fn get_orders(&self) -> Result<Vec<Order>> {
+        self.get_orders_paginated(0, 500)
+    }
+
+    pub fn get_orders_paginated(&self, offset: i64, limit: i64) -> Result<Vec<Order>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, subtotal, tax_amount, discount_amount, total, payment_method,
                     amount_paid, change_amount, customer_name, status, order_type, delivery_status,
                     delivery_address, delivery_phone, user_id, user_name, synced, created_at
-             FROM orders ORDER BY created_at DESC LIMIT 500",
+             FROM orders ORDER BY created_at DESC LIMIT ?1 OFFSET ?2",
         )?;
 
         let mut orders: Vec<Order> = stmt
-            .query_map([], |row| {
+            .query_map(params![limit, offset], |row| {
                 Ok(Order {
                     id: row.get(0)?,
                     items: vec![],
@@ -971,7 +1300,6 @@ impl Database {
             })?
             .collect::<Result<Vec<_>>>()?;
 
-        // Load items for each order
         for order in &mut orders {
             let mut stmt = self.conn.prepare(
                 "SELECT product_id, product_name, price, quantity, discount, tax FROM order_items WHERE order_id=?1"
@@ -991,6 +1319,13 @@ impl Database {
         }
 
         Ok(orders)
+    }
+
+    pub fn get_orders_count(&self) -> Result<i64> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM orders", [], |row| row.get(0))?;
+        Ok(count)
     }
 
     pub fn save_order(&self, o: &Order) -> Result<()> {
@@ -1063,38 +1398,37 @@ impl Database {
     }
 
     pub fn refund_order(&self, id: &str, user_id: &str, user_name: &str) -> Result<()> {
-        // Get order details first
-        let order_total: f64 = self.conn.query_row(
-            "SELECT total FROM orders WHERE id = ?1",
+        let tx = self.conn.unchecked_transaction()?;
+
+        let order_total: f64 = tx.query_row(
+            "SELECT total FROM orders WHERE id = ?1 AND status = 'completed'",
             params![id],
             |row| row.get(0),
         )?;
 
-        let items = {
-            let mut stmt = self
-                .conn
-                .prepare("SELECT product_id, quantity FROM order_items WHERE order_id=?1")?;
-            let items: Vec<(String, i64)> = stmt
-                .query_map(params![id], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-                })?
-                .collect::<Result<Vec<_>>>()?;
-            items
+        let items: Vec<(String, i64)> = {
+            let mut stmt =
+                tx.prepare("SELECT product_id, quantity FROM order_items WHERE order_id=?1")?;
+            let rows = stmt.query_map(params![id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            rows.collect::<Result<Vec<_>>>()?
         };
 
         for (product_id, qty) in items {
-            self.conn.execute(
+            tx.execute(
                 "UPDATE products SET stock = stock + ?1 WHERE id = ?2",
                 params![qty, product_id],
             )?;
         }
 
-        self.conn.execute(
-            "UPDATE orders SET status='refunded' WHERE id=?1 AND status='completed'",
+        tx.execute(
+            "UPDATE orders SET status='refunded' WHERE id=?1",
             params![id],
         )?;
 
-        // Log activity
+        tx.commit()?;
+
         self.log_activity(
             id,
             "order_refunded",
@@ -1109,6 +1443,30 @@ impl Database {
     }
 
     pub fn update_delivery_status(&self, id: &str, status: &str) -> Result<()> {
+        let current_status: String = self
+            .conn
+            .query_row(
+                "SELECT delivery_status FROM orders WHERE id=?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .unwrap_or_else(|_| "pending".to_string());
+
+        let valid_transition = match (current_status.as_str(), status) {
+            ("pending", "out_for_delivery") => true,
+            ("out_for_delivery", "delivered") => true,
+            ("pending", "cancelled") => true,
+            ("out_for_delivery", "cancelled") => true,
+            _ => false,
+        };
+
+        if !valid_transition {
+            return Err(rusqlite::Error::InvalidParameterName(format!(
+                "Invalid status transition from '{}' to '{}'",
+                current_status, status
+            )));
+        }
+
         self.conn.execute(
             "UPDATE orders SET delivery_status=?1 WHERE id=?2",
             params![status, id],
@@ -1150,6 +1508,7 @@ impl Database {
 
         Ok(Settings {
             store_name: get("store_name", "My POS Store"),
+            store_type: get("store_type", "food"),
             currency: get("currency", "USD"),
             currency_symbol: get("currency_symbol", "$"),
             country: get("country", "US"),
@@ -1180,12 +1539,22 @@ impl Database {
             footer_text: get("footer_text", "Powered by POS Billing"),
             contact_email: get("contact_email", ""),
             contact_website: get("contact_website", ""),
+            smtp_enabled: get("smtp_enabled", "false") == "true",
+            smtp_host: get("smtp_host", ""),
+            smtp_port: get("smtp_port", "587").parse().unwrap_or(587),
+            smtp_username: get("smtp_username", ""),
+            smtp_password: decrypt_value(&get("smtp_password", "")),
+            smtp_from_email: get("smtp_from_email", ""),
+            smtp_from_name: get("smtp_from_name", ""),
+            first_run: get("first_run", "true") == "true",
         })
     }
 
-    pub fn save_settings(&self, s: &Settings) -> Result<()> {
+    pub fn save_settings(&self, s: &Settings) -> StdResult<(), String> {
+        validate_settings(s)?;
         let pairs = vec![
             ("store_name", s.store_name.clone()),
+            ("store_type", s.store_type.clone()),
             ("currency", s.currency.clone()),
             ("currency_symbol", s.currency_symbol.clone()),
             ("country", s.country.clone()),
@@ -1216,12 +1585,20 @@ impl Database {
             ("footer_text", s.footer_text.clone()),
             ("contact_email", s.contact_email.clone()),
             ("contact_website", s.contact_website.clone()),
+            ("smtp_enabled", s.smtp_enabled.to_string()),
+            ("smtp_host", s.smtp_host.clone()),
+            ("smtp_port", s.smtp_port.to_string()),
+            ("smtp_username", s.smtp_username.clone()),
+            ("smtp_password", encrypt_value(&s.smtp_password)),
+            ("smtp_from_email", s.smtp_from_email.clone()),
+            ("smtp_from_name", s.smtp_from_name.clone()),
+            ("first_run", s.first_run.to_string()),
         ];
         for (k, v) in pairs {
             self.conn.execute(
                 "INSERT INTO settings (key,value) VALUES (?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 params![k, v],
-            )?;
+            ).map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -1321,6 +1698,14 @@ impl Database {
 
     // ─── CSV Export ─────────────────────────────────────────────────────────────
 
+    fn csv_field(value: &str) -> String {
+        if value.contains(',') || value.contains('"') || value.contains('\n') {
+            format!("\"{}\"", value.replace('"', "\"\""))
+        } else {
+            value.to_string()
+        }
+    }
+
     pub fn export_products_csv(&self) -> Result<String> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, price, category, stock, barcode, tax FROM products ORDER BY name",
@@ -1329,12 +1714,12 @@ impl Database {
         let rows = stmt.query_map([], |row| {
             Ok(format!(
                 "{},{},{},{},{},{},{}\n",
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
+                Self::csv_field(&row.get::<_, String>(0)?),
+                Self::csv_field(&row.get::<_, String>(1)?),
                 row.get::<_, f64>(2)?,
-                row.get::<_, String>(3)?,
+                Self::csv_field(&row.get::<_, String>(3)?),
                 row.get::<_, i64>(4)?,
-                row.get::<_, String>(5)?,
+                Self::csv_field(&row.get::<_, String>(5)?),
                 row.get::<_, f64>(6)?
             ))
         })?;
@@ -1352,17 +1737,17 @@ impl Database {
         let rows = stmt.query_map([], |row| {
             Ok(format!(
                 "{},{},{},{},{},{},{},{},{},{},{}\n",
-                row.get::<_, String>(0)?,
+                Self::csv_field(&row.get::<_, String>(0)?),
                 row.get::<_, f64>(1)?,
                 row.get::<_, f64>(2)?,
                 row.get::<_, f64>(3)?,
                 row.get::<_, f64>(4)?,
-                row.get::<_, String>(5)?,
+                Self::csv_field(&row.get::<_, String>(5)?),
                 row.get::<_, f64>(6)?,
                 row.get::<_, f64>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, String>(9)?,
-                row.get::<_, String>(10)?
+                Self::csv_field(&row.get::<_, String>(8)?),
+                Self::csv_field(&row.get::<_, String>(9)?),
+                Self::csv_field(&row.get::<_, String>(10)?)
             ))
         })?;
         for row in rows {
@@ -1381,12 +1766,12 @@ impl Database {
         for line in lines.iter().skip(1) {
             let fields: Vec<&str> = line.split(',').collect();
             if fields.len() >= 7 {
-                let id = fields[0].trim();
-                let name = fields[1].trim();
+                let id = fields[0].trim().trim_matches('"');
+                let name = fields[1].trim().trim_matches('"');
                 let price: f64 = fields[2].trim().parse().unwrap_or(0.0);
-                let category = fields[3].trim();
+                let category = fields[3].trim().trim_matches('"');
                 let stock: i64 = fields[4].trim().parse().unwrap_or(0);
-                let barcode = fields[5].trim();
+                let barcode = fields[5].trim().trim_matches('"');
                 let tax: f64 = fields[6].trim().parse().unwrap_or(18.0);
                 if !name.is_empty() {
                     self.conn.execute(
@@ -1457,6 +1842,25 @@ impl Database {
     // ─── Users ─────────────────────────────────────────────────────────────
 
     pub fn init_users(&self) -> Result<()> {
+        // Migrate plaintext PINs to bcrypt if needed
+        let mut stmt = self.conn.prepare("SELECT id, pin FROM users")?;
+        let users: Vec<(String, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for (id, pin) in users {
+            // If PIN doesn't start with bcrypt prefix, it's plaintext - migrate it
+            if !pin.starts_with("$2") {
+                let hashed = bcrypt::hash(&pin, bcrypt::DEFAULT_COST).unwrap_or_default();
+                self.conn.execute(
+                    "UPDATE users SET pin = ?1 WHERE id = ?2",
+                    params![hashed, id],
+                )?;
+            }
+        }
+
+        // Ensure default users exist
         let admin_hash = bcrypt::hash("1234", bcrypt::DEFAULT_COST).unwrap_or_default();
         let cashier_hash = bcrypt::hash("0000", bcrypt::DEFAULT_COST).unwrap_or_default();
 
@@ -1518,12 +1922,77 @@ impl Database {
         let products = self.get_products()?;
         let orders = self.get_orders()?;
         let settings = self.get_settings()?;
+        let users = self.get_users()?;
+        let tables = self.get_tables()?;
+        let customers = self.get_customers()?;
+        let ingredients = self.get_ingredients()?;
+        let recipes = self.get_recipes()?;
+        let suppliers = self.get_suppliers()?;
+        let purchase_orders = self.get_purchase_orders()?;
+        let inventory_alerts = self.get_inventory_alerts()?;
+        let expense_categories = self.get_expense_categories()?;
+        let coupons = self.get_coupons()?;
 
-        let backup = BackupData {
+        // Order items (all)
+        let order_items = self.get_all_order_items()?;
+
+        // Table orders
+        let table_orders = self.get_all_table_orders()?;
+
+        // Staff attendance (all)
+        let staff_attendance = self.get_all_staff_attendance()?;
+
+        // Reservations (all dates)
+        let reservations = self.get_all_reservations()?;
+
+        // Shifts (all dates)
+        let shifts = self.get_all_shifts()?;
+
+        // Expenses (all dates)
+        let expenses = self.get_all_expenses()?;
+
+        // Refund requests
+        let refund_requests = self.get_all_refund_requests()?;
+
+        // Customer wallets
+        let customer_wallets = self.get_all_customer_wallets()?;
+
+        // Wallet transactions
+        let wallet_transactions = self.get_all_wallet_transactions()?;
+
+        // Day end reconciliations
+        let day_end_reconciliations = self.get_all_day_end_reconciliations()?;
+
+        // Activity logs (last 10000)
+        let activity_logs = self.get_activity_logs(10000)?;
+
+        let backup = FullBackup {
             products,
             orders,
+            order_items,
             settings,
+            users,
+            tables,
+            table_orders,
+            staff_attendance,
+            customers,
+            inventory_alerts,
+            refund_requests,
+            ingredients,
+            recipes,
+            suppliers,
+            purchase_orders,
+            reservations,
+            shifts,
+            expenses,
+            expense_categories,
+            customer_wallets,
+            wallet_transactions,
+            coupons,
+            day_end_reconciliations,
+            activity_logs,
             exported_at: chrono::Utc::now().to_rfc3339(),
+            app_version: env!("CARGO_PKG_VERSION").to_string(),
         };
 
         let json = serde_json::to_string(&backup)
@@ -1543,7 +2012,227 @@ impl Database {
         ))
     }
 
-    pub fn import_backup(&self, backup_data: &str) -> Result<ImportResult> {
+    fn get_all_order_items(&self) -> Result<Vec<BackupOrderItem>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT order_id, product_id, product_name, price, quantity, discount, tax FROM order_items"
+        )?;
+        let items = stmt
+            .query_map([], |row| {
+                Ok(BackupOrderItem {
+                    order_id: row.get(0)?,
+                    product_id: row.get(1)?,
+                    product_name: row.get(2)?,
+                    price: row.get(3)?,
+                    quantity: row.get(4)?,
+                    discount: row.get(5)?,
+                    tax: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    fn get_all_table_orders(&self) -> Result<Vec<TableOrder>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, table_id, order_id, status, created_at FROM table_orders")?;
+        let items = stmt
+            .query_map([], |row| {
+                Ok(TableOrder {
+                    id: row.get(0)?,
+                    table_id: row.get(1)?,
+                    order_id: row.get(2)?,
+                    status: row.get(3)?,
+                    created_at: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    fn get_all_staff_attendance(&self) -> Result<Vec<StaffAttendance>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, user_id, user_name, clock_in, clock_out, date FROM staff_attendance ORDER BY date DESC"
+        )?;
+        let items = stmt
+            .query_map([], |row| {
+                Ok(StaffAttendance {
+                    id: row.get(0)?,
+                    user_id: row.get(1)?,
+                    user_name: row.get(2)?,
+                    clock_in: row.get(3)?,
+                    clock_out: row.get(4)?,
+                    date: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    fn get_all_reservations(&self) -> Result<Vec<Reservation>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT r.id, r.table_id, t.name, r.customer_name, r.phone, r.date, r.time, r.party_size, r.status, r.notes, r.created_at FROM reservations r LEFT JOIN tables t ON r.table_id = t.id ORDER BY r.date DESC"
+        )?;
+        let items = stmt
+            .query_map([], |row| {
+                Ok(Reservation {
+                    id: row.get(0)?,
+                    table_id: row.get(1)?,
+                    table_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    customer_name: row.get(3)?,
+                    phone: row.get(4)?,
+                    date: row.get(5)?,
+                    time: row.get(6)?,
+                    party_size: row.get(7)?,
+                    status: row.get(8)?,
+                    notes: row.get(9)?,
+                    created_at: row.get(10)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    fn get_all_shifts(&self) -> Result<Vec<Shift>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT s.id, s.staff_id, u.name, s.date, s.start_time, s.end_time, s.role, s.notes, s.created_at FROM shifts s LEFT JOIN users u ON s.staff_id = u.id ORDER BY s.date DESC"
+        )?;
+        let items = stmt
+            .query_map([], |row| {
+                Ok(Shift {
+                    id: row.get(0)?,
+                    staff_id: row.get(1)?,
+                    staff_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    date: row.get(3)?,
+                    start_time: row.get(4)?,
+                    end_time: row.get(5)?,
+                    role: row.get(6)?,
+                    notes: row.get(7)?,
+                    created_at: row.get(8)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    fn get_all_expenses(&self) -> Result<Vec<Expense>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, category, amount, description, date, payment_method, created_at FROM expenses ORDER BY date DESC"
+        )?;
+        let items = stmt
+            .query_map([], |row| {
+                Ok(Expense {
+                    id: row.get(0)?,
+                    category: row.get(1)?,
+                    amount: row.get(2)?,
+                    description: row.get(3)?,
+                    date: row.get(4)?,
+                    payment_method: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    fn get_all_refund_requests(&self) -> Result<Vec<RefundRequest>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, order_id, amount, reason, status, created_at FROM refund_requests ORDER BY created_at DESC"
+        )?;
+        let items = stmt
+            .query_map([], |row| {
+                Ok(RefundRequest {
+                    id: row.get(0)?,
+                    order_id: row.get(1)?,
+                    amount: row.get(2)?,
+                    reason: row.get(3)?,
+                    status: row.get(4)?,
+                    created_at: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    fn get_all_customer_wallets(&self) -> Result<Vec<CustomerWallet>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT customer_id, balance, total_loaded, total_spent FROM customer_wallets",
+        )?;
+        let items = stmt
+            .query_map([], |row| {
+                Ok(CustomerWallet {
+                    customer_id: row.get(0)?,
+                    balance: row.get(1)?,
+                    total_loaded: row.get(2)?,
+                    total_spent: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    fn get_all_wallet_transactions(&self) -> Result<Vec<WalletTransaction>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, customer_id, amount, transaction_type, order_id, notes, created_at FROM wallet_transactions ORDER BY created_at DESC"
+        )?;
+        let items = stmt
+            .query_map([], |row| {
+                Ok(WalletTransaction {
+                    id: row.get(0)?,
+                    customer_id: row.get(1)?,
+                    amount: row.get(2)?,
+                    transaction_type: row.get(3)?,
+                    order_id: row.get(4)?,
+                    notes: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    fn get_all_day_end_reconciliations(&self) -> Result<Vec<DayEndReconciliation>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, date, opening_cash, expected_cash, actual_cash, difference, cash_sales, upi_sales, card_sales, total_expenses, notes, created_by, created_at FROM day_end_reconciliations ORDER BY date DESC"
+        )?;
+        let items = stmt
+            .query_map([], |row| {
+                Ok(DayEndReconciliation {
+                    id: row.get(0)?,
+                    date: row.get(1)?,
+                    opening_cash: row.get(2)?,
+                    expected_cash: row.get(3)?,
+                    actual_cash: row.get(4)?,
+                    difference: row.get(5)?,
+                    cash_sales: row.get(6)?,
+                    upi_sales: row.get(7)?,
+                    card_sales: row.get(8)?,
+                    total_expenses: row.get(9)?,
+                    notes: row.get(10)?,
+                    created_by: row.get(11)?,
+                    created_at: row.get(12)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    pub fn import_backup(&self, backup_data: &str, mode: &str) -> Result<FullImportResult> {
+        // Auto-save current data before import
+        let current_backup = self.export_backup()?;
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        if let Some(data_dir) = dirs::data_dir() {
+            let app_dir = data_dir.join("pos-tauri");
+            std::fs::create_dir_all(&app_dir).ok();
+            let file_path = app_dir.join(format!("pre_import_backup_{}.gz.b64", timestamp));
+            if let Ok(decoded) =
+                base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &current_backup)
+            {
+                let _ = std::fs::write(&file_path, decoded);
+            }
+        }
+
+        // Decompress backup data
         let json = if let Ok(decoded) =
             base64::Engine::decode(&base64::engine::general_purpose::STANDARD, backup_data)
         {
@@ -1558,28 +2247,364 @@ impl Database {
             backup_data.to_string()
         };
 
-        let backup: BackupData = serde_json::from_str(&json)
+        let backup: FullBackup = serde_json::from_str(&json)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
-        let mut products_imported = 0i64;
-        let mut orders_imported = 0i64;
-
-        for product in &backup.products {
-            self.upsert_product(product)?;
-            products_imported += 1;
+        // Wipe mode: clear all data first
+        if mode == "wipe" {
+            let wipe_tables = vec![
+                "wallet_transactions",
+                "customer_wallets",
+                "purchase_order_items",
+                "purchase_orders",
+                "order_modifiers",
+                "order_notes",
+                "order_items",
+                "inventory_alerts",
+                "refund_requests",
+                "table_orders",
+                "staff_attendance",
+                "reservations",
+                "shifts",
+                "expenses",
+                "day_end_reconciliations",
+                "activity_logs",
+                "recipes",
+            ];
+            for table in wipe_tables {
+                self.conn.execute(&format!("DELETE FROM {}", table), [])?;
+            }
+            self.conn
+                .execute("DELETE FROM orders WHERE status != 'hold'", [])?;
+            self.conn.execute("DELETE FROM products", [])?;
+            self.conn.execute("DELETE FROM customers", [])?;
+            self.conn.execute("DELETE FROM tables", [])?;
+            self.conn.execute("DELETE FROM ingredients", [])?;
+            self.conn.execute("DELETE FROM suppliers", [])?;
+            self.conn.execute("DELETE FROM expense_categories", [])?;
+            self.conn.execute("DELETE FROM coupons", [])?;
         }
 
-        for order in &backup.orders {
-            self.save_order(order)?;
-            orders_imported += 1;
+        let mut result = FullImportResult {
+            products_imported: 0,
+            orders_imported: 0,
+            customers_imported: 0,
+            tables_imported: 0,
+            ingredients_imported: 0,
+            recipes_imported: 0,
+            suppliers_imported: 0,
+            coupons_imported: 0,
+            reservations_imported: 0,
+            shifts_imported: 0,
+            expenses_imported: 0,
+            expense_categories_imported: 0,
+            total_tables_restored: 0,
+        };
+
+        // 1. Products
+        for p in &backup.products {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO products (id, name, price, category, stock, barcode, tax, variants, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                params![p.id, p.name, p.price, p.category, p.stock, p.barcode, p.tax, p.variants, p.created_at],
+            )?;
+            result.products_imported += 1;
         }
 
-        self.save_settings(&backup.settings)?;
+        // 2. Settings
+        self.save_settings(&backup.settings).ok();
 
-        Ok(ImportResult {
-            products_imported,
-            orders_imported,
-        })
+        // 3. Users (without PINs for security - preserve existing)
+        for u in &backup.users {
+            self.conn.execute(
+                "INSERT OR IGNORE INTO users (id, pin, name, role) VALUES (?1, '', ?2, ?3)",
+                params![u.id, u.name, u.role],
+            )?;
+        }
+
+        // 4. Tables
+        for t in &backup.tables {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO tables (id, name, capacity, status, position_x, position_y) VALUES (?1,?2,?3,?4,?5,?6)",
+                params![t.id, t.name, t.capacity, t.status, t.position_x, t.position_y],
+            )?;
+            result.tables_imported += 1;
+        }
+
+        // 5. Customers
+        for c in &backup.customers {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO customers (id, name, phone, email, loyalty_points, total_spent, visits, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+                params![c.id, c.name, c.phone, c.email, c.loyalty_points, c.total_spent, c.visits, c.created_at],
+            )?;
+            result.customers_imported += 1;
+        }
+
+        // 6. Ingredients
+        for i in &backup.ingredients {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO ingredients (id, name, stock, unit, reorder_level, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+                params![i.id, i.name, i.stock, i.unit, i.reorder_level, i.created_at],
+            )?;
+            result.ingredients_imported += 1;
+        }
+
+        // 7. Recipes
+        for r in &backup.recipes {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO recipes (id, product_id, ingredient_id, quantity) VALUES (?1,?2,?3,?4)",
+                params![r.id, r.product_id, r.ingredient_id, r.quantity],
+            )?;
+            result.recipes_imported += 1;
+        }
+
+        // 8. Suppliers
+        for s in &backup.suppliers {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO suppliers (id, name, phone, email, address, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+                params![s.id, s.name, s.phone, s.email, s.address, s.created_at],
+            )?;
+            result.suppliers_imported += 1;
+        }
+
+        // 9. Expense categories
+        for ec in &backup.expense_categories {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO expense_categories (id, name, icon) VALUES (?1,?2,?3)",
+                params![ec.id, ec.name, ec.icon],
+            )?;
+            result.expense_categories_imported += 1;
+        }
+
+        // 10. Coupons
+        for cp in &backup.coupons {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO coupons (id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                params![cp.id, cp.code, cp.discount_type, cp.discount_value, cp.min_order_amount, cp.max_uses, cp.used_count, cp.valid_from, cp.valid_until, cp.active],
+            )?;
+            result.coupons_imported += 1;
+        }
+
+        // 11. Orders (only non-hold)
+        for o in &backup.orders {
+            if o.status != "hold" {
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO orders (id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,1,?17)",
+                    params![o.id, o.subtotal, o.tax_amount, o.discount_amount, o.total, o.payment_method, o.amount_paid, o.change_amount, o.customer_name, o.status, o.order_type, o.delivery_status, o.delivery_address, o.delivery_phone, o.user_id, o.user_name, o.created_at],
+                )?;
+                result.orders_imported += 1;
+            }
+        }
+
+        // 12. Order items
+        for oi in &backup.order_items {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO order_items (order_id, product_id, product_name, price, quantity, discount, tax) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                params![oi.order_id, oi.product_id, oi.product_name, oi.price, oi.quantity, oi.discount, oi.tax],
+            )?;
+        }
+
+        // 13. Inventory alerts
+        for ia in &backup.inventory_alerts {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO inventory_alerts (id, product_id, product_name, current_stock, threshold, alert_type, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                params![ia.id, ia.product_id, ia.product_name, ia.current_stock, ia.threshold, ia.alert_type, ia.created_at],
+            )?;
+        }
+
+        // 14. Refund requests
+        for rr in &backup.refund_requests {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO refund_requests (id, order_id, amount, reason, status, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+                params![rr.id, rr.order_id, rr.amount, rr.reason, rr.status, rr.created_at],
+            )?;
+        }
+
+        // 15. Table orders
+        for to in &backup.table_orders {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO table_orders (id, table_id, order_id, status, created_at) VALUES (?1,?2,?3,?4,?5)",
+                params![to.id, to.table_id, to.order_id, to.status, to.created_at],
+            )?;
+        }
+
+        // 16. Staff attendance
+        for sa in &backup.staff_attendance {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO staff_attendance (id, user_id, user_name, clock_in, clock_out, date) VALUES (?1,?2,?3,?4,?5,?6)",
+                params![sa.id, sa.user_id, sa.user_name, sa.clock_in, sa.clock_out, sa.date],
+            )?;
+        }
+
+        // 17. Reservations
+        for r in &backup.reservations {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO reservations (id, table_id, customer_name, phone, date, time, party_size, status, notes, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                params![r.id, r.table_id, r.customer_name, r.phone, r.date, r.time, r.party_size, r.status, r.notes, r.created_at],
+            )?;
+            result.reservations_imported += 1;
+        }
+
+        // 18. Shifts
+        for s in &backup.shifts {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO shifts (id, staff_id, date, start_time, end_time, role, notes, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+                params![s.id, s.staff_id, s.date, s.start_time, s.end_time, s.role, s.notes, s.created_at],
+            )?;
+            result.shifts_imported += 1;
+        }
+
+        // 19. Expenses
+        for e in &backup.expenses {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO expenses (id, category, amount, description, date, payment_method, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                params![e.id, e.category, e.amount, e.description, e.date, e.payment_method, e.created_at],
+            )?;
+            result.expenses_imported += 1;
+        }
+
+        // 20. Customer wallets
+        for cw in &backup.customer_wallets {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO customer_wallets (customer_id, balance, total_loaded, total_spent) VALUES (?1,?2,?3,?4)",
+                params![cw.customer_id, cw.balance, cw.total_loaded, cw.total_spent],
+            )?;
+        }
+
+        // 21. Wallet transactions
+        for wt in &backup.wallet_transactions {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO wallet_transactions (id, customer_id, amount, transaction_type, order_id, notes, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                params![wt.id, wt.customer_id, wt.amount, wt.transaction_type, wt.order_id, wt.notes, wt.created_at],
+            )?;
+        }
+
+        // 22. Purchase orders
+        for po in &backup.purchase_orders {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO purchase_orders (id, supplier_id, status, total, notes, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
+                params![po.id, po.supplier_id, po.status, po.total, po.notes, po.created_at],
+            )?;
+            for poi in &po.items {
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO purchase_order_items (id, po_id, ingredient_id, quantity, unit_cost) VALUES (?1,?2,?3,?4,?5)",
+                    params![poi.id, po.id, poi.ingredient_id, poi.quantity, poi.unit_cost],
+                )?;
+            }
+        }
+
+        // 23. Day end reconciliations
+        for der in &backup.day_end_reconciliations {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO day_end_reconciliations (id, date, opening_cash, expected_cash, actual_cash, difference, cash_sales, upi_sales, card_sales, total_expenses, notes, created_by, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+                params![der.id, der.date, der.opening_cash, der.expected_cash, der.actual_cash, der.difference, der.cash_sales, der.upi_sales, der.card_sales, der.total_expenses, der.notes, der.created_by, der.created_at],
+            )?;
+        }
+
+        // 24. Activity logs
+        for al in &backup.activity_logs {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO activity_logs (id, order_id, action, previous_data, new_data, reason, user_id, user_name, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                params![al.id, al.order_id, al.action, al.previous_data, al.new_data, al.reason, al.user_id, al.user_name, al.created_at],
+            )?;
+        }
+
+        result.total_tables_restored = result.products_imported
+            + result.orders_imported
+            + result.customers_imported
+            + result.tables_imported
+            + result.ingredients_imported
+            + result.recipes_imported
+            + result.suppliers_imported
+            + result.coupons_imported
+            + result.reservations_imported
+            + result.shifts_imported
+            + result.expenses_imported
+            + result.expense_categories_imported;
+
+        Ok(result)
+    }
+
+    pub fn get_backup_metadata(&self, backup_data: &str) -> Result<String> {
+        let json = if let Ok(decoded) =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, backup_data)
+        {
+            let mut decoder = GzDecoder::new(&decoded[..]);
+            let mut decompressed = String::new();
+            use std::io::Read;
+            decoder
+                .read_to_string(&mut decompressed)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            decompressed
+        } else {
+            backup_data.to_string()
+        };
+
+        let backup: FullBackup = serde_json::from_str(&json)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        let meta = serde_json::json!({
+            "exported_at": backup.exported_at,
+            "app_version": backup.app_version,
+            "counts": {
+                "products": backup.products.len(),
+                "orders": backup.orders.len(),
+                "customers": backup.customers.len(),
+                "tables": backup.tables.len(),
+                "ingredients": backup.ingredients.len(),
+                "recipes": backup.recipes.len(),
+                "suppliers": backup.suppliers.len(),
+                "coupons": backup.coupons.len(),
+                "reservations": backup.reservations.len(),
+                "shifts": backup.shifts.len(),
+                "expenses": backup.expenses.len(),
+                "expense_categories": backup.expense_categories.len(),
+                "inventory_alerts": backup.inventory_alerts.len(),
+                "activity_logs": backup.activity_logs.len(),
+            }
+        });
+
+        serde_json::to_string(&meta)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
+    }
+
+    pub fn get_table_counts(&self) -> Result<String> {
+        let tables = vec![
+            "products",
+            "orders",
+            "order_items",
+            "settings",
+            "users",
+            "tables",
+            "table_orders",
+            "staff_attendance",
+            "customers",
+            "inventory_alerts",
+            "refund_requests",
+            "ingredients",
+            "recipes",
+            "suppliers",
+            "purchase_orders",
+            "purchase_order_items",
+            "reservations",
+            "shifts",
+            "expenses",
+            "expense_categories",
+            "customer_wallets",
+            "wallet_transactions",
+            "coupons",
+            "day_end_reconciliations",
+            "activity_logs",
+        ];
+        let mut counts = serde_json::Map::new();
+        for table in tables {
+            let count: i64 = self
+                .conn
+                .query_row(&format!("SELECT COUNT(*) FROM {}", table), [], |r| r.get(0))
+                .unwrap_or(0);
+            counts.insert(table.to_string(), serde_json::Value::Number(count.into()));
+        }
+        serde_json::to_string(&counts)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
     }
 
     // ─── Activity Logging ─────────────────────────────────────────────────────
@@ -1709,6 +2734,11 @@ impl Database {
     // ─── Staff Attendance ───────────────────────────────────────────────────
 
     pub fn clock_in(&self, user_id: &str, user_name: &str) -> Result<()> {
+        let already_clocked_in: bool = self.is_clocked_in(user_id)?;
+        if already_clocked_in {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Local::now();
         let clock_in = now.format("%Y-%m-%d %H:%M:%S").to_string();
@@ -1787,6 +2817,32 @@ impl Database {
     }
 
     pub fn save_customer(&self, c: &Customer) -> Result<()> {
+        if !c.phone.is_empty() {
+            let existing: Option<String> = self
+                .conn
+                .query_row(
+                    "SELECT id FROM customers WHERE phone=?1 AND id!=?2",
+                    params![c.phone, c.id],
+                    |r| r.get(0),
+                )
+                .ok();
+            if existing.is_some() {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+        }
+        if !c.email.is_empty() {
+            let existing: Option<String> = self
+                .conn
+                .query_row(
+                    "SELECT id FROM customers WHERE email=?1 AND id!=?2",
+                    params![c.email, c.id],
+                    |r| r.get(0),
+                )
+                .ok();
+            if existing.is_some() {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+        }
         self.conn.execute(
             "INSERT INTO customers (id, name, phone, email, loyalty_points, total_spent, visits, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -2248,6 +3304,10 @@ impl Database {
                 ("t4", "Table 4", 2, 0, 1),
                 ("t5", "Table 5", 4, 1, 1),
                 ("t6", "Table 6", 8, 2, 1),
+                ("t7", "Table 7", 4, 0, 2),
+                ("t8", "Table 8", 4, 1, 2),
+                ("t9", "Table 9", 6, 2, 2),
+                ("t10", "VIP Table", 10, 3, 0),
             ];
             for (id, name, capacity, x, y) in tables {
                 self.conn.execute(
@@ -2257,6 +3317,875 @@ impl Database {
             }
         }
         Ok(())
+    }
+
+    pub fn seed_customers(&self) -> Result<()> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM customers", [], |r| r.get(0))?;
+        if count == 0 {
+            let customers = vec![
+                (
+                    "cust1",
+                    "Rahul Sharma",
+                    "+91-9876543210",
+                    "rahul@example.com",
+                    250,
+                    4580.0,
+                    18,
+                ),
+                (
+                    "cust2",
+                    "Priya Patel",
+                    "+91-9876543211",
+                    "priya@example.com",
+                    180,
+                    3200.0,
+                    12,
+                ),
+                (
+                    "cust3",
+                    "Amit Kumar",
+                    "+91-9876543212",
+                    "amit@example.com",
+                    420,
+                    8900.0,
+                    35,
+                ),
+                (
+                    "cust4",
+                    "Sneha Reddy",
+                    "+91-9876543213",
+                    "sneha@example.com",
+                    60,
+                    1200.0,
+                    5,
+                ),
+                (
+                    "cust5",
+                    "Vikram Singh",
+                    "+91-9876543214",
+                    "vikram@example.com",
+                    310,
+                    6750.0,
+                    28,
+                ),
+                (
+                    "cust6",
+                    "Ananya Gupta",
+                    "+91-9876543215",
+                    "ananya@example.com",
+                    140,
+                    2800.0,
+                    10,
+                ),
+                (
+                    "cust7",
+                    "Rohan Joshi",
+                    "+91-9876543216",
+                    "rohan@example.com",
+                    550,
+                    12300.0,
+                    45,
+                ),
+                (
+                    "cust8",
+                    "Meera Nair",
+                    "+91-9876543217",
+                    "meera@example.com",
+                    90,
+                    1800.0,
+                    8,
+                ),
+                (
+                    "cust9",
+                    "Karan Mehta",
+                    "+91-9876543218",
+                    "karan@example.com",
+                    200,
+                    4100.0,
+                    15,
+                ),
+                (
+                    "cust10",
+                    "Divya Iyer",
+                    "+91-9876543219",
+                    "divya@example.com",
+                    370,
+                    7600.0,
+                    30,
+                ),
+            ];
+            for (id, name, phone, email, points, spent, visits) in customers {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO customers (id, name, phone, email, loyalty_points, total_spent, visits) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![id, name, phone, email, points, spent, visits],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn seed_ingredients(&self) -> Result<()> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM ingredients", [], |r| r.get(0))?;
+        if count == 0 {
+            let ingredients = vec![
+                ("ing1", "Coffee Beans", 5000.0, "g", 500.0),
+                ("ing2", "Tea Leaves", 3000.0, "g", 300.0),
+                ("ing3", "Milk", 20000.0, "ml", 2000.0),
+                ("ing4", "Sugar", 10000.0, "g", 1000.0),
+                ("ing5", "Bread Slices", 200.0, "pcs", 20.0),
+                ("ing6", "Cheese", 5000.0, "g", 500.0),
+                ("ing7", "Chicken Breast", 8000.0, "g", 1000.0),
+                ("ing8", "Burger Buns", 100.0, "pcs", 10.0),
+                ("ing9", "Lettuce", 3000.0, "g", 300.0),
+                ("ing10", "Tomato", 5000.0, "g", 500.0),
+                ("ing11", "Onion", 5000.0, "g", 500.0),
+                ("ing12", "Pasta Noodles", 4000.0, "g", 400.0),
+                ("ing13", "Olive Oil", 2000.0, "ml", 200.0),
+                ("ing14", "Lemon", 100.0, "pcs", 10.0),
+                ("ing15", "Potato", 8000.0, "g", 800.0),
+                ("ing16", "Flour", 10000.0, "g", 1000.0),
+                ("ing17", "Butter", 3000.0, "g", 300.0),
+                ("ing18", "Eggs", 300.0, "pcs", 30.0),
+                ("ing19", "Pizza Dough", 5000.0, "g", 500.0),
+                ("ing20", "Pizza Sauce", 3000.0, "ml", 300.0),
+                ("ing21", "Chocolate", 3000.0, "g", 300.0),
+                ("ing22", "Vanilla Extract", 500.0, "ml", 50.0),
+                ("ing23", "Ice Cream Base", 5000.0, "ml", 500.0),
+                ("ing24", "Spring Roll Wrappers", 200.0, "pcs", 20.0),
+            ];
+            for (id, name, stock, unit, reorder) in ingredients {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO ingredients (id, name, stock, unit, reorder_level) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![id, name, stock, unit, reorder],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn seed_recipes(&self) -> Result<()> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM recipes", [], |r| r.get(0))?;
+        if count == 0 {
+            let recipes = vec![
+                // Coffee: beans + milk + sugar
+                ("rec1", "p1", "ing1", 15.0),
+                ("rec2", "p1", "ing3", 100.0),
+                ("rec3", "p1", "ing4", 10.0),
+                // Tea: tea leaves + milk + sugar
+                ("rec4", "p2", "ing2", 5.0),
+                ("rec5", "p2", "ing3", 80.0),
+                ("rec6", "p2", "ing4", 10.0),
+                // Sandwich: bread + cheese + lettuce + tomato
+                ("rec7", "p3", "ing5", 2.0),
+                ("rec8", "p3", "ing6", 30.0),
+                ("rec9", "p3", "ing9", 20.0),
+                ("rec10", "p3", "ing10", 30.0),
+                // Burger: bun + chicken + lettuce + tomato + cheese
+                ("rec11", "p4", "ing8", 1.0),
+                ("rec12", "p4", "ing7", 150.0),
+                ("rec13", "p4", "ing9", 15.0),
+                ("rec14", "p4", "ing10", 20.0),
+                ("rec15", "p4", "ing6", 25.0),
+                // Pasta: noodles + olive oil + tomato + onion
+                ("rec16", "p8", "ing12", 150.0),
+                ("rec17", "p8", "ing13", 20.0),
+                ("rec18", "p8", "ing10", 50.0),
+                ("rec19", "p8", "ing11", 30.0),
+                // Lemonade: lemon + sugar + water
+                ("rec20", "p9", "ing14", 2.0),
+                ("rec21", "p9", "ing4", 30.0),
+                // Cookies: flour + butter + sugar + eggs
+                ("rec22", "p10", "ing16", 100.0),
+                ("rec23", "p10", "ing17", 50.0),
+                ("rec24", "p10", "ing4", 60.0),
+                ("rec25", "p10", "ing18", 1.0),
+                // Pizza Slice: dough + sauce + cheese
+                ("rec26", "p11", "ing19", 80.0),
+                ("rec27", "p11", "ing20", 30.0),
+                ("rec28", "p11", "ing6", 40.0),
+                // Cake Slice: flour + butter + sugar + eggs + vanilla
+                ("rec29", "p7", "ing16", 80.0),
+                ("rec30", "p7", "ing17", 40.0),
+                ("rec31", "p7", "ing4", 50.0),
+                ("rec32", "p7", "ing18", 2.0),
+                ("rec33", "p7", "ing22", 5.0),
+                // Cappuccino: coffee beans + milk
+                ("rec34", "p13", "ing1", 18.0),
+                ("rec35", "p13", "ing3", 150.0),
+                // Milkshake: milk + ice cream + chocolate
+                ("rec36", "p14", "ing3", 150.0),
+                ("rec37", "p14", "ing23", 100.0),
+                ("rec38", "p14", "ing21", 30.0),
+                // French Fries: potato + oil
+                ("rec39", "p16", "ing15", 200.0),
+                ("rec40", "p16", "ing13", 30.0),
+                // Spring Rolls: wrappers + chicken + cabbage
+                ("rec41", "p20", "ing24", 2.0),
+                ("rec42", "p20", "ing7", 80.0),
+                // Brownie: chocolate + butter + sugar + eggs + flour
+                ("rec43", "p24", "ing21", 60.0),
+                ("rec44", "p24", "ing17", 40.0),
+                ("rec45", "p24", "ing4", 50.0),
+                ("rec46", "p24", "ing18", 2.0),
+                ("rec47", "p24", "ing16", 40.0),
+            ];
+            for (id, product_id, ingredient_id, quantity) in recipes {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO recipes (id, product_id, ingredient_id, quantity) VALUES (?1, ?2, ?3, ?4)",
+                    params![id, product_id, ingredient_id, quantity],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn seed_suppliers(&self) -> Result<()> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM suppliers", [], |r| r.get(0))?;
+        if count == 0 {
+            let suppliers = vec![
+                (
+                    "sup1",
+                    "Fresh Farms Pvt Ltd",
+                    "+91-9900112233",
+                    "orders@freshfarms.in",
+                    "42 Market Road, Mumbai",
+                ),
+                (
+                    "sup2",
+                    "Dairy Best Co",
+                    "+91-9900112234",
+                    "supply@dairybest.in",
+                    "15 Milk Lane, Pune",
+                ),
+                (
+                    "sup3",
+                    "Golden Grains Traders",
+                    "+91-9900112235",
+                    "sales@goldengrains.in",
+                    "88 Flour Mill St, Delhi",
+                ),
+                (
+                    "sup4",
+                    "Spice World",
+                    "+91-9900112236",
+                    "info@spiceworld.in",
+                    "22 Masala Gali, Jaipur",
+                ),
+                (
+                    "sup5",
+                    "Cold Chain Logistics",
+                    "+91-9900112237",
+                    "orders@coldchain.in",
+                    "7 Freezer Complex, Chennai",
+                ),
+            ];
+            for (id, name, phone, email, address) in suppliers {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO suppliers (id, name, phone, email, address) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![id, name, phone, email, address],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn seed_expense_categories(&self) -> Result<()> {
+        let count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM expense_categories", [], |r| r.get(0))?;
+        if count == 0 {
+            let categories = vec![
+                ("ec1", "Rent", "\u{1F3E0}"),
+                ("ec2", "Utilities", "\u{26A1}"),
+                ("ec3", "Salaries", "\u{1F4B0}"),
+                ("ec4", "Ingredients", "\u{1F95A}"),
+                ("ec5", "Equipment", "\u{1F527}"),
+                ("ec6", "Maintenance", "\u{1F528}"),
+                ("ec7", "Marketing", "\u{1F4E2}"),
+                ("ec8", "Transportation", "\u{1F69A}"),
+                ("ec9", "Licenses & Permits", "\u{1F4DC}"),
+                ("ec10", "Miscellaneous", "\u{1F4E6}"),
+            ];
+            for (id, name, icon) in categories {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO expense_categories (id, name, icon) VALUES (?1, ?2, ?3)",
+                    params![id, name, icon],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn seed_coupons(&self) -> Result<()> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM coupons", [], |r| r.get(0))?;
+        if count == 0 {
+            let coupons = vec![
+                (
+                    "cpn1",
+                    "WELCOME10",
+                    "percentage",
+                    10.0,
+                    100.0,
+                    500,
+                    0,
+                    "2025-01-01",
+                    "2026-12-31",
+                    1,
+                ),
+                (
+                    "cpn2",
+                    "FLAT50",
+                    "flat",
+                    50.0,
+                    300.0,
+                    200,
+                    0,
+                    "2025-01-01",
+                    "2026-06-30",
+                    1,
+                ),
+                (
+                    "cpn3",
+                    "LUNCH20",
+                    "percentage",
+                    20.0,
+                    200.0,
+                    100,
+                    0,
+                    "2025-03-01",
+                    "2026-03-31",
+                    1,
+                ),
+                (
+                    "cpn4",
+                    "HAPPYHOUR",
+                    "percentage",
+                    15.0,
+                    150.0,
+                    300,
+                    0,
+                    "2025-01-01",
+                    "2026-12-31",
+                    1,
+                ),
+                (
+                    "cpn5",
+                    "WEEKEND25",
+                    "percentage",
+                    25.0,
+                    500.0,
+                    100,
+                    0,
+                    "2025-06-01",
+                    "2026-06-30",
+                    1,
+                ),
+                (
+                    "cpn6",
+                    "FLAT100",
+                    "flat",
+                    100.0,
+                    800.0,
+                    50,
+                    0,
+                    "2025-01-01",
+                    "2026-12-31",
+                    1,
+                ),
+                (
+                    "cpn7",
+                    "NEWYEAR30",
+                    "percentage",
+                    30.0,
+                    1000.0,
+                    200,
+                    0,
+                    "2025-12-15",
+                    "2026-01-15",
+                    1,
+                ),
+                (
+                    "cpn8",
+                    "EXPIRED01",
+                    "percentage",
+                    10.0,
+                    100.0,
+                    100,
+                    50,
+                    "2024-01-01",
+                    "2024-12-31",
+                    0,
+                ),
+            ];
+            for (
+                id,
+                code,
+                dtype,
+                dval,
+                min_uses,
+                max_uses,
+                used_count,
+                valid_from,
+                valid_until,
+                active,
+            ) in coupons
+            {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO coupons (id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    params![id, code, dtype, dval, min_uses, max_uses, used_count, valid_from, valid_until, active],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn seed_shifts(&self) -> Result<()> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM shifts", [], |r| r.get(0))?;
+        if count == 0 {
+            let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+            let tomorrow = (chrono::Utc::now() + chrono::Duration::days(1))
+                .format("%Y-%m-%d")
+                .to_string();
+            let day_after = (chrono::Utc::now() + chrono::Duration::days(2))
+                .format("%Y-%m-%d")
+                .to_string();
+            let shifts = vec![
+                (
+                    "sh1",
+                    "admin",
+                    today.clone(),
+                    "09:00",
+                    "17:00",
+                    "admin",
+                    "Morning shift",
+                ),
+                (
+                    "sh2",
+                    "cashier",
+                    today.clone(),
+                    "09:00",
+                    "15:00",
+                    "cashier",
+                    "Morning shift",
+                ),
+                (
+                    "sh3",
+                    "cashier",
+                    today.clone(),
+                    "15:00",
+                    "22:00",
+                    "cashier",
+                    "Evening shift",
+                ),
+                (
+                    "sh4",
+                    "admin",
+                    tomorrow.clone(),
+                    "09:00",
+                    "17:00",
+                    "admin",
+                    "Morning shift",
+                ),
+                (
+                    "sh5",
+                    "cashier",
+                    tomorrow.clone(),
+                    "10:00",
+                    "18:00",
+                    "cashier",
+                    "Day shift",
+                ),
+                (
+                    "sh6",
+                    "admin",
+                    day_after.clone(),
+                    "09:00",
+                    "17:00",
+                    "admin",
+                    "Morning shift",
+                ),
+                (
+                    "sh7",
+                    "cashier",
+                    day_after.clone(),
+                    "09:00",
+                    "15:00",
+                    "cashier",
+                    "Morning shift",
+                ),
+                (
+                    "sh8",
+                    "cashier",
+                    day_after.clone(),
+                    "15:00",
+                    "22:00",
+                    "cashier",
+                    "Evening shift",
+                ),
+            ];
+            for (id, staff_id, date, start, end, role, notes) in shifts {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO shifts (id, staff_id, date, start_time, end_time, role, notes) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![id, staff_id, date, start, end, role, notes],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn seed_reservations(&self) -> Result<()> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM reservations", [], |r| r.get(0))?;
+        if count == 0 {
+            let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+            let tomorrow = (chrono::Utc::now() + chrono::Duration::days(1))
+                .format("%Y-%m-%d")
+                .to_string();
+            let day_after = (chrono::Utc::now() + chrono::Duration::days(2))
+                .format("%Y-%m-%d")
+                .to_string();
+            let reservations = vec![
+                (
+                    "res1",
+                    "t1",
+                    "Rahul Sharma",
+                    "+91-9876543210",
+                    today.clone(),
+                    "19:00",
+                    4,
+                    "confirmed",
+                    "Window seat preferred",
+                ),
+                (
+                    "res2",
+                    "t3",
+                    "Priya Patel",
+                    "+91-9876543211",
+                    today.clone(),
+                    "20:00",
+                    6,
+                    "confirmed",
+                    "Birthday celebration",
+                ),
+                (
+                    "res3",
+                    "t10",
+                    "Amit Kumar",
+                    "+91-9876543212",
+                    today.clone(),
+                    "20:30",
+                    8,
+                    "confirmed",
+                    "Anniversary dinner",
+                ),
+                (
+                    "res4",
+                    "t6",
+                    "Sneha Reddy",
+                    "+91-9876543213",
+                    tomorrow.clone(),
+                    "12:00",
+                    6,
+                    "confirmed",
+                    "Business lunch",
+                ),
+                (
+                    "res5",
+                    "t2",
+                    "Vikram Singh",
+                    "+91-9876543214",
+                    tomorrow.clone(),
+                    "13:00",
+                    3,
+                    "confirmed",
+                    "",
+                ),
+                (
+                    "res6",
+                    "t5",
+                    "Ananya Gupta",
+                    "+91-9876543215",
+                    tomorrow.clone(),
+                    "19:30",
+                    4,
+                    "confirmed",
+                    "Need high chair for baby",
+                ),
+                (
+                    "res7",
+                    "t10",
+                    "Rohan Joshi",
+                    "+91-9876543216",
+                    day_after.clone(),
+                    "18:00",
+                    10,
+                    "confirmed",
+                    "Corporate event",
+                ),
+                (
+                    "res8",
+                    "t4",
+                    "Meera Nair",
+                    "+91-9876543217",
+                    day_after.clone(),
+                    "12:30",
+                    2,
+                    "confirmed",
+                    "",
+                ),
+            ];
+            for (id, table_id, name, phone, date, time, party_size, status, notes) in reservations {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO reservations (id, table_id, customer_name, phone, date, time, party_size, status, notes) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    params![id, table_id, name, phone, date, time, party_size, status, notes],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn seed_quick_sale_presets(&self) -> Result<()> {
+        let count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM quick_sale_presets", [], |r| r.get(0))?;
+        if count == 0 {
+            let presets = vec![
+                ("qs1", "Coffee Combo", "p1,p10", "2,3", 10.0, "#F5C842", 1),
+                (
+                    "qs2",
+                    "Lunch Special",
+                    "p4,p16,p6",
+                    "1,1,1",
+                    15.0,
+                    "#2ECC71",
+                    2,
+                ),
+                ("qs3", "Tea + Cookies", "p2,p10", "1,2", 5.0, "#3498DB", 3),
+                (
+                    "qs4",
+                    "Burger Meal",
+                    "p4,p16,p14",
+                    "1,1,1",
+                    12.0,
+                    "#E67E22",
+                    4,
+                ),
+                ("qs5", "Sweet Treat", "p7,p24", "1,1", 8.0, "#9B59B6", 5),
+            ];
+            for (id, name, pids, qtys, disc, color, pos) in presets {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO quick_sale_presets (id, name, product_ids, quantities, discount, color, position) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                    params![id, name, pids, qtys, disc, color, pos],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn seed_receipt_template(&self) -> Result<()> {
+        let count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM receipt_templates", [], |r| r.get(0))?;
+        if count == 0 {
+            self.conn.execute(
+                "INSERT OR IGNORE INTO receipt_templates (id, name, show_logo, show_store_name, show_address, show_phone, show_tax_id, show_items, show_subtotal, show_tax, show_discount, show_total, show_payment_method, show_change, show_footer, footer_text, header_text, font_size, active) VALUES ('default', 'Default', 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 'Thank you! Visit again.', '', 'normal', 1)",
+                [],
+            )?;
+        }
+        Ok(())
+    }
+
+    // ─── Quick Sale Presets ─────────────────────────────────────────────────────
+
+    pub fn get_quick_sale_presets(&self) -> Result<Vec<QuickSalePreset>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, product_ids, quantities, discount, color, position, active FROM quick_sale_presets WHERE active = 1 ORDER BY position"
+        )?;
+        let items = stmt
+            .query_map([], |r| {
+                Ok(QuickSalePreset {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    product_ids: r.get(2)?,
+                    quantities: r.get(3)?,
+                    discount: r.get(4)?,
+                    color: r.get(5)?,
+                    position: r.get(6)?,
+                    active: r.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    pub fn save_quick_sale_preset(&self, preset: &QuickSalePreset) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO quick_sale_presets (id, name, product_ids, quantities, discount, color, position, active) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+            params![preset.id, preset.name, preset.product_ids, preset.quantities, preset.discount, preset.color, preset.position, preset.active],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_quick_sale_preset(&self, id: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM quick_sale_presets WHERE id = ?", [id])?;
+        Ok(())
+    }
+
+    // ─── Cash Drawer ───────────────────────────────────────────────────────────
+
+    pub fn open_cash_drawer(&self, date: &str, balance: f64, user_name: &str) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        self.conn.execute(
+            "INSERT OR IGNORE INTO cash_drawer_sessions (id, date, opening_balance, status, opened_by) VALUES (?1, ?2, ?3, 'open', ?4)",
+            params![id, date, balance, user_name],
+        )?;
+        Ok(id)
+    }
+
+    pub fn close_cash_drawer(
+        &self,
+        date: &str,
+        actual_balance: f64,
+        notes: &str,
+        user_name: &str,
+    ) -> Result<()> {
+        let expected: f64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(CASE WHEN payment_method='cash' THEN amount_paid ELSE 0 END), 0) FROM orders WHERE DATE(created_at) = ?1 AND status = 'completed'",
+            [date], |r| r.get(0)
+        ).unwrap_or(0.0);
+        let diff = actual_balance - expected;
+        self.conn.execute(
+            "UPDATE cash_drawer_sessions SET closing_balance = ?1, expected_balance = ?2, cash_sales = ?2, difference = ?3, status = 'closed', closed_by = ?4, closed_at = datetime('now'), notes = ?5 WHERE date = ?6 AND status = 'open'",
+            params![actual_balance, expected, diff, user_name, notes, date],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_cash_drawer_session(&self, date: &str) -> Result<Option<CashDrawerSession>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, date, opening_balance, closing_balance, expected_balance, cash_in, cash_out, cash_sales, status, opened_by, closed_by, opened_at, closed_at, notes FROM cash_drawer_sessions WHERE date = ?1 ORDER BY opened_at DESC LIMIT 1"
+        )?;
+        let mut rows = stmt.query([date])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(CashDrawerSession {
+                id: row.get(0)?,
+                date: row.get(1)?,
+                opening_balance: row.get(2)?,
+                closing_balance: row.get(3)?,
+                expected_balance: row.get(4)?,
+                cash_in: row.get(5)?,
+                cash_out: row.get(6)?,
+                cash_sales: row.get(7)?,
+                status: row.get(8)?,
+                opened_by: row.get(9)?,
+                closed_by: row.get(10)?,
+                opened_at: row.get(11)?,
+                closed_at: row.get(12)?,
+                notes: row.get(13)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    // ─── Receipt Templates ─────────────────────────────────────────────────────
+
+    pub fn get_receipt_templates(&self) -> Result<Vec<ReceiptTemplate>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, show_logo, show_store_name, show_address, show_phone, show_tax_id, show_items, show_subtotal, show_tax, show_discount, show_total, show_payment_method, show_change, show_footer, footer_text, header_text, font_size, active FROM receipt_templates ORDER BY name"
+        )?;
+        let items = stmt
+            .query_map([], |r| {
+                Ok(ReceiptTemplate {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    show_logo: r.get(2)?,
+                    show_store_name: r.get(3)?,
+                    show_address: r.get(4)?,
+                    show_phone: r.get(5)?,
+                    show_tax_id: r.get(6)?,
+                    show_items: r.get(7)?,
+                    show_subtotal: r.get(8)?,
+                    show_tax: r.get(9)?,
+                    show_discount: r.get(10)?,
+                    show_total: r.get(11)?,
+                    show_payment_method: r.get(12)?,
+                    show_change: r.get(13)?,
+                    show_footer: r.get(14)?,
+                    footer_text: r.get(15)?,
+                    header_text: r.get(16)?,
+                    font_size: r.get(17)?,
+                    active: r.get(18)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    pub fn save_receipt_template(&self, tpl: &ReceiptTemplate) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO receipt_templates (id, name, show_logo, show_store_name, show_address, show_phone, show_tax_id, show_items, show_subtotal, show_tax, show_discount, show_total, show_payment_method, show_change, show_footer, footer_text, header_text, font_size, active) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
+            params![tpl.id, tpl.name, tpl.show_logo, tpl.show_store_name, tpl.show_address, tpl.show_phone, tpl.show_tax_id, tpl.show_items, tpl.show_subtotal, tpl.show_tax, tpl.show_discount, tpl.show_total, tpl.show_payment_method, tpl.show_change, tpl.show_footer, tpl.footer_text, tpl.header_text, tpl.font_size, tpl.active],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_receipt_template(&self, id: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM receipt_templates WHERE id = ?", [id])?;
+        Ok(())
+    }
+
+    // ─── Bulk Operations ───────────────────────────────────────────────────────
+
+    pub fn bulk_update_stock(&self, updates_json: &str) -> Result<i64> {
+        let updates: Vec<(String, i64)> = serde_json::from_str(updates_json)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let mut count = 0i64;
+        for (id, new_stock) in &updates {
+            self.conn.execute(
+                "UPDATE products SET stock = ?1 WHERE id = ?2",
+                params![new_stock, id],
+            )?;
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    pub fn bulk_update_price(&self, updates_json: &str) -> Result<i64> {
+        let updates: Vec<(String, f64)> = serde_json::from_str(updates_json)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let mut count = 0i64;
+        for (id, new_price) in &updates {
+            self.conn.execute(
+                "UPDATE products SET price = ?1 WHERE id = ?2",
+                params![new_price, id],
+            )?;
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    pub fn bulk_update_tax(&self, category: &str, new_tax: f64) -> Result<i64> {
+        let count = self.conn.execute(
+            "UPDATE products SET tax = ?1 WHERE category = ?2",
+            params![new_tax, category],
+        )?;
+        Ok(count as i64)
     }
 
     // ─── Database Maintenance ────────────────────────────────────────────────
@@ -2656,6 +4585,22 @@ impl Database {
     }
 
     pub fn save_reservation(&self, r: &Reservation) -> Result<()> {
+        let reservation_datetime = format!("{} {}", r.date, r.time);
+        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        if reservation_datetime < now {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+
+        let conflicting: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM reservations 
+             WHERE table_id=?1 AND date=?2 AND time=?3 AND status!='cancelled' AND id!=?4",
+            params![r.table_id, r.date, r.time, r.id],
+            |row| row.get(0),
+        )?;
+        if conflicting > 0 {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+
         self.conn.execute(
             "INSERT INTO reservations (id, table_id, customer_name, phone, date, time, party_size, status, notes)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
@@ -2702,6 +4647,21 @@ impl Database {
     }
 
     pub fn save_shift(&self, s: &Shift) -> Result<()> {
+        if s.start_time >= s.end_time {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+
+        let overlapping: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM shifts 
+             WHERE staff_id=?1 AND date=?2 AND id!=?3 
+             AND ((start_time < ?5 AND end_time > ?4))",
+            params![s.staff_id, s.date, s.id, s.start_time, s.end_time],
+            |row| row.get(0),
+        )?;
+        if overlapping > 0 {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+
         self.conn.execute(
             "INSERT INTO shifts (id, staff_id, date, start_time, end_time, role, notes)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -2982,10 +4942,26 @@ impl Database {
     }
 
     pub fn use_coupon(&self, code: &str) -> Result<()> {
-        self.conn.execute(
+        let tx = self.conn.unchecked_transaction()?;
+
+        let (used_count, max_uses): (i32, i32) = tx
+            .query_row(
+                "SELECT used_count, max_uses FROM coupons WHERE code=?1 AND active=1",
+                params![code],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+        if used_count >= max_uses {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+
+        tx.execute(
             "UPDATE coupons SET used_count = used_count + 1 WHERE code=?1",
             params![code],
         )?;
+
+        tx.commit()?;
         Ok(())
     }
 

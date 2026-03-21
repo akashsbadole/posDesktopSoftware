@@ -6,3 +6,5 @@ export { useTablesStore } from './tablesStore';
 export { useAlertsStore } from './alertsStore';
 export { useSettingsStore } from './settingsStore';
 export { useStaffStore } from './staffStore';
+export { useNotificationStore } from './notificationStore';
+export { useLicenseStore } from './licenseStore';

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, DollarSign, Calendar, Filter, Download, TrendingDown } from "lucide-react";
+import { Plus, Trash2, DollarSign, Download, TrendingDown } from "lucide-react";
 import { getExpenses, getExpensesByRange, saveExpense, deleteExpense, getExpenseCategories } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 
@@ -173,7 +173,7 @@ export default function ExpenseScreen() {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowForm(false)}>
           <div className="card p-6 w-96">
             <h2 className="text-lg font-bold mb-4">Add Expense</h2>
             <div className="space-y-4">

@@ -1,9 +1,19 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { Check, Store, Database, CloudUpload, CloudDownload, RefreshCw, Info, Moon, Sun, Download, Upload, Save, Palette, Mail, AlertCircle } from "lucide-react";
+import { Check, Store, Database, CloudUpload, CloudDownload, RefreshCw, Info, Moon, Sun, Download, Upload, Save, Palette, Mail, AlertCircle, ChefHat, ShoppingBag, Gift, Package, Pill, Monitor } from "lucide-react";
 import { syncToNeon, syncFromNeon, sendSmsNotification, Settings } from "@/lib/db";
 import { invoke } from "@tauri-apps/api/tauri";
 import { useSettingsStore } from "@/lib/stores";
+import { STORE_TYPES, StoreTypeId, StoreTypeConfig } from "@/lib/storeTypes";
+
+const STORE_TYPE_ICONS: Record<string, any> = {
+  food: ChefHat,
+  garment: ShoppingBag,
+  gift: Gift,
+  retail: Package,
+  pharmacy: Pill,
+  electronics: Monitor,
+};
 
 const validatePhone = (phone: string): string | null => {
   if (!phone) return null;
@@ -102,6 +112,7 @@ export default function SettingsScreen() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [localSettings, setLocalSettings] = useState<Settings>(settings || {
     store_name: 'My POS Store',
+    store_type: 'food',
     currency: 'USD',
     currency_symbol: '$',
     country: 'US',
@@ -132,6 +143,14 @@ export default function SettingsScreen() {
     footer_text: 'Powered by POS Billing',
     contact_email: '',
     contact_website: '',
+    smtp_enabled: false,
+    smtp_host: '',
+    smtp_port: 587,
+    smtp_username: '',
+    smtp_password: '',
+    smtp_from_email: '',
+    smtp_from_name: '',
+    first_run: false,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -280,6 +299,31 @@ export default function SettingsScreen() {
             <div>
               <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Store Name</label>
               <input value={localSettings.store_name} onChange={(e) => updateLocal("store_name", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Store Type</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.values(STORE_TYPES) as StoreTypeConfig[]).map((st) => {
+                  const Icon = STORE_TYPE_ICONS[st.id] || Package;
+                  const selected = localSettings.store_type === st.id;
+                  return (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() => updateLocal("store_type", st.id)}
+                      className="flex flex-col items-center gap-1.5 p-2.5 rounded-lg text-center transition-all"
+                      style={{
+                        background: selected ? "rgba(245,200,66,0.1)" : "#1E1E26",
+                        border: `1px solid ${selected ? "#F5C842" : "#2A2A35"}`,
+                        color: selected ? "#F5C842" : "#9090A8",
+                      }}
+                    >
+                      <Icon size={16} />
+                      <span className="text-xs font-medium leading-tight">{st.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div>
               <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Address</label>
@@ -689,6 +733,101 @@ export default function SettingsScreen() {
                     {smsMsg.text}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* SMTP Email */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <span style={{ color: "#3498DB" }}>📧</span>
+            <h2 className="font-semibold">SMTP Email Settings</h2>
+          </div>
+          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
+            Configure SMTP to send emails directly from the POS system.
+          </p>
+          
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="font-medium">Enable SMTP</div>
+              <div className="text-xs" style={{ color: "#4A4A5A" }}>Send emails via SMTP server</div>
+            </div>
+            <button
+              onClick={() => updateLocal("smtp_enabled", !localSettings.smtp_enabled)}
+              style={{
+                width: 48,
+                height: 24,
+                borderRadius: 12,
+                background: localSettings.smtp_enabled ? "#3498DB" : "#1E1E26",
+                border: "none",
+                cursor: "pointer"
+              }}
+            >
+              <div style={{
+                width: 20,
+                height: 20,
+                borderRadius: 10,
+                background: "#fff",
+                position: "relative",
+                left: localSettings.smtp_enabled ? 26 : 2,
+                transition: "left 0.2s"
+              }} />
+            </button>
+          </div>
+          
+          {localSettings.smtp_enabled && (
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>SMTP Host</label>
+                <input
+                  value={localSettings.smtp_host}
+                  onChange={(e) => updateLocal("smtp_host", e.target.value)}
+                  placeholder="smtp.gmail.com"
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>SMTP Port</label>
+                <input
+                  type="number"
+                  value={localSettings.smtp_port}
+                  onChange={(e) => updateLocal("smtp_port", parseInt(e.target.value) || 587)}
+                  placeholder="587"
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Username</label>
+                <input
+                  value={localSettings.smtp_username}
+                  onChange={(e) => updateLocal("smtp_username", e.target.value)}
+                  placeholder="your-email@gmail.com"
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Password / App Password</label>
+                <input
+                  type="password"
+                  value={localSettings.smtp_password}
+                  onChange={(e) => updateLocal("smtp_password", e.target.value)}
+                  placeholder="Your app password"
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>From Email</label>
+                <input
+                  type="email"
+                  value={localSettings.smtp_from_email}
+                  onChange={(e) => updateLocal("smtp_from_email", e.target.value)}
+                  placeholder="noreply@yourstore.com"
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>From Name</label>
+                <input
+                  value={localSettings.smtp_from_name}
+                  onChange={(e) => updateLocal("smtp_from_name", e.target.value)}
+                  placeholder="Your Store Name"
+                />
               </div>
             </div>
           )}

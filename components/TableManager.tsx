@@ -76,7 +76,7 @@ export default function TableManager({ onClose }: TableManagerProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }} onClick={onClose}>
       <div className="card w-[700px] max-h-[80vh] overflow-hidden flex flex-col fade-in" role="dialog" aria-modal="true" aria-labelledby="table-manager-title">
         <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--border)" }}>
           <h2 id="table-manager-title" className="font-display text-lg font-bold flex items-center gap-2">

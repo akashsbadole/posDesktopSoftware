@@ -2,6 +2,37 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { dbGetSettings, dbSaveSettings, Settings } from '@/lib/db';
 
+function applyThemeColors(settings: Settings) {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  if (settings.primary_color) root.style.setProperty('--accent', settings.primary_color);
+  if (settings.primary_color) root.style.setProperty('--accent-hover', adjustBrightness(settings.primary_color, -10));
+  if (settings.secondary_color) root.style.setProperty('--surface', settings.secondary_color);
+  if (settings.accent_color) root.style.setProperty('--success', settings.accent_color);
+  const body = document.body;
+  if (settings.dark_mode) {
+    root.removeAttribute('data-theme');
+    root.style.setProperty('--bg', '#0D0D0F');
+    root.style.setProperty('--border', '#1E1E26');
+    root.style.setProperty('--text', '#E8E8F0');
+    root.style.setProperty('--text-muted', '#9090A8');
+  } else {
+    root.setAttribute('data-theme', 'light');
+    root.style.setProperty('--bg', '#F5F5F7');
+    root.style.setProperty('--border', '#E0E0E5');
+    root.style.setProperty('--text', '#1A1A2E');
+    root.style.setProperty('--text-muted', '#666680');
+  }
+}
+
+function adjustBrightness(hex: string, percent: number): string {
+  const num = parseInt(hex.replace('#', ''), 16);
+  const r = Math.min(255, Math.max(0, (num >> 16) + percent));
+  const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + percent));
+  const b = Math.min(255, Math.max(0, (num & 0x0000FF) + percent));
+  return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
+}
+
 interface SettingsState {
   settings: Settings;
   isLoading: boolean;
@@ -15,6 +46,7 @@ interface SettingsState {
 
 const defaultSettings: Settings = {
   store_name: 'My POS Store',
+  store_type: 'food',
   currency: 'USD',
   currency_symbol: '$',
   country: 'US',
@@ -45,6 +77,14 @@ const defaultSettings: Settings = {
   footer_text: 'Powered by POS Billing',
   contact_email: '',
   contact_website: '',
+  smtp_enabled: false,
+  smtp_host: '',
+  smtp_port: 587,
+  smtp_username: '',
+  smtp_password: '',
+  smtp_from_email: '',
+  smtp_from_name: '',
+  first_run: true,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -59,6 +99,7 @@ export const useSettingsStore = create<SettingsState>()(
         set({ isLoading: true, error: null });
         try {
           const settings = await dbGetSettings();
+          applyThemeColors(settings);
           set({ settings, isLoading: false });
         } catch (err) {
           set({ error: (err as Error).message, isLoading: false });
@@ -68,8 +109,8 @@ export const useSettingsStore = create<SettingsState>()(
       saveSettings: async (newSettings: Partial<Settings>) => {
         const updated = { ...get().settings, ...newSettings };
         await dbSaveSettings(updated);
-        // Fetch fresh settings from database to ensure consistency
         const freshSettings = await dbGetSettings();
+        applyThemeColors(freshSettings);
         set({ settings: freshSettings });
       },
 

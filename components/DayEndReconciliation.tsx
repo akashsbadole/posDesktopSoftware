@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { CheckCircle, DollarSign, CreditCard, Smartphone, TrendingUp, TrendingDown, Save, X, Calculator } from "lucide-react";
+import { CheckCircle, DollarSign, TrendingUp, TrendingDown, Save, X, Calculator } from "lucide-react";
 import { getDayEndReconciliation, saveDayEndReconciliation, dbGetDailySummary, getExpenses, dbGetSettings } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 

@@ -52,6 +52,7 @@ export default function CrashRecovery({ onComplete }: CrashRecoveryProps) {
   }
 
   if (orders.length === 0) {
+    onComplete();
     return null;
   }
 

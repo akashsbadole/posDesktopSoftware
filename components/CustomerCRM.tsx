@@ -77,8 +77,8 @@ export default function CustomerCRM({ onClose }: CustomerCRMProps) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
-      <div className="card p-6 w-[800px] max-h-[85vh] overflow-hidden fade-in flex flex-col" role="dialog" aria-modal="true" aria-labelledby="crm-title">
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }} onClick={onClose}>
+      <div className="card p-6 w-[800px] max-h-[85vh] overflow-hidden fade-in flex flex-col" role="dialog" aria-modal="true" aria-labelledby="crm-title" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 id="crm-title" className="font-display text-lg" style={{ color: "#F5C842" }}>Customer Loyalty</h2>
           <button onClick={onClose} className="btn-ghost py-1 px-3" aria-label="Close"><X size={16} /></button>

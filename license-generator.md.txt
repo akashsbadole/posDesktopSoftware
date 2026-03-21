@@ -1,0 +1,11 @@
+ node "C:/Users/akash/Downloads/pos-tauri/tools/generate-license.js" --tier pro --count 3
+╔══════════════════════════════════════════════════════════════════════╗
+║  Generated    3 PRO      license keys                                  ║
+║  Issue date: 2026-03-21                                          ║
+║  Expires:    2027-03-21                                          ║
+╚══════════════════════════════════════════════════════════════════════╝
+     1. POS-PRO-20260321-D2T4KEQS-74A101259136CC9A
+     2. POS-PRO-20260321-6VAG7FWD-05833FC0C99EB273
+     3. POS-PRO-20260321-POR3USPK-753A431C69D685E7
+💡 Copy these keys and give them to customers after payment.
+🔒 Each key is signed with HMAC-SHA256 and cannot be forged.

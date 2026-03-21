@@ -176,7 +176,7 @@ export default function WalletScreen() {
       </div>
 
       {showLoadForm && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowLoadForm(false)}>
           <div className="card p-6 w-96">
             <h2 className="text-lg font-bold mb-4">Load Money to Wallet</h2>
             <div className="space-y-4">

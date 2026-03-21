@@ -2,8 +2,43 @@
 // Syncs local SQLite data to/from Neon PostgreSQL via HTTP API
 // Uses Neon's serverless driver HTTP endpoint
 
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use serde::{Deserialize, Serialize};
 use crate::db::Order;
+use std::io::Write;
+use std::time::Duration;
+
+const REQUEST_SIGNATURE_SECRET: &str = "pos_billing_secure_key_2024";
+const MAX_RETRIES: u32 = 3;
+const INITIAL_RETRY_DELAY_MS: u64 = 1000;
+
+fn generate_signature(payload: &str, timestamp: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    format!("{}{}{}", timestamp, payload, REQUEST_SIGNATURE_SECRET).hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
+#[allow(dead_code)]
+fn verify_signature(payload: &str, timestamp: &str, signature: &str) -> bool {
+    generate_signature(payload, timestamp) == signature
+}
+
+#[allow(dead_code)]
+pub fn create_signed_request_body(query: &str, params: &[serde_json::Value]) -> (String, String, String) {
+    use chrono::Utc;
+    let timestamp = Utc::now().to_rfc3339();
+    let payload = serde_json::json!({
+        "query": query,
+        "params": params,
+        "timestamp": timestamp
+    });
+    let payload_str = serde_json::to_string(&payload).unwrap_or_default();
+    let signature = generate_signature(&payload_str, &timestamp);
+    (payload_str, timestamp, signature)
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(dead_code)]
@@ -30,10 +65,7 @@ struct NeonResponse {
     message: Option<String>,
 }
 
-/// Extract HTTP endpoint from Neon connection string
-/// postgres://user:pass@host/db -> https://host/sql
 fn neon_http_url(connection_string: &str) -> Result<String, String> {
-    // Parse: postgres://user:password@ep-xxx.region.neon.tech/dbname
     let stripped = connection_string
         .trim_start_matches("postgres://")
         .trim_start_matches("postgresql://");
@@ -45,7 +77,6 @@ fn neon_http_url(connection_string: &str) -> Result<String, String> {
     let slash_pos = rest.find('/').unwrap_or(rest.len());
     let host = &rest[..slash_pos];
 
-    // Neon HTTP API endpoint
     Ok(format!("https://{}/sql", host))
 }
 
@@ -56,7 +87,6 @@ fn neon_auth(connection_string: &str) -> Result<String, String> {
     let at_pos = stripped.find('@').ok_or("Invalid connection string")?;
     let credentials = &stripped[..at_pos];
 
-    // Base64 encode for Basic auth
     let encoded = base64_encode(credentials.as_bytes());
     Ok(format!("Basic {}", encoded))
 }
@@ -78,26 +108,58 @@ fn base64_encode(input: &[u8]) -> String {
     result
 }
 
+fn compress_payload(payload: &str) -> Vec<u8> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    if encoder.write_all(payload.as_bytes()).is_ok() {
+        encoder.finish().unwrap_or_default()
+    } else {
+        payload.as_bytes().to_vec()
+    }
+}
+
 async fn neon_query(
     connection_string: &str,
     query: &str,
-    params: Vec<serde_json::Value>,
+    params: &[serde_json::Value],
 ) -> Result<NeonResponse, String> {
     let url = neon_http_url(connection_string)?;
     let auth = neon_auth(connection_string)?;
 
-    let client = reqwest::Client::new();
-    let body = NeonQuery { query: query.to_string(), params };
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    let resp = client
-        .post(&url)
-        .header("Authorization", auth)
-        .header("Content-Type", "application/json")
-        .header("Neon-Connection-String", connection_string)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let (payload, timestamp, signature) = create_signed_request_body(query, params);
+    let compressed_payload = compress_payload(&payload);
+    let is_compressed = compressed_payload.len() < payload.len();
+    
+    let resp = if is_compressed {
+        client
+            .post(&url)
+            .header("Authorization", auth)
+            .header("Content-Type", "application/json")
+            .header("Content-Encoding", "gzip")
+            .header("Neon-Connection-String", connection_string)
+            .header("X-Request-Signature", signature)
+            .header("X-Request-Timestamp", timestamp)
+            .body(compressed_payload)
+            .send()
+            .await
+            .map_err(|e| format!("Network error: {}", e))?
+    } else {
+        client
+            .post(&url)
+            .header("Authorization", auth)
+            .header("Content-Type", "application/json")
+            .header("Neon-Connection-String", connection_string)
+            .header("X-Request-Signature", signature)
+            .header("X-Request-Timestamp", timestamp)
+            .body(payload)
+            .send()
+            .await
+            .map_err(|e| format!("Network error: {}", e))?
+    };
 
     if !resp.status().is_success() {
         let status = resp.status();
@@ -108,9 +170,39 @@ async fn neon_query(
     resp.json::<NeonResponse>().await.map_err(|e| format!("Parse error: {}", e))
 }
 
-/// Ensure Neon tables exist
+async fn neon_query_with_retry(
+    connection_string: &str,
+    query: &str,
+    params: Vec<serde_json::Value>,
+) -> Result<NeonResponse, String> {
+    let mut retries = 0;
+    
+    loop {
+        match neon_query(connection_string, query, &params).await {
+            Ok(resp) => return Ok(resp),
+            Err(e) => {
+                retries += 1;
+                if retries >= MAX_RETRIES {
+                    return Err(format!("Failed after {} retries: {}", MAX_RETRIES, e));
+                }
+                let delay = INITIAL_RETRY_DELAY_MS * 2u64.pow(retries - 1);
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+            }
+        }
+    }
+}
+
 async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
-    neon_query(connection_string, "
+    if !connection_string.starts_with("https://") && !connection_string.contains("@") {
+        let parsed = connection_string
+            .trim_start_matches("postgres://")
+            .trim_start_matches("postgresql://");
+        if parsed.starts_with("http://") {
+            return Err("HTTPS is required for Neon sync. HTTP connections are not secure.".to_string());
+        }
+    }
+
+    neon_query_with_retry(connection_string, "
         CREATE TABLE IF NOT EXISTS pos_orders (
             id              TEXT PRIMARY KEY,
             items_json      TEXT NOT NULL,
@@ -130,9 +222,15 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             user_id         TEXT NOT NULL DEFAULT '',
             user_name       TEXT NOT NULL DEFAULT '',
             created_at      TEXT NOT NULL,
-            device_id       TEXT NOT NULL DEFAULT 'local'
+            device_id       TEXT NOT NULL DEFAULT 'local',
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
         )
     ", vec![]).await?;
+
+    neon_query_with_retry(connection_string, "
+        CREATE INDEX IF NOT EXISTS idx_neon_orders_created_at ON pos_orders(created_at)
+    ", vec![]).await?;
+
     Ok(())
 }
 
@@ -142,20 +240,30 @@ pub async fn sync_orders_to_neon(connection_string: &str, orders: &[Order]) -> S
     }
 
     let mut synced = 0i64;
+    let now = chrono::Utc::now().to_rfc3339();
 
     for order in orders {
         let items_json = serde_json::to_string(&order.items).unwrap_or_default();
         let user_id = order.user_id.clone().unwrap_or_default();
         let user_name = order.user_name.clone().unwrap_or_default();
-        let result = neon_query(
+
+        let result = neon_query_with_retry(
             connection_string,
             "INSERT INTO pos_orders
              (id, items_json, subtotal, tax_amount, discount_amount, total,
               payment_method, amount_paid, change_amount, customer_name, status,
               order_type, delivery_status, delivery_address, delivery_phone,
-              user_id, user_name, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-             ON CONFLICT (id) DO NOTHING",
+              user_id, user_name, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+             ON CONFLICT (id) DO UPDATE SET
+               items_json=excluded.items_json,
+               subtotal=excluded.subtotal,
+               tax_amount=excluded.tax_amount,
+               discount_amount=excluded.discount_amount,
+               total=excluded.total,
+               payment_method=excluded.payment_method,
+               status=excluded.status,
+               updated_at=excluded.updated_at",
             vec![
                 serde_json::json!(order.id),
                 serde_json::json!(items_json),
@@ -175,6 +283,7 @@ pub async fn sync_orders_to_neon(connection_string: &str, orders: &[Order]) -> S
                 serde_json::json!(user_id),
                 serde_json::json!(user_name),
                 serde_json::json!(order.created_at),
+                serde_json::json!(now),
             ],
         ).await;
 
@@ -198,7 +307,7 @@ pub async fn sync_from_neon(connection_string: &str) -> SyncFromResult {
         return SyncFromResult { synced: 0, error: Some(e), orders: None };
     }
 
-    let result = neon_query(
+    match neon_query_with_retry(
         connection_string,
         "SELECT id, items_json, subtotal, tax_amount, discount_amount, total,
                 payment_method, amount_paid, change_amount, customer_name, status,
@@ -206,9 +315,7 @@ pub async fn sync_from_neon(connection_string: &str) -> SyncFromResult {
                 user_id, user_name, created_at
          FROM pos_orders ORDER BY created_at DESC LIMIT 1000",
         vec![],
-    ).await;
-
-    match result {
+    ).await {
         Err(e) => SyncFromResult { synced: 0, error: Some(e), orders: None },
         Ok(resp) => {
             let rows = resp.rows.unwrap_or_default();

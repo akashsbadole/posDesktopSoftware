@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { FileText, Download, Calendar, Receipt, Calculator, Percent } from "lucide-react";
+import { FileText, Download, Calendar, Receipt, Calculator } from "lucide-react";
 import { getGstr1Report, getGstr3bReport, dbGetSettings } from "@/lib/db";
 
 interface GstReport {

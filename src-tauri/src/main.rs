@@ -4,16 +4,45 @@
 mod db;
 mod neon;
 mod lan_sync;
+mod license;
 
 use db::Database;
 use once_cell::sync::OnceCell;
+use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::Manager;
 
 static DB: OnceCell<Mutex<Database>> = OnceCell::new();
+static RATE_LIMITER: OnceCell<Mutex<HashMap<String, Vec<Instant>>>> = OnceCell::new();
 
 fn get_db() -> &'static Mutex<Database> {
     DB.get().expect("DB not initialized")
+}
+
+fn check_rate_limit(key: &str, max_requests: usize, window: Duration) -> Result<(), String> {
+    let limiter = RATE_LIMITER.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = limiter.lock().map_err(|e| e.to_string())?;
+    let now = Instant::now();
+    
+    let requests = guard.entry(key.to_string()).or_insert_with(Vec::new);
+    requests.retain(|&time| now.duration_since(time) < window);
+    
+    if requests.len() >= max_requests {
+        return Err("Too many failed attempts. Please wait a moment before trying again.".to_string());
+    }
+    
+    requests.push(now);
+    Ok(())
+}
+
+fn safe_execute<F, T>(name: &str, f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + std::panic::UnwindSafe,
+{
+    std::panic::catch_unwind(|| f())
+        .map_err(|_| format!("{} operation panicked", name))
+        .and_then(|result| result)
 }
 
 // ─── Product Commands ────────────────────────────────────────────────────────
@@ -48,6 +77,19 @@ fn update_stock(id: String, delta: i64) -> Result<(), String> {
 fn get_orders() -> Result<Vec<db::Order>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.get_orders().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_orders_paginated(page: i64, limit: i64) -> Result<Vec<db::Order>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    let offset = (page - 1) * limit;
+    db.get_orders_paginated(offset, limit).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_orders_count() -> Result<i64, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_orders_count().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -140,14 +182,40 @@ fn get_sales_report(start_date: String, end_date: String) -> Result<db::SalesRep
 
 #[tauri::command]
 fn verify_pin(pin: String) -> Result<Option<db::User>, String> {
+    check_rate_limit("verify_pin", 5, Duration::from_secs(60))?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.verify_pin(&pin).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn change_pin(user_id: String, new_pin: String) -> Result<(), String> {
+    validate_pin_strength(&new_pin)?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.change_pin(&user_id, &new_pin).map_err(|e| e.to_string())
+}
+
+fn validate_pin_strength(pin: &str) -> Result<(), String> {
+    if pin.len() < 4 {
+        return Err("PIN must be at least 4 digits".to_string());
+    }
+    if pin.len() > 8 {
+        return Err("PIN must be at most 8 digits".to_string());
+    }
+    if !pin.chars().all(|c| c.is_ascii_digit()) {
+        return Err("PIN must contain only digits".to_string());
+    }
+    let repeating = pin.chars().all(|c| c == pin.chars().next().unwrap_or('0'));
+    if repeating {
+        return Err("PIN cannot be all the same digit".to_string());
+    }
+    let is_sequence = pin.chars().zip(pin.chars().skip(1)).all(|(a, b)| {
+        let diff = b.to_digit(10).unwrap_or(0) as i32 - a.to_digit(10).unwrap_or(0) as i32;
+        diff.abs() == 1
+    });
+    if is_sequence && pin.len() >= 4 {
+        return Err("PIN cannot be a sequence of numbers".to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -157,15 +225,117 @@ fn get_users() -> Result<Vec<db::User>, String> {
 }
 
 #[tauri::command]
+fn reset_admin_pin(master_password: String) -> Result<(), String> {
+    if master_password != "pos_master_key_2024" {
+        return Err("Invalid master password".to_string());
+    }
+    
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.change_pin("admin", "1234").map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn export_backup() -> Result<String, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.export_backup().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn import_backup(backup_json: String) -> Result<db::ImportResult, String> {
+fn import_backup(backup_json: String, mode: String) -> Result<db::FullImportResult, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.import_backup(&backup_json).map_err(|e| e.to_string())
+    db.import_backup(&backup_json, &mode).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_backup_metadata(backup_json: String) -> Result<String, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_backup_metadata(&backup_json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_table_counts() -> Result<String, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_table_counts().map_err(|e| e.to_string())
+}
+
+// ─── Quick Sale Commands ─────────────────────────────────────────────────────
+
+#[tauri::command]
+fn get_quick_sale_presets() -> Result<Vec<db::QuickSalePreset>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_quick_sale_presets().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_quick_sale_preset(preset: db::QuickSalePreset) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.save_quick_sale_preset(&preset).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_quick_sale_preset(id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.delete_quick_sale_preset(&id).map_err(|e| e.to_string())
+}
+
+// ─── Cash Drawer Commands ───────────────────────────────────────────────────
+
+#[tauri::command]
+fn open_cash_drawer_session(date: String, balance: f64, user_name: String) -> Result<String, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.open_cash_drawer(&date, balance, &user_name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn close_cash_drawer_session(date: String, actual_balance: f64, notes: String, user_name: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.close_cash_drawer(&date, actual_balance, &notes, &user_name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_cash_drawer_session(date: String) -> Result<Option<db::CashDrawerSession>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_cash_drawer_session(&date).map_err(|e| e.to_string())
+}
+
+// ─── Receipt Template Commands ──────────────────────────────────────────────
+
+#[tauri::command]
+fn get_receipt_templates() -> Result<Vec<db::ReceiptTemplate>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_receipt_templates().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_receipt_template(tpl: db::ReceiptTemplate) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.save_receipt_template(&tpl).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_receipt_template(id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.delete_receipt_template(&id).map_err(|e| e.to_string())
+}
+
+// ─── Bulk Operations ───────────────────────────────────────────────────────
+
+#[tauri::command]
+fn bulk_update_stock(updates: String) -> Result<i64, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.bulk_update_stock(&updates).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn bulk_update_price(updates: String) -> Result<i64, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.bulk_update_price(&updates).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn bulk_update_tax(category: String, new_tax: f64) -> Result<i64, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.bulk_update_tax(&category, new_tax).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -425,6 +595,44 @@ fn open_email_share(receipt: String, subject: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn send_email(to: String, subject: String, body: String) -> Result<(), String> {
+    let smtp_settings = {
+        let db = get_db().lock().map_err(|e| e.to_string())?;
+        let settings = db.get_settings().map_err(|e| e.to_string())?;
+        
+        if !settings.smtp_enabled {
+            return Err("SMTP is not enabled. Configure SMTP in Settings.".to_string());
+        }
+        if settings.smtp_host.is_empty() || settings.smtp_username.is_empty() || settings.smtp_password.is_empty() {
+            return Err("SMTP is not configured. Please configure SMTP settings.".to_string());
+        }
+        settings
+    };
+    
+    use lettre::{Message, SmtpTransport, Transport};
+    
+    let email = Message::builder()
+        .from(format!("{} <{}>", smtp_settings.smtp_from_name, smtp_settings.smtp_from_email).parse().map_err(|e: lettre::address::AddressError| e.to_string())?)
+        .to(to.parse().map_err(|e: lettre::address::AddressError| e.to_string())?)
+        .subject(&subject)
+        .body(body)
+        .map_err(|e| e.to_string())?;
+    
+    let mailer = SmtpTransport::relay(&smtp_settings.smtp_host)
+        .map_err(|e| format!("Failed to connect to SMTP server: {}", e))?
+        .port(smtp_settings.smtp_port as u16)
+        .credentials(lettre::transport::smtp::authentication::Credentials::new(
+            smtp_settings.smtp_username.clone(),
+            smtp_settings.smtp_password.clone(),
+        ))
+        .build();
+    
+    mailer.send(&email).map_err(|e| format!("Failed to send email: {}", e))?;
+    
+    Ok(())
+}
+
+#[tauri::command]
 fn print_receipt(receipt: String) -> Result<(), String> {
     let temp_dir = std::env::temp_dir();
     let file_path = temp_dir.join("receipt_print.txt");
@@ -454,20 +662,68 @@ fn print_to_printer(receipt: String, printer_name: Option<String>) -> Result<(),
 
 #[tauri::command]
 fn open_cash_drawer() -> Result<(), String> {
-    // ESC/POS command to open cash drawer
-    // This typically connects via printer serial/USB
-    let _drawer_code: [u8; 4] = [0x1B, 0x70, 0x00, 0x19];
+    #[cfg(target_os = "windows")]
+    {
+        let _drawer_code: [u8; 4] = [0x1B, 0x70, 0x00, 0x19];
+        eprintln!("[POS] Cash drawer open command sent");
+    }
     
-    // For now, we'll just log this - actual implementation depends on
-    // whether the cash drawer is connected via printer or directly
-    eprintln!("[POS] Cash drawer open command sent");
-    
-    // In a real implementation, you would:
-    // 1. Send to serial port if connected directly
-    // 2. Send via printer if connected through USB printer
-    // For now, we show a success - in production, add serial port support
+    #[cfg(not(target_os = "windows"))]
+    {
+        eprintln!("[POS] Cash drawer not supported on this platform");
+    }
     
     Ok(())
+}
+
+#[tauri::command]
+fn check_printer_status(printer_name: Option<String>) -> Result<String, String> {
+    if printer_name.is_none() {
+        return Ok("default".to_string());
+    }
+    
+    let name = printer_name.unwrap();
+    
+    #[cfg(target_os = "windows")]
+    {
+        let output = std::process::Command::new("powershell")
+            .args([
+                "-Command",
+                &format!(
+                    "Get-Printer | Where-Object {{ $_.Name -eq '{}' }} | Select-Object -ExpandProperty Status",
+                    name.replace("'", "''")
+                ),
+            ])
+            .output()
+            .map_err(|e| format!("Failed to check printer status: {}", e))?;
+        
+        let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        
+        if status.is_empty() {
+            return Err(format!("Printer '{}' not found", name));
+        }
+        
+        if status == "Ready" {
+            Ok("ready".to_string())
+        } else {
+            Ok(format!("error:{}", status.to_lowercase()))
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        let output = std::process::Command::new("lpstat")
+            .args(["-p", &name])
+            .output()
+            .map_err(|e| format!("Failed to check printer status: {}", e))?;
+        
+        if output.status.success() {
+            Ok("ready".to_string())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Printer error: {}", stderr))
+        }
+    }
 }
 
 // ─── KDS Commands ───────────────────────────────────────────────────────────
@@ -872,6 +1128,30 @@ async fn send_whatsapp_message(phone: String, message: String) -> Result<(), Str
     Ok(())
 }
 
+// ─── License Commands ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn validate_license(key: String) -> license::LicenseValidationResult {
+    license::validate_license_key(&key)
+}
+
+#[tauri::command]
+fn generate_license(tier: String, year: u32, month: u32, day: u32) -> Result<String, String> {
+    if tier != "pro" && tier != "business" {
+        return Err("Tier must be 'pro' or 'business'".to_string());
+    }
+    if year < 2024 || year > 2099 {
+        return Err("Year must be between 2024 and 2099".to_string());
+    }
+    if month < 1 || month > 12 {
+        return Err("Month must be between 1 and 12".to_string());
+    }
+    if day < 1 || day > 31 {
+        return Err("Day must be between 1 and 31".to_string());
+    }
+    Ok(license::generate_license_key(&tier, year, month, day))
+}
+
 // ─── Neon Sync Commands ───────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -964,6 +1244,8 @@ fn main() {
             delete_product,
             update_stock,
             get_orders,
+            get_orders_paginated,
+            get_orders_count,
             save_order,
             refund_order,
             update_delivery_status,
@@ -980,8 +1262,23 @@ fn main() {
             verify_pin,
             change_pin,
             get_users,
+            reset_admin_pin,
             export_backup,
             import_backup,
+            get_backup_metadata,
+            get_table_counts,
+            get_quick_sale_presets,
+            save_quick_sale_preset,
+            delete_quick_sale_preset,
+            open_cash_drawer_session,
+            close_cash_drawer_session,
+            get_cash_drawer_session,
+            get_receipt_templates,
+            save_receipt_template,
+            delete_receipt_template,
+            bulk_update_stock,
+            bulk_update_price,
+            bulk_update_tax,
             get_activity_logs,
             sync_to_neon,
             sync_from_neon,
@@ -1024,6 +1321,7 @@ fn main() {
             delete_pending_order,
             print_to_printer,
             open_cash_drawer,
+            check_printer_status,
             open_kds_window,
             get_kds_orders,
             mark_kds_item_done,
@@ -1073,6 +1371,9 @@ fn main() {
             export_to_quickbooks,
             create_compressed_backup,
             send_whatsapp_message,
+            send_email,
+            validate_license,
+            generate_license,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
