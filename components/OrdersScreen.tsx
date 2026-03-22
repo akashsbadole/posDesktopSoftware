@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Search, RotateCcw, ChevronDown, ChevronUp, RefreshCw, Truck, MapPin, Phone, Edit2, Plus, Minus, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { updateDeliveryStatus, Order, OrderItem } from "@/lib/db";
+import { Search, RotateCcw, ChevronDown, ChevronUp, RefreshCw, Truck, MapPin, Phone, Edit2, Plus, Minus, X, ChevronLeft, ChevronRight, MessageSquare, Ban } from "lucide-react";
+import { updateDeliveryStatus, dbCancelOrder, dbAddOrderNote, dbGetOrderNotes, Order, OrderItem, OrderNote } from "@/lib/db";
 import { useOrdersStore, useSettingsStore, useProductsStore, useCartStore, useAuthStore } from "@/lib/stores";
 
 const ITEMS_PER_PAGE = 20;
@@ -16,8 +16,12 @@ export default function OrdersScreen() {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [editItems, setEditItems] = useState<{ productId: string; productName: string; price: number; quantity: number; discount: number }[]>([]);
+  const [editItems, setEditItems] = useState<{ productId: string; productName: string; price: number; quantity: number; discount: number; tax: number }[]>([]);
   const [displayLimit, setDisplayLimit] = useState(ITEMS_PER_PAGE);
+  const [orderNotes, setOrderNotes] = useState<Record<string, OrderNote[]>>({});
+  const [newNote, setNewNote] = useState("");
+  const [cancelReason, setCancelReason] = useState("");
+  const [showCancelModal, setShowCancelModal] = useState<string | null>(null);
 
   useEffect(() => { 
     fetchOrders(); 
@@ -43,7 +47,8 @@ export default function OrdersScreen() {
       productName: item.product_name,
       price: item.price,
       quantity: item.quantity,
-      discount: item.discount
+      discount: item.discount,
+      tax: item.tax
     })));
   };
 
@@ -53,7 +58,7 @@ export default function OrdersScreen() {
     const subtotal = editItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     const discountAmount = editItems.reduce((sum, item) => sum + (item.price * item.quantity * item.discount / 100), 0);
     const afterDiscount = subtotal - discountAmount;
-    const taxAmount = editItems.reduce((sum, item) => sum + (item.price * item.quantity * (1 - item.discount / 100) * 0.18), 0);
+    const taxAmount = editItems.reduce((sum, item) => sum + (item.price * item.quantity * (1 - item.discount / 100) * (item.tax / 100)), 0);
     const total = afterDiscount + taxAmount;
 
     const updatedOrder: Order = {
@@ -64,7 +69,7 @@ export default function OrdersScreen() {
         price: item.price,
         quantity: item.quantity,
         discount: item.discount,
-        tax: 18
+        tax: item.tax
       })),
       subtotal,
       tax_amount: taxAmount,
@@ -80,6 +85,34 @@ export default function OrdersScreen() {
   const handleCancelEdit = () => {
     setEditingOrder(null);
     setEditItems([]);
+  };
+
+  const handleCancelOrder = async (id: string) => {
+    if (!cancelReason.trim()) return;
+    const userId = user?.id || "system";
+    const userName = user?.name || "System";
+    await dbCancelOrder(id, cancelReason, userId, userName);
+    setShowCancelModal(null);
+    setCancelReason("");
+    await fetchOrders();
+  };
+
+  const handleAddNote = async (orderId: string) => {
+    if (!newNote.trim()) return;
+    await dbAddOrderNote(orderId, newNote);
+    setNewNote("");
+    const notes = await dbGetOrderNotes(orderId);
+    setOrderNotes(prev => ({ ...prev, [orderId]: notes }));
+  };
+
+  const loadOrderNotes = async (orderId: string) => {
+    if (orderNotes[orderId]) return;
+    try {
+      const notes = await dbGetOrderNotes(orderId);
+      setOrderNotes(prev => ({ ...prev, [orderId]: notes }));
+    } catch (err) {
+      console.error("Failed to load notes:", err);
+    }
   };
 
   const updateEditItemQuantity = (productId: string, delta: number) => {
@@ -113,11 +146,11 @@ export default function OrdersScreen() {
 
   useEffect(() => { setDisplayLimit(ITEMS_PER_PAGE); }, [search, filterStatus]);
 
-  const curr = settings?.currency ?? "₹";
+  const curr = settings?.currency_symbol ?? "₹";
 
   const editSubtotal = editItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const editDiscount = editItems.reduce((sum, item) => sum + (item.price * item.quantity * item.discount / 100), 0);
-  const editTax = editItems.reduce((sum, item) => sum + (item.price * item.quantity * (1 - item.discount / 100) * 0.18), 0);
+  const editTax = editItems.reduce((sum, item) => sum + (item.price * item.quantity * (1 - item.discount / 100) * (item.tax / 100)), 0);
   const editTotal = editSubtotal - editDiscount + editTax;
 
   if (editingOrder) {
@@ -270,7 +303,10 @@ export default function OrdersScreen() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setExpanded(expanded === order.id ? null : order.id)}
+                      onClick={() => {
+                        setExpanded(expanded === order.id ? null : order.id);
+                        if (expanded !== order.id) loadOrderNotes(order.id);
+                      }}
                       className="text-xs flex items-center gap-1"
                       style={{ color: "#9090A8" }}
                     >
@@ -297,6 +333,15 @@ export default function OrdersScreen() {
                       <RotateCcw size={12} /> Refund
                     </button>
                   )}
+                  {order.status === "completed" && (
+                    <button
+                      onClick={() => setShowCancelModal(order.id)}
+                      className="text-xs flex items-center gap-1 px-2 py-1 rounded"
+                      style={{ color: "#F39C12", background: "rgba(243,156,18,0.1)" }}
+                    >
+                      <Ban size={12} /> Cancel
+                    </button>
+                  )}
                 </div>
 
                 {expanded === order.id && (
@@ -312,6 +357,37 @@ export default function OrdersScreen() {
                       <div className="flex justify-between text-sm"><span style={{ color: "#9090A8" }}>Tax</span><span>+{curr}{order.tax_amount.toFixed(2)}</span></div>
                       {order.discount_amount > 0 && <div className="flex justify-between text-sm"><span style={{ color: "#2ECC71" }}>Discount</span><span>-{curr}{order.discount_amount.toFixed(2)}</span></div>}
                       <div className="flex justify-between font-semibold mt-1"><span>Total</span><span style={{ color: "#F5C842" }}>{curr}{order.total.toFixed(2)}</span></div>
+                    </div>
+
+                    {/* Order Notes */}
+                    <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <MessageSquare size={14} style={{ color: "#9090A8" }} />
+                        <span className="text-xs font-semibold" style={{ color: "#9090A8" }}>Order Notes</span>
+                      </div>
+                      {(orderNotes[order.id] || []).length > 0 && (
+                        <div className="space-y-1 mb-2">
+                          {(orderNotes[order.id] || []).map((note) => (
+                            <div key={note.id} className="text-xs p-2 rounded" style={{ background: "#1E1E26", color: "#9090A8" }}>
+                              {note.note}
+                              <span className="ml-2" style={{ color: "#4A4A5A" }}>{new Date(note.created_at).toLocaleString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <input
+                          value={newNote}
+                          onChange={(e) => setNewNote(e.target.value)}
+                          placeholder="Add a note..."
+                          className="flex-1 text-xs"
+                          style={{ padding: "6px 10px" }}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleAddNote(order.id); }}
+                        />
+                        <button onClick={() => handleAddNote(order.id)} className="btn-ghost py-1 px-2 text-xs" disabled={!newNote.trim()}>
+                          Add
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -331,6 +407,43 @@ export default function OrdersScreen() {
           )}
         </div>
       )}
+
+       {/* Cancel Order Modal */}
+       {showCancelModal && (
+         <div 
+           className="fixed inset-0 z-50 flex items-center justify-center" 
+          style={{ background: "rgba(0,0,0,0.6)" }}
+          onClick={(e) => e.target === e.currentTarget && setShowCancelModal(null)}
+        >
+           <div className="card p-6 w-full max-w-md fade-in">
+             <div className="flex items-center justify-between mb-4">
+               <h2 className="font-semibold text-lg">Cancel Order #{showCancelModal.slice(-6).toUpperCase()}</h2>
+               <button 
+                 onClick={() => { setShowCancelModal(null); setCancelReason(""); }} 
+                 className="btn-ghost py-1 px-3"
+                 aria-label="Close"
+               >
+                 <X size={16} />
+               </button>
+             </div>
+             <div className="mb-4">
+               <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Reason for cancellation *</label>
+               <textarea
+                 value={cancelReason}
+                 onChange={(e) => setCancelReason(e.target.value)}
+                 placeholder="Enter reason..."
+                 rows={3}
+               />
+             </div>
+             <div className="flex gap-2">
+               <button onClick={() => { setShowCancelModal(null); setCancelReason(""); }} className="btn-ghost flex-1">Close</button>
+               <button onClick={() => handleCancelOrder(showCancelModal)} className="btn-danger flex-1" disabled={!cancelReason.trim()}>
+                 Confirm Cancel
+               </button>
+             </div>
+           </div>
+         </div>
+       )}
     </div>
   );
 }

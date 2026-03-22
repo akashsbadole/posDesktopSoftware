@@ -7,11 +7,17 @@ import { useStaffStore, useAuthStore } from "@/lib/stores";
 
 interface StaffAttendanceProps {
   onClose?: () => void;
+  isOpen?: boolean;
 }
 
-export default function StaffAttendance({ onClose }: StaffAttendanceProps) {
+export default function StaffAttendance({ onClose, isOpen = true }: StaffAttendanceProps) {
   const { todayAttendance, isLoading, fetchTodayAttendance, clockIn, clockOut, currentUserClockedIn, checkClockedIn } = useStaffStore();
   const { user } = useAuthStore();
+  const [showModal, setShowModal] = useState(isOpen);
+
+  useEffect(() => {
+    setShowModal(isOpen);
+  }, [isOpen]);
 
   useEffect(() => {
     fetchTodayAttendance();
@@ -19,6 +25,11 @@ export default function StaffAttendance({ onClose }: StaffAttendanceProps) {
       checkClockedIn(user.id);
     }
   }, []);
+
+  const handleClose = () => {
+    setShowModal(false);
+    onClose?.();
+  };
 
   const handleClockIn = async () => {
     if (!user) return;
@@ -42,15 +53,19 @@ export default function StaffAttendance({ onClose }: StaffAttendanceProps) {
     return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
   };
 
-  if (!user) return null;
+  if (!showModal || !user) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
-      <div className="card p-6 w-[500px] max-h-[80vh] overflow-y-auto fade-in" role="dialog" aria-modal="true" aria-labelledby="attendance-title">
-        <div className="flex items-center justify-between mb-4">
-          <h2 id="attendance-title" className="font-display text-lg" style={{ color: "#F5C842" }}>Staff Attendance</h2>
-          <button onClick={onClose} className="btn-ghost py-1 px-3" aria-label="Close"><X size={16} /></button>
-        </div>
+   return (
+       <div 
+        className="fixed inset-0 z-50 flex items-center justify-center" 
+       style={{ background: "rgba(0,0,0,0.7)" }}
+       onClick={(e) => e.target === e.currentTarget && handleClose()}
+     >
+       <div className="card p-6 w-[500px] max-h-[80vh] overflow-y-auto fade-in" role="dialog" aria-modal="true" aria-labelledby="attendance-title">
+         <div className="flex items-center justify-between mb-4">
+           <h2 id="attendance-title" className="font-display text-lg" style={{ color: "#F5C842" }}>Staff Attendance</h2>
+              <button onClick={handleClose} className="btn-ghost py-1 px-3" aria-label="Close"><X size={16} /></button>
+         </div>
 
         <div className="mb-4">
           <div className="flex items-center justify-between p-4 rounded-lg" style={{ background: "#1E1E26" }}>

@@ -6,15 +6,17 @@ import { X, Users, Star, History, Plus, Search, Phone, Mail } from "lucide-react
 
 interface CustomerCRMProps {
   onClose?: () => void;
+  isOpen?: boolean;
 }
 
-export default function CustomerCRM({ onClose }: CustomerCRMProps) {
+export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showModal, setShowModal] = useState(isOpen);
   const [newCustomer, setNewCustomer] = useState<Partial<Customer>>({
     name: "",
     phone: "",
@@ -23,6 +25,15 @@ export default function CustomerCRM({ onClose }: CustomerCRMProps) {
     total_spent: 0,
     visits: 0,
   });
+
+  useEffect(() => {
+    setShowModal(isOpen);
+  }, [isOpen]);
+
+  const handleClose = () => {
+    setShowModal(false);
+    onClose?.();
+  };
 
   useEffect(() => {
     loadCustomers();
@@ -76,12 +87,18 @@ export default function CustomerCRM({ onClose }: CustomerCRMProps) {
     c.phone.includes(searchQuery)
   );
 
+  if (!showModal) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center" 
+      style={{ background: "rgba(0,0,0,0.7)" }}
+      onClick={(e) => e.target === e.currentTarget && handleClose()}
+    >
       <div className="card p-6 w-[800px] max-h-[85vh] overflow-hidden fade-in flex flex-col" role="dialog" aria-modal="true" aria-labelledby="crm-title">
         <div className="flex items-center justify-between mb-4">
           <h2 id="crm-title" className="font-display text-lg" style={{ color: "#F5C842" }}>Customer Loyalty</h2>
-          <button onClick={onClose} className="btn-ghost py-1 px-3" aria-label="Close"><X size={16} /></button>
+          <button onClick={handleClose} className="btn-ghost py-1 px-3" aria-label="Close"><X size={16} /></button>
         </div>
 
         <div className="flex gap-4 flex-1 overflow-hidden">

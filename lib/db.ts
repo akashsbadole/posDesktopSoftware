@@ -1174,7 +1174,7 @@ export async function getGstr3bReport(startDate: string, endDate: string): Promi
 
 // ─── Activity Log Functions ────────────────────────────────────────────────
 export async function getActivityLogsDetailed(startDate: string, endDate: string, limit: number): Promise<ActivityLogEntry[]> {
-  return sql<ActivityLogEntry[]>("get_activity_logs", { startDate, endDate, limit });
+  return sql<ActivityLogEntry[]>("get_activity_logs_range", { startDate, endDate, limit });
 }
 
 // ─── Export Functions ──────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { ShoppingCart, ClipboardList, Package, BarChart2, Settings, Zap, FileText, LogOut, History, ChefHat, DollarSign, Users, UsersRound, Tag, Wallet } from "lucide-react";
+import { ShoppingCart, ClipboardList, Package, BarChart2, Settings, Zap, FileText, LogOut, History, ChefHat, DollarSign, Users, UsersRound, Tag, Wallet, Truck, CalendarDays, Wheat, Shield, Bell, Calculator, GraduationCap, Lock } from "lucide-react";
 import { Screen } from "@/app/page";
 import { User } from "@/lib/db";
 import { useAuthStore } from "@/lib/stores";
@@ -11,19 +11,28 @@ const allNavItems = [
   { id: "orders" as Screen, label: "Orders", icon: ClipboardList, adminOnly: false },
   { id: "products" as Screen, label: "Products", icon: Package, adminOnly: false },
   { id: "tables" as Screen, label: "Tables", icon: UsersRound, adminOnly: false },
+  { id: "reservations" as Screen, label: "Bookings", icon: CalendarDays, adminOnly: false },
   { id: "kds" as Screen, label: "Kitchen", icon: ChefHat, adminOnly: false },
   { id: "customers" as Screen, label: "Customers", icon: Users, adminOnly: false },
   { id: "wallet" as Screen, label: "Wallet", icon: Wallet, adminOnly: false },
   { id: "coupons" as Screen, label: "Coupons", icon: Tag, adminOnly: false },
+  { id: "inventory_alerts" as Screen, label: "Alerts", icon: Bell, adminOnly: false },
+  { id: "refund_requests" as Screen, label: "Refunds", icon: Shield, adminOnly: true },
+  { id: "ingredients" as Screen, label: "Ingredients", icon: Wheat, adminOnly: true },
+  { id: "suppliers" as Screen, label: "Suppliers", icon: Truck, adminOnly: true },
+  { id: "purchase_orders" as Screen, label: "PO", icon: ClipboardList, adminOnly: true },
+  { id: "scheduling" as Screen, label: "Schedule", icon: CalendarDays, adminOnly: true },
+  { id: "reconciliation" as Screen, label: "Day End", icon: Calculator, adminOnly: true },
   { id: "expenses" as Screen, label: "Expenses", icon: DollarSign, adminOnly: true },
   { id: "staff" as Screen, label: "Staff", icon: Users, adminOnly: true },
   { id: "reports" as Screen, label: "Reports", icon: FileText, adminOnly: true },
   { id: "gst" as Screen, label: "GST", icon: FileText, adminOnly: true },
   { id: "logs" as Screen, label: "Logs", icon: History, adminOnly: true },
   { id: "settings" as Screen, label: "Settings", icon: Settings, adminOnly: true },
+  { id: "contact_training" as Screen, label: "Training", icon: GraduationCap, adminOnly: false },
 ];
 
-export default function Sidebar({ activeScreen, setScreen, user }: { activeScreen: Screen; setScreen: (s: Screen) => void; user?: User | null }) {
+export default function Sidebar({ activeScreen, setScreen, user, onLock }: { activeScreen: Screen; setScreen: (s: Screen) => void; user?: User | null; onLock?: () => void }) {
   const { logout } = useAuthStore();
   const isAdmin = user?.role === "admin";
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
@@ -40,6 +49,10 @@ export default function Sidebar({ activeScreen, setScreen, user }: { activeScree
 
   const handleLogout = () => {
     logout();
+  };
+
+  const handleLock = () => {
+    onLock?.();
   };
 
   return (
@@ -75,12 +88,16 @@ export default function Sidebar({ activeScreen, setScreen, user }: { activeScree
         })}
       </nav>
       <div className="w-full px-2">
-        {user && (
-          <div className="mb-2 p-2 rounded-lg text-center" style={{ background: "#1E1E26" }}>
-            <div style={{ fontSize: 9, color: "#9090A8" }}>{user.name}</div>
-            <div style={{ fontSize: 8, color: "#4A4A5A" }}>{user.role}</div>
-          </div>
-        )}
+        <button 
+          onClick={handleLock} 
+          title="Lock Screen (Ctrl+L)"
+          className="w-full flex flex-col items-center justify-center rounded-xl py-2 gap-1 transition-all hover:bg-[rgba(245,200,66,0.1)] mb-1"
+          style={{ color: "#9090A8" }}
+          aria-label="Lock Screen"
+        >
+          <Lock size={16} aria-hidden="true" />
+          <span style={{ fontSize: 8, fontWeight: 600 }}>Lock</span>
+        </button>
         <button 
           onClick={handleLogout} 
           title="Logout"

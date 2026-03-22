@@ -3444,7 +3444,8 @@ mod tests {
         assert_eq!(stock_after_order, initial_stock - 1);
 
         // Refund order
-        db.refund_order("order-002").unwrap();
+        db.refund_order("order-002", "admin", "Administrator")
+            .unwrap();
 
         // Verify stock restored
         let products = db.get_products().unwrap();
@@ -3464,20 +3465,42 @@ mod tests {
         // Get default settings
         let settings = db.get_settings().unwrap();
         assert_eq!(settings.store_name, "My POS Store");
-        assert_eq!(settings.currency, "₹");
-        assert_eq!(settings.tax_rate, 18.0);
+        assert_eq!(settings.currency, "USD");
+        assert_eq!(settings.tax_rate, 10.0);
 
         // Save new settings
         let new_settings = Settings {
             store_name: "Test Cafe".to_string(),
             currency: "$".to_string(),
+            currency_symbol: "$".to_string(),
+            country: "US".to_string(),
+            timezone: "America/New_York".to_string(),
             tax_rate: 10.0,
+            tax_name: "Sales Tax".to_string(),
+            tax_system: "sales".to_string(),
             address: "123 Test St".to_string(),
             phone: "+1234567890".to_string(),
             neon_url: "".to_string(),
-            gst_type: "regular".to_string(),
             business_name: "Test Business".to_string(),
-            gstin: "".to_string(),
+            tax_id: "".to_string(),
+            receipt_save_path: "".to_string(),
+            twilio_sid: "".to_string(),
+            twilio_token: "".to_string(),
+            twilio_phone: "".to_string(),
+            lan_sync_enabled: false,
+            lan_server_port: 8765,
+            dark_mode: true,
+            language: "en".to_string(),
+            whatsapp_enabled: false,
+            whatsapp_api_url: "".to_string(),
+            offline_mode: false,
+            logo_url: "".to_string(),
+            primary_color: "#F5C842".to_string(),
+            secondary_color: "#1E1E26".to_string(),
+            accent_color: "#2ECC71".to_string(),
+            footer_text: "Powered by POS Billing".to_string(),
+            contact_email: "".to_string(),
+            contact_website: "".to_string(),
         };
 
         db.save_settings(&new_settings).unwrap();
@@ -3814,13 +3837,35 @@ mod tests {
         let settings = Settings {
             store_name: "Backup Store".to_string(),
             currency: "€".to_string(),
+            currency_symbol: "€".to_string(),
+            country: "DE".to_string(),
+            timezone: "Europe/Berlin".to_string(),
             tax_rate: 20.0,
+            tax_name: "VAT".to_string(),
+            tax_system: "vat".to_string(),
             address: "Backup Address".to_string(),
             phone: "+1111111111".to_string(),
             neon_url: "".to_string(),
-            gst_type: "regular".to_string(),
             business_name: "".to_string(),
-            gstin: "".to_string(),
+            tax_id: "".to_string(),
+            receipt_save_path: "".to_string(),
+            twilio_sid: "".to_string(),
+            twilio_token: "".to_string(),
+            twilio_phone: "".to_string(),
+            lan_sync_enabled: false,
+            lan_server_port: 8765,
+            dark_mode: true,
+            language: "en".to_string(),
+            whatsapp_enabled: false,
+            whatsapp_api_url: "".to_string(),
+            offline_mode: false,
+            logo_url: "".to_string(),
+            primary_color: "#F5C842".to_string(),
+            secondary_color: "#1E1E26".to_string(),
+            accent_color: "#2ECC71".to_string(),
+            footer_text: "Powered by POS Billing".to_string(),
+            contact_email: "".to_string(),
+            contact_website: "".to_string(),
         };
         db.save_settings(&settings).unwrap();
 
@@ -3833,536 +3878,5 @@ mod tests {
         assert!(backup.contains("Backup Store"));
         assert!(backup.contains("\"products\""));
         assert!(backup.contains("\"settings\""));
-    }
-
-    #[test]
-    fn test_products_crud() {
-        let (db, _temp) = create_test_db();
-
-        // Create a product
-        let product = Product {
-            id: "test-001".to_string(),
-            name: "Test Coffee".to_string(),
-            price: 150.0,
-            category: "Beverages".to_string(),
-            stock: 50,
-            barcode: "123456789".to_string(),
-            tax: 5.0,
-            created_at: None,
-        };
-
-        // Insert product
-        db.upsert_product(&product).unwrap();
-
-        // Read product
-        let products = db.get_products().unwrap();
-        assert_eq!(products.len(), 1);
-        assert_eq!(products[0].name, "Test Coffee");
-        assert_eq!(products[0].price, 150.0);
-        assert_eq!(products[0].stock, 50);
-
-        // Update product
-        let mut updated_product = product.clone();
-        updated_product.price = 180.0;
-        updated_product.stock = 30;
-        db.upsert_product(&updated_product).unwrap();
-
-        let products = db.get_products().unwrap();
-        assert_eq!(products[0].price, 180.0);
-        assert_eq!(products[0].stock, 30);
-
-        // Delete product
-        db.delete_product("test-001").unwrap();
-        let products = db.get_products().unwrap();
-        assert_eq!(products.len(), 0);
-    }
-
-    #[test]
-    fn test_orders_crud() {
-        let (db, _temp) = create_test_db();
-
-        // First create a product
-        let product = Product {
-            id: "prod-001".to_string(),
-            name: "Test Tea".to_string(),
-            price: 50.0,
-            category: "Beverages".to_string(),
-            stock: 100,
-            barcode: "987654321".to_string(),
-            tax: 5.0,
-            created_at: None,
-        };
-        db.upsert_product(&product).unwrap();
-
-        // Create an order
-        let order = Order {
-            id: "order-001".to_string(),
-            items: vec![OrderItem {
-                product_id: "prod-001".to_string(),
-                product_name: "Test Tea".to_string(),
-                price: 50.0,
-                quantity: 2,
-                discount: 0.0,
-                tax: 5.0,
-            }],
-            subtotal: 100.0,
-            tax_amount: 5.0,
-            discount_amount: 0.0,
-            total: 105.0,
-            payment_method: "cash".to_string(),
-            amount_paid: 105.0,
-            change_amount: 0.0,
-            customer_name: "John Doe".to_string(),
-            status: "completed".to_string(),
-            order_type: "dine_in".to_string(),
-            delivery_status: "delivered".to_string(),
-            delivery_address: "".to_string(),
-            delivery_phone: "".to_string(),
-            created_at: "2024-01-01T10:00:00Z".to_string(),
-            synced: Some(false),
-        };
-
-        db.save_order(&order).unwrap();
-
-        // Verify order was saved
-        let orders = db.get_orders().unwrap();
-        assert_eq!(orders.len(), 1);
-        assert_eq!(orders[0].total, 105.0);
-        assert_eq!(orders[0].customer_name, "John Doe");
-        assert_eq!(orders[0].items.len(), 1);
-        assert_eq!(orders[0].items[0].quantity, 2);
-
-        // Verify stock was deducted
-        let products = db.get_products().unwrap();
-        assert_eq!(products[0].stock, 98); // 100 - 2
-    }
-
-    #[test]
-    fn test_order_refund() {
-        let (db, _temp) = create_test_db();
-
-        // Create product
-        let product = Product {
-            id: "prod-002".to_string(),
-            name: "Test Burger".to_string(),
-            price: 200.0,
-            category: "Food".to_string(),
-            stock: 20,
-            barcode: "111222333".to_string(),
-            tax: 12.0,
-            created_at: None,
-        };
-        db.upsert_product(&product).unwrap();
-
-        // Create and save order
-        let order = Order {
-            id: "order-002".to_string(),
-            items: vec![OrderItem {
-                product_id: "prod-002".to_string(),
-                product_name: "Test Burger".to_string(),
-                price: 200.0,
-                quantity: 1,
-                discount: 0.0,
-                tax: 12.0,
-            }],
-            subtotal: 200.0,
-            tax_amount: 24.0,
-            discount_amount: 0.0,
-            total: 224.0,
-            payment_method: "card".to_string(),
-            amount_paid: 224.0,
-            change_amount: 0.0,
-            customer_name: "Jane Smith".to_string(),
-            status: "completed".to_string(),
-            order_type: "takeaway".to_string(),
-            delivery_status: "delivered".to_string(),
-            delivery_address: "".to_string(),
-            delivery_phone: "".to_string(),
-            created_at: "2024-01-02T12:00:00Z".to_string(),
-            synced: Some(false),
-        };
-
-        db.save_order(&order).unwrap();
-
-        // Verify stock after order
-        let products = db.get_products().unwrap();
-        assert_eq!(products[0].stock, 19);
-
-        // Refund order
-        db.refund_order("order-002").unwrap();
-
-        // Verify stock restored
-        let products = db.get_products().unwrap();
-        assert_eq!(products[0].stock, 20);
-
-        // Verify order status
-        let orders = db.get_orders().unwrap();
-        assert_eq!(orders[0].status, "refunded");
-    }
-
-    #[test]
-    fn test_settings_crud() {
-        let (db, _temp) = create_test_db();
-
-        // Get default settings
-        let settings = db.get_settings().unwrap();
-        assert_eq!(settings.store_name, "My POS Store");
-        assert_eq!(settings.currency, "₹");
-        assert_eq!(settings.tax_rate, 18.0);
-
-        // Save new settings
-        let new_settings = Settings {
-            store_name: "Test Cafe".to_string(),
-            currency: "$".to_string(),
-            tax_rate: 10.0,
-            address: "123 Test St".to_string(),
-            phone: "+1234567890".to_string(),
-            neon_url: "".to_string(),
-            gst_type: "regular".to_string(),
-            business_name: "Test Business".to_string(),
-            gstin: "".to_string(),
-        };
-
-        db.save_settings(&new_settings).unwrap();
-
-        // Verify settings saved
-        let settings = db.get_settings().unwrap();
-        assert_eq!(settings.store_name, "Test Cafe");
-        assert_eq!(settings.currency, "$");
-        assert_eq!(settings.tax_rate, 10.0);
-    }
-
-    #[test]
-    fn test_users_crud() {
-        let (db, _temp) = create_test_db();
-
-        // Verify default users exist
-        let users = db.get_users().unwrap();
-        assert!(users.len() >= 2);
-
-        // Find admin user
-        let admin = users.iter().find(|u| u.role == "admin");
-        assert!(admin.is_some());
-        assert_eq!(admin.unwrap().name, "Administrator");
-
-        // Verify PIN
-        let verified = db.verify_pin("1234").unwrap();
-        assert!(verified.is_some());
-        assert_eq!(verified.unwrap().role, "admin");
-
-        // Verify invalid PIN
-        let invalid = db.verify_pin("9999").unwrap();
-        assert!(invalid.is_none());
-    }
-
-    #[test]
-    fn test_analytics() {
-        let (db, _temp) = create_test_db();
-
-        // Create products
-        let product1 = Product {
-            id: "p1".to_string(),
-            name: "Coffee".to_string(),
-            price: 100.0,
-            category: "Beverages".to_string(),
-            stock: 100,
-            barcode: "001".to_string(),
-            tax: 10.0,
-            created_at: None,
-        };
-        let product2 = Product {
-            id: "p2".to_string(),
-            name: "Tea".to_string(),
-            price: 50.0,
-            category: "Beverages".to_string(),
-            stock: 100,
-            barcode: "002".to_string(),
-            tax: 10.0,
-            created_at: None,
-        };
-        db.upsert_product(&product1).unwrap();
-        db.upsert_product(&product2).unwrap();
-
-        // Create orders
-        let order1 = Order {
-            id: "o1".to_string(),
-            items: vec![OrderItem {
-                product_id: "p1".to_string(),
-                product_name: "Coffee".to_string(),
-                price: 100.0,
-                quantity: 2,
-                discount: 0.0,
-                tax: 10.0,
-            }],
-            subtotal: 200.0,
-            tax_amount: 20.0,
-            discount_amount: 0.0,
-            total: 220.0,
-            payment_method: "cash".to_string(),
-            amount_paid: 220.0,
-            change_amount: 0.0,
-            customer_name: "".to_string(),
-            status: "completed".to_string(),
-            order_type: "dine_in".to_string(),
-            delivery_status: "delivered".to_string(),
-            delivery_address: "".to_string(),
-            delivery_phone: "".to_string(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-            synced: Some(false),
-        };
-
-        let order2 = Order {
-            id: "o2".to_string(),
-            items: vec![OrderItem {
-                product_id: "p2".to_string(),
-                product_name: "Tea".to_string(),
-                price: 50.0,
-                quantity: 3,
-                discount: 0.0,
-                tax: 10.0,
-            }],
-            subtotal: 150.0,
-            tax_amount: 15.0,
-            discount_amount: 0.0,
-            total: 165.0,
-            payment_method: "upi".to_string(),
-            amount_paid: 165.0,
-            change_amount: 0.0,
-            customer_name: "".to_string(),
-            status: "completed".to_string(),
-            order_type: "takeaway".to_string(),
-            delivery_status: "delivered".to_string(),
-            delivery_address: "".to_string(),
-            delivery_phone: "".to_string(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-            synced: Some(false),
-        };
-
-        db.save_order(&order1).unwrap();
-        db.save_order(&order2).unwrap();
-
-        // Test daily summary
-        let summary = db.get_daily_summary().unwrap();
-        assert!(summary.transactions >= 2);
-        assert!(summary.revenue > 0.0);
-
-        // Test weekly revenue
-        let weekly = db.get_weekly_revenue().unwrap();
-        assert!(!weekly.is_empty());
-
-        // Test top products
-        let top = db.get_top_products().unwrap();
-        assert!(!top.is_empty());
-    }
-
-    #[test]
-    fn test_low_stock_alert() {
-        let (db, _temp) = create_test_db();
-
-        // Create products with different stock levels
-        let low_stock = Product {
-            id: "low-1".to_string(),
-            name: "Low Stock Item".to_string(),
-            price: 100.0,
-            category: "Test".to_string(),
-            stock: 5,
-            barcode: "low1".to_string(),
-            tax: 10.0,
-            created_at: None,
-        };
-        let out_of_stock = Product {
-            id: "out-1".to_string(),
-            name: "Out of Stock Item".to_string(),
-            price: 200.0,
-            category: "Test".to_string(),
-            stock: 0,
-            barcode: "out1".to_string(),
-            tax: 10.0,
-            created_at: None,
-        };
-        let normal = Product {
-            id: "normal-1".to_string(),
-            name: "Normal Item".to_string(),
-            price: 50.0,
-            category: "Test".to_string(),
-            stock: 50,
-            barcode: "normal1".to_string(),
-            tax: 10.0,
-            created_at: None,
-        };
-
-        db.upsert_product(&low_stock).unwrap();
-        db.upsert_product(&out_of_stock).unwrap();
-        db.upsert_product(&normal).unwrap();
-
-        // Get low stock items
-        let low_stock_items = db.get_low_stock().unwrap();
-        assert!(low_stock_items.len() >= 2);
-
-        let names: Vec<&str> = low_stock_items.iter().map(|i| i.name.as_str()).collect();
-        assert!(names.contains(&"Low Stock Item"));
-        assert!(names.contains(&"Out of Stock Item"));
-    }
-
-    #[test]
-    fn test_csv_export_import() {
-        let (db, _temp) = create_test_db();
-
-        // Create products
-        let product1 = Product {
-            id: "csv-1".to_string(),
-            name: "CSV Product 1".to_string(),
-            price: 100.0,
-            category: "Test".to_string(),
-            stock: 10,
-            barcode: "csv1".to_string(),
-            tax: 10.0,
-            created_at: None,
-        };
-        let product2 = Product {
-            id: "csv-2".to_string(),
-            name: "CSV Product 2".to_string(),
-            price: 200.0,
-            category: "Test".to_string(),
-            stock: 20,
-            barcode: "csv2".to_string(),
-            tax: 5.0,
-            created_at: None,
-        };
-
-        db.upsert_product(&product1).unwrap();
-        db.upsert_product(&product2).unwrap();
-
-        // Export products CSV
-        let csv = db.export_products_csv().unwrap();
-        assert!(csv.contains("csv-1"));
-        assert!(csv.contains("csv-2"));
-        assert!(csv.contains("CSV Product 1"));
-        assert!(csv.contains("CSV Product 2"));
-
-        // Delete products
-        db.delete_product("csv-1").unwrap();
-        db.delete_product("csv-2").unwrap();
-        let products = db.get_products().unwrap();
-        assert_eq!(products.len(), 0);
-
-        // Import products from CSV
-        let (imported, errors) = db.import_products_csv(&csv).unwrap();
-        assert_eq!(imported, 2);
-        assert_eq!(errors, 0);
-
-        // Verify imported
-        let products = db.get_products().unwrap();
-        assert_eq!(products.len(), 2);
-    }
-
-    #[test]
-    fn test_delivery_orders() {
-        let (db, _temp) = create_test_db();
-
-        // Create product
-        let product = Product {
-            id: "del-prod".to_string(),
-            name: "Delivery Item".to_string(),
-            price: 300.0,
-            category: "Food".to_string(),
-            stock: 10,
-            barcode: "del001".to_string(),
-            tax: 12.0,
-            created_at: None,
-        };
-        db.upsert_product(&product).unwrap();
-
-        // Create delivery order
-        let order = Order {
-            id: "del-order-001".to_string(),
-            items: vec![OrderItem {
-                product_id: "del-prod".to_string(),
-                product_name: "Delivery Item".to_string(),
-                price: 300.0,
-                quantity: 1,
-                discount: 0.0,
-                tax: 12.0,
-            }],
-            subtotal: 300.0,
-            tax_amount: 36.0,
-            discount_amount: 0.0,
-            total: 336.0,
-            payment_method: "upi".to_string(),
-            amount_paid: 336.0,
-            change_amount: 0.0,
-            customer_name: "Delivery Customer".to_string(),
-            status: "completed".to_string(),
-            order_type: "delivery".to_string(),
-            delivery_status: "pending".to_string(),
-            delivery_address: "123 Delivery Street, City".to_string(),
-            delivery_phone: "+9876543210".to_string(),
-            created_at: "2024-01-15T14:00:00Z".to_string(),
-            synced: Some(false),
-        };
-
-        db.save_order(&order).unwrap();
-
-        // Verify order details
-        let orders = db.get_orders().unwrap();
-        assert_eq!(orders.len(), 1);
-        assert_eq!(orders[0].order_type, "delivery");
-        assert_eq!(orders[0].delivery_status, "pending");
-        assert_eq!(orders[0].delivery_address, "123 Delivery Street, City");
-        assert_eq!(orders[0].delivery_phone, "+9876543210");
-
-        // Update delivery status
-        db.update_delivery_status("del-order-001", "out_for_delivery")
-            .unwrap();
-
-        let orders = db.get_orders().unwrap();
-        assert_eq!(orders[0].delivery_status, "out_for_delivery");
-
-        // Mark as delivered
-        db.update_delivery_status("del-order-001", "delivered")
-            .unwrap();
-
-        let orders = db.get_orders().unwrap();
-        assert_eq!(orders[0].delivery_status, "delivered");
-    }
-
-    #[test]
-    fn test_backup_export() {
-        let (db, _temp) = create_test_db();
-
-        // Create some data
-        let product = Product {
-            id: "backup-prod".to_string(),
-            name: "Backup Product".to_string(),
-            price: 500.0,
-            category: "Test".to_string(),
-            stock: 100,
-            barcode: "backup001".to_string(),
-            tax: 18.0,
-            created_at: None,
-        };
-        db.upsert_product(&product).unwrap();
-
-        let settings = Settings {
-            store_name: "Backup Store".to_string(),
-            currency: "€".to_string(),
-            tax_rate: 20.0,
-            address: "Backup Address".to_string(),
-            phone: "+1111111111".to_string(),
-            neon_url: "".to_string(),
-            gst_type: "regular".to_string(),
-            business_name: "".to_string(),
-            gstin: "".to_string(),
-        };
-        db.save_settings(&settings).unwrap();
-
-        // Export backup
-        let backup = db.export_backup().unwrap();
-
-        // Verify backup contains data
-        assert!(backup.contains("backup-prod"));
-        assert!(backup.contains("Backup Product"));
-        assert!(backup.contains("Backup Store"));
-        assert!(backup.contains("backup"));
     }
 }

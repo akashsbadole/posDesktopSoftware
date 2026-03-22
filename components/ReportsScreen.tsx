@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { exportProductsCsv, exportOrdersCsv, importProductsCsv, getSalesReport, exportBackup } from "@/lib/db";
+import { exportProductsCsv, exportOrdersCsv, importProductsCsv, getSalesReport, exportBackup, exportToTally, exportToQuickbooks } from "@/lib/db";
+import EnhancedReports from "@/components/EnhancedReports";
 
 interface SalesReport {
   start_date: string;
@@ -20,6 +21,7 @@ export default function ReportsScreen() {
   const [report, setReport] = useState<SalesReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [showEnhanced, setShowEnhanced] = useState(false);
 
   const handleGenerateReport = async () => {
     setLoading(true);
@@ -85,9 +87,36 @@ export default function ReportsScreen() {
     }
   };
 
+  const handleExportTally = async () => {
+    try {
+      const xml = await exportToTally(startDate, endDate);
+      downloadFile(xml, `tally-export-${startDate}-to-${endDate}.xml`, "application/xml");
+      setMessage("Tally export completed successfully");
+    } catch (e) {
+      setMessage("Error exporting to Tally");
+    }
+  };
+
+  const handleExportQuickbooks = async () => {
+    try {
+      const json = await exportToQuickbooks(startDate, endDate);
+      downloadFile(json, `quickbooks-export-${startDate}-to-${endDate}.json`, "application/json");
+      setMessage("QuickBooks export completed successfully");
+    } catch (e) {
+      setMessage("Error exporting to QuickBooks");
+    }
+  };
+
   return (
     <div style={{ padding: 24 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 24 }}>Reports & Data</h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700 }}>Reports & Data</h1>
+        <button onClick={() => setShowEnhanced(true)} className="btn-accent py-2 px-4 text-sm">
+          Enhanced Reports
+        </button>
+      </div>
+      
+      {showEnhanced && <EnhancedReports onClose={() => setShowEnhanced(false)} />}
       
       {message && (
         <div style={{ padding: 12, marginBottom: 16, background: "#e8f5e9", borderRadius: 8, color: "#2e7d32" }}>
@@ -171,6 +200,34 @@ export default function ReportsScreen() {
             <button onClick={handleExportBackup}
               style={{ padding: "8px 16px", background: "#2ECC71", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
               Export Backup
+            </button>
+          </div>
+        </div>
+        <div style={{ padding: 20, background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)" }}>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Accounting Export</h3>
+          <p style={{ fontSize: 12, color: "#666", marginBottom: 16 }}>Export transactions for accounting software. Uses the date range from the Sales Report above.</p>
+          
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>From</label>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+                style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)" }} />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>To</label>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+                style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)" }} />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={handleExportTally}
+              style={{ padding: "10px 20px", background: "#3498DB", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", flex: 1 }}>
+              Export to Tally (XML)
+            </button>
+            <button onClick={handleExportQuickbooks}
+              style={{ padding: "10px 20px", background: "#2ECC71", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", flex: 1 }}>
+              Export to QuickBooks (JSON)
             </button>
           </div>
         </div>

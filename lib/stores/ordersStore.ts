@@ -64,29 +64,49 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
   },
 
   saveOrder: async (order: Order) => {
-    await dbSaveOrder(order);
-    await get().fetchOrders();
+    try {
+      await dbSaveOrder(order);
+      await get().fetchOrders();
+    } catch (err) {
+      set({ error: (err as Error).message });
+      throw err;
+    }
   },
 
   refundOrder: async (id: string, userId?: string, userName?: string) => {
-    await dbRefundOrder(id, userId, userName);
-    await get().fetchOrders();
+    try {
+      await dbRefundOrder(id, userId, userName);
+      await get().fetchOrders();
+    } catch (err) {
+      set({ error: (err as Error).message });
+      throw err;
+    }
   },
 
   updateDeliveryStatus: async (id: string, status: Order['delivery_status']) => {
-    await updateDeliveryStatus(id, status);
-    set((state) => ({
-      orders: state.orders.map((o) =>
-        o.id === id ? { ...o, delivery_status: status } : o
-      ),
-    }));
+    try {
+      await updateDeliveryStatus(id, status);
+      set((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === id ? { ...o, delivery_status: status } : o
+        ),
+      }));
+    } catch (err) {
+      set({ error: (err as Error).message });
+      throw err;
+    }
   },
 
   updateOrder: async (order: Order) => {
-    await dbSaveOrder(order);
-    set((state) => ({
-      orders: state.orders.map((o) => o.id === order.id ? order : o)
-    }));
+    try {
+      await dbSaveOrder(order);
+      set((state) => ({
+        orders: state.orders.map((o) => o.id === order.id ? order : o)
+      }));
+    } catch (err) {
+      set({ error: (err as Error).message });
+      throw err;
+    }
   },
 
   fetchDashboardData: async () => {

@@ -19,7 +19,7 @@ export default function DashboardScreen() {
     fetchSettings();
   }, []);
 
-  const curr = settings?.currency ?? "₹";
+  const curr = settings?.currency_symbol ?? "₹";
   const maxRevenue = Math.max(...weeklyRevenue.map((d) => d.revenue), 1);
 
   const stats = [

@@ -1,9 +1,9 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { Check, Store, Database, CloudUpload, CloudDownload, RefreshCw, Info, Moon, Sun, Download, Upload, Save, Palette, Mail, AlertCircle } from "lucide-react";
-import { syncToNeon, syncFromNeon, sendSmsNotification, Settings } from "@/lib/db";
+import { Check, Store, Database, CloudUpload, CloudDownload, RefreshCw, Info, Moon, Sun, Download, Upload, Save, Palette, Mail, AlertCircle, Key } from "lucide-react";
+import { syncToNeon, syncFromNeon, sendSmsNotification, sendWhatsAppMessage, startLanServer, stopLanServer, getLanServerStatus, LanServerStatus, changePin, Settings } from "@/lib/db";
 import { invoke } from "@tauri-apps/api/tauri";
-import { useSettingsStore } from "@/lib/stores";
+import { useSettingsStore, useAuthStore } from "@/lib/stores";
 
 const validatePhone = (phone: string): string | null => {
   if (!phone) return null;
@@ -99,6 +99,16 @@ export default function SettingsScreen() {
   const [smsMsg, setSmsMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [testPhone, setTestPhone] = useState("");
   const [testMessage, setTestMessage] = useState("");
+  const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
+  const [whatsappMsg, setWhatsappMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [waTestPhone, setWaTestPhone] = useState("");
+  const [waTestMessage, setWaTestMessage] = useState("");
+  const [lanStatus, setLanStatus] = useState<LanServerStatus | null>(null);
+  const [lanLoading, setLanLoading] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pinMsg, setPinMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [changingPin, setChangingPin] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [localSettings, setLocalSettings] = useState<Settings>(settings || {
     store_name: 'My POS Store',
@@ -138,6 +148,7 @@ export default function SettingsScreen() {
 
   useEffect(() => { 
     fetchSettings();
+    fetchLanStatus();
   }, []);
 
   useEffect(() => {
@@ -261,6 +272,81 @@ export default function SettingsScreen() {
       setSmsMsg({ text: `Error: ${err}`, ok: false });
     }
     setSendingSms(false);
+  };
+
+  const handleSendTestWhatsApp = async () => {
+    if (!waTestPhone || !waTestMessage) {
+      setWhatsappMsg({ text: "Please enter phone number and message", ok: false });
+      return;
+    }
+    setSendingWhatsapp(true);
+    setWhatsappMsg(null);
+    try {
+      await sendWhatsAppMessage(waTestPhone, waTestMessage);
+      setWhatsappMsg({ text: "✓ WhatsApp message sent successfully!", ok: true });
+      setWaTestPhone("");
+      setWaTestMessage("");
+    } catch (err) {
+      setWhatsappMsg({ text: `Error: ${err}`, ok: false });
+    }
+    setSendingWhatsapp(false);
+  };
+
+  const fetchLanStatus = async () => {
+    try {
+      const status = await getLanServerStatus();
+      setLanStatus(status);
+    } catch (err) {
+      console.error("Failed to get LAN status:", err);
+    }
+  };
+
+  const handleStartLan = async () => {
+    setLanLoading(true);
+    try {
+      await startLanServer(localSettings.lan_server_port);
+      await fetchLanStatus();
+      updateLocal("lan_sync_enabled", true);
+    } catch (err) {
+      console.error("Failed to start LAN server:", err);
+    }
+    setLanLoading(false);
+  };
+
+  const handleStopLan = async () => {
+    setLanLoading(true);
+    try {
+      await stopLanServer();
+      await fetchLanStatus();
+      updateLocal("lan_sync_enabled", false);
+    } catch (err) {
+      console.error("Failed to stop LAN server:", err);
+    }
+    setLanLoading(false);
+  };
+
+  const { user } = useAuthStore();
+
+  const handleChangePin = async () => {
+    if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
+      setPinMsg({ text: "PIN must be exactly 4 digits", ok: false });
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setPinMsg({ text: "PINs do not match", ok: false });
+      return;
+    }
+    setChangingPin(true);
+    setPinMsg(null);
+    try {
+      await changePin(user?.id || "", newPin);
+      setPinMsg({ text: "✓ PIN changed successfully!", ok: true });
+      setNewPin("");
+      setConfirmPin("");
+    } catch (err) {
+      setPinMsg({ text: `Error: ${err}`, ok: false });
+    }
+    setChangingPin(false);
   };
 
   if (isLoading || !localSettings) return <div className="flex items-center justify-center h-full" style={{ color: "#4A4A5A" }}><RefreshCw className="spin" /></div>;
@@ -692,47 +778,102 @@ export default function SettingsScreen() {
               </div>
             </div>
           )}
+
+          {localSettings.whatsapp_enabled && localSettings.whatsapp_api_url && (
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: "var(--border)" }}>
+              <div className="font-medium mb-3">Test WhatsApp</div>
+              <div className="space-y-2">
+                <input
+                  value={waTestPhone}
+                  onChange={(e) => setWaTestPhone(e.target.value)}
+                  placeholder="Phone number (e.g., +1234567890)"
+                />
+                <input
+                  value={waTestMessage}
+                  onChange={(e) => setWaTestMessage(e.target.value)}
+                  placeholder="Test message"
+                />
+                <button 
+                  onClick={handleSendTestWhatsApp}
+                  disabled={sendingWhatsapp || !waTestPhone || !waTestMessage}
+                  className="btn-success w-full flex items-center justify-center gap-2 text-sm"
+                >
+                  {sendingWhatsapp ? <RefreshCw size={14} className="spin" /> : "Send Test WhatsApp"}
+                </button>
+                {whatsappMsg && (
+                  <div className="text-xs mt-2" style={{ color: whatsappMsg.ok ? "#2ECC71" : "#E74C3C" }}>
+                    {whatsappMsg.text}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* LAN Sync */}
-        <div className="card p-5" style={{ opacity: 0.7 }}>
+        <div className="card p-5">
           <div className="flex items-center gap-2 mb-2">
             <span style={{ color: "#9B59B6" }}>🔗</span>
             <h2 className="font-semibold">LAN Sync</h2>
-            <span style={{ 
-              background: "#F39C12", 
-              color: "#fff", 
-              padding: "2px 8px", 
-              borderRadius: "4px", 
-              fontSize: "10px",
-              fontWeight: "600"
-            }}>COMING SOON</span>
+            {lanStatus?.running && (
+              <span style={{ 
+                background: "#2ECC71", 
+                color: "#fff", 
+                padding: "2px 8px", 
+                borderRadius: "4px", 
+                fontSize: "10px",
+                fontWeight: "600"
+              }}>RUNNING</span>
+            )}
           </div>
           <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
             Share orders and data between devices on the same network.
           </p>
+
+          <div className="mb-3">
+            <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Server Port</label>
+            <input 
+              type="number" 
+              value={localSettings.lan_server_port} 
+              onChange={(e) => {
+                const val = parseInt(e.target.value) || 8765;
+                updateLocal("lan_server_port", val);
+              }} 
+              min={1024} 
+              max={65535}
+              disabled={lanStatus?.running}
+            />
+          </div>
           
           <div className="flex items-center justify-between mb-3">
             <div>
-              <div className="font-medium">Enable LAN Sync</div>
-              <div className="text-xs" style={{ color: "#4A4A5A" }}>Run as server for other devices</div>
+              <div className="font-medium">
+                {lanStatus?.running ? `Server Running on Port ${lanStatus.port}` : "LAN Sync Server"}
+              </div>
+              <div className="text-xs" style={{ color: "#4A4A5A" }}>
+                {lanStatus?.running ? `${lanStatus.connected_clients} client(s) connected` : "Start server to share with other devices"}
+              </div>
             </div>
-            <div style={{
-              width: 48,
-              height: 24,
-              borderRadius: 12,
-              background: "#1E1E26",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center"
-            }}>
-              <div style={{
-                width: 20,
-                height: 20,
-                borderRadius: 10,
-                background: "#666"
-              }} />
-            </div>
+          </div>
+
+          <div className="flex gap-2">
+            {lanStatus?.running ? (
+              <button 
+                onClick={handleStopLan}
+                disabled={lanLoading}
+                className="btn-danger flex items-center gap-2 text-sm flex-1 justify-center"
+              >
+                {lanLoading ? <RefreshCw size={14} className="spin" /> : "Stop Server"}
+              </button>
+            ) : (
+              <button 
+                onClick={handleStartLan}
+                disabled={lanLoading}
+                className="btn-success flex items-center gap-2 text-sm flex-1 justify-center"
+              >
+                {lanLoading ? <RefreshCw size={14} className="spin" /> : "Start Server"}
+              </button>
+            )}
           </div>
         </div>
 
@@ -915,6 +1056,51 @@ export default function SettingsScreen() {
               {errors.contact_website && <div className="text-xs mt-1" style={{ color: "#E74C3C" }}><AlertCircle size={12} className="inline mr-1" />{errors.contact_website}</div>}
             </div>
           </div>
+        </div>
+
+        {/* Change PIN */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Key size={16} style={{ color: "#F5C842" }} />
+            <h2 className="font-semibold">Change PIN</h2>
+          </div>
+          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
+            Change your 4-digit login PIN. Current user: {user?.name} ({user?.role})
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>New PIN (4 digits)</label>
+              <input
+                value={newPin}
+                onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                placeholder="****"
+                type="password"
+                maxLength={4}
+              />
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Confirm PIN</label>
+              <input
+                value={confirmPin}
+                onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                placeholder="****"
+                type="password"
+                maxLength={4}
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleChangePin}
+            disabled={changingPin || newPin.length !== 4 || confirmPin.length !== 4}
+            className="btn-accent w-full mt-3 flex items-center justify-center gap-2 text-sm"
+          >
+            {changingPin ? <RefreshCw size={14} className="spin" /> : "Change PIN"}
+          </button>
+          {pinMsg && (
+            <div className="text-xs mt-2" style={{ color: pinMsg.ok ? "#2ECC71" : "#E74C3C" }}>
+              {pinMsg.text}
+            </div>
+          )}
         </div>
 
         <button className="btn-accent flex items-center gap-2 py-3 px-6 text-sm" onClick={handleSave}>

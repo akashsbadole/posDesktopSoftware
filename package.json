@@ -9,12 +9,15 @@
     "start": "next start",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:win64": "tauri build --target x86_64-pc-windows-msvc",
+    "tauri:build:win32": "tauri build --target i686-pc-windows-msvc",
+    "tauri:build:linux64": "tauri build --target x86_64-unknown-linux-gnu",
+    "tauri:build:all": "npm run tauri:build:win64 && npm run tauri:build:win32"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.9.3",
     "@tauri-apps/api": "^1.5.3",
-    "@tauri-apps/plugin-updater": "^4.0.0",
     "lucide-react": "^0.383.0",
     "next": "^16.1.6",
     "react": "^18",

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useCallback, useState } from "react";
-import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen } from "lucide-react";
-import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder } from "@/lib/db";
+import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet } from "lucide-react";
+import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet } from "@/lib/db";
 import { invoke } from "@tauri-apps/api/tauri";
 import { useCartStore, useProductsStore, useSettingsStore, useAuthStore } from "@/lib/stores";
 import { useGridNavigation } from "@/lib/keyboard";
@@ -58,6 +58,12 @@ export default function POSScreen() {
   const [showHeldOrders, setShowHeldOrders] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const productGridRef = useRef<HTMLDivElement>(null);
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponError, setCouponError] = useState("");
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [useWallet, setUseWallet] = useState(false);
+  const [walletCustomerId, setWalletCustomerId] = useState<string | null>(null);
 
   useEffect(() => { 
     fetchProducts(); 
@@ -153,13 +159,61 @@ export default function POSScreen() {
     addItem(product);
   };
 
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) return;
+    setCouponError("");
+    try {
+      const coupon = await validateCoupon(couponCode.trim(), getSubtotal());
+      setAppliedCoupon(coupon);
+      setCouponError("");
+    } catch (err) {
+      setCouponError(String(err));
+      setAppliedCoupon(null);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponError("");
+  };
+
+  const lookupCustomerWallet = async (phone: string) => {
+    if (!phone || phone.length < 7) return;
+    try {
+      const customer = await dbGetCustomerByPhone(phone);
+      if (customer) {
+        const wallet = await getCustomerWallet(customer.id);
+        setWalletBalance(wallet.balance);
+        setWalletCustomerId(customer.id);
+      } else {
+        setWalletBalance(0);
+        setWalletCustomerId(null);
+      }
+    } catch {
+      setWalletBalance(0);
+      setWalletCustomerId(null);
+    }
+  };
+
   const totals = {
     subtotal: getSubtotal(),
     tax_amount: getTaxAmount(),
     discount_amount: getDiscountAmount(),
     total: getTotal()
   };
-  const change = Math.max(0, amountPaid - totals.total);
+
+  const couponDiscount = appliedCoupon
+    ? appliedCoupon.discount_type === "percentage"
+      ? totals.subtotal * (appliedCoupon.discount_value / 100)
+      : appliedCoupon.discount_value
+    : 0;
+
+  const walletDeduction = useWallet && walletCustomerId ? Math.min(walletBalance, totals.total - couponDiscount) : 0;
+
+  const finalTotal = Math.max(0, totals.total - couponDiscount - walletDeduction);
+
+  const change = Math.max(0, amountPaid - finalTotal);
 
   const handleCheckout = async () => {
     if (cart.length === 0 || processing) return;
@@ -175,7 +229,7 @@ export default function POSScreen() {
       }
     }
     
-    if (paymentMethod === "cash" && (amountPaid || 0) < totals.total) {
+    if (paymentMethod === "cash" && (amountPaid || 0) < finalTotal) {
       newErrors.amount = "Insufficient amount tendered";
     }
     
@@ -189,14 +243,23 @@ export default function POSScreen() {
 
     const order = toOrder(uuid(), user?.id || "system", user?.name || "System");
     order.payment_method = paymentMethod;
-    order.amount_paid = paymentMethod === "cash" ? (amountPaid || 0) : totals.total;
+    order.amount_paid = paymentMethod === "cash" ? (amountPaid || 0) : finalTotal;
     order.change_amount = paymentMethod === "cash" ? change : 0;
     order.customer_name = customerInfo?.name || "";
     order.delivery_status = orderType === "delivery" ? "pending" : "delivered";
     order.delivery_address = customerInfo?.address || "";
     order.delivery_phone = customerInfo?.phone || "";
+    order.discount_amount = totals.discount_amount + couponDiscount + walletDeduction;
+    order.total = finalTotal;
 
     await dbSaveOrder(order);
+
+    if (appliedCoupon) {
+      try { await useCoupon(appliedCoupon.code); } catch (e) { console.error("Failed to mark coupon used:", e); }
+    }
+    if (useWallet && walletCustomerId && walletDeduction > 0) {
+      try { await deductWalletBalance(walletCustomerId, walletDeduction, order.id); } catch (e) { console.error("Failed to deduct wallet:", e); }
+    }
     
     try {
       await invoke("open_cash_drawer");
@@ -207,6 +270,12 @@ export default function POSScreen() {
     const rec = generateReceipt(order, settings);
     setReceipt(rec);
     clearCart();
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponError("");
+    setUseWallet(false);
+    setWalletBalance(0);
+    setWalletCustomerId(null);
     await Promise.all([fetchProducts(), loadHeldOrders()]);
     setProcessing(false);
   };
@@ -272,7 +341,7 @@ export default function POSScreen() {
     }
   };
 
-  const curr = settings?.currency ?? "₹";
+  const curr = settings?.currency_symbol ?? "₹";
 
   const handlePrint = async () => {
     if (!receipt) return;
@@ -569,6 +638,7 @@ export default function POSScreen() {
                   setCustomerInfo({ ...customerInfo, phone: e.target.value, name: customerInfo?.name || "", address: customerInfo?.address || "" } as any);
                   setErrors(prev => ({ ...prev, phone: "" }));
                 }}
+                onBlur={(e) => lookupCustomerWallet(e.target.value)}
                 style={{ fontSize: 13, padding: "7px 12px" }} 
                 className={errors.phone ? "error" : ""}
               />
@@ -671,12 +741,61 @@ export default function POSScreen() {
               <span className="text-sm" style={{ color: "#4A4A5A" }}>%</span>
             </div>
 
+            {/* Coupon Code */}
+            <div className="flex items-center gap-2">
+              <Tag size={14} style={{ color: "#4A4A5A" }} />
+              <input
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                placeholder="Coupon code"
+                className="flex-1"
+                style={{ fontSize: 13, padding: "5px 8px" }}
+                disabled={!!appliedCoupon}
+                onKeyDown={(e) => { if (e.key === "Enter") handleApplyCoupon(); }}
+              />
+              {appliedCoupon ? (
+                <button onClick={handleRemoveCoupon} className="btn-ghost py-1 px-2 text-xs" style={{ color: "#E74C3C" }}>Remove</button>
+              ) : (
+                <button onClick={handleApplyCoupon} className="btn-ghost py-1 px-2 text-xs" disabled={!couponCode.trim()}>Apply</button>
+              )}
+            </div>
+            {couponError && <div className="text-xs" style={{ color: "#E74C3C" }}>{couponError}</div>}
+            {appliedCoupon && <div className="text-xs" style={{ color: "#2ECC71" }}>✓ Coupon "{appliedCoupon.code}" applied ({appliedCoupon.discount_type === "percentage" ? `${appliedCoupon.discount_value}%` : `${curr}${appliedCoupon.discount_value}`})</div>}
+
+            {/* Wallet */}
+            {walletCustomerId && walletBalance > 0 && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Wallet size={14} style={{ color: "#3498DB" }} />
+                  <span className="text-sm" style={{ color: "#9090A8" }}>Wallet: {curr}{walletBalance.toFixed(2)}</span>
+                </div>
+                <button
+                  onClick={() => setUseWallet(!useWallet)}
+                  style={{
+                    width: 44, height: 24, borderRadius: 12,
+                    background: useWallet ? "#3498DB" : "#1E1E26",
+                    border: "none", cursor: "pointer",
+                  }}
+                >
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 9,
+                    background: "#fff",
+                    position: "relative",
+                    left: useWallet ? 24 : 2,
+                    transition: "left 0.2s",
+                  }} />
+                </button>
+              </div>
+            )}
+
             <div className="space-y-1.5 text-sm" role="status" aria-live="polite">
               <div className="flex justify-between" style={{ color: "#9090A8" }}><span>Subtotal</span><span>{curr}{totals.subtotal.toFixed(2)}</span></div>
               <div className="flex justify-between" style={{ color: "#9090A8" }}><span>Tax</span><span>+{curr}{totals.tax_amount.toFixed(2)}</span></div>
               {totals.discount_amount > 0 && <div className="flex justify-between" style={{ color: "#2ECC71" }}><span>Discount</span><span>−{curr}{totals.discount_amount.toFixed(2)}</span></div>}
+              {couponDiscount > 0 && <div className="flex justify-between" style={{ color: "#2ECC71" }}><span>Coupon</span><span>−{curr}{couponDiscount.toFixed(2)}</span></div>}
+              {walletDeduction > 0 && <div className="flex justify-between" style={{ color: "#3498DB" }}><span>Wallet</span><span>−{curr}{walletDeduction.toFixed(2)}</span></div>}
               <div className="flex justify-between font-bold text-base pt-1 border-t border-border">
-                <span>Total</span><span style={{ color: "#F5C842" }} aria-label={`Total amount: ${curr}${totals.total.toFixed(2)}`}>{curr}{totals.total.toFixed(2)}</span>
+                <span>Total</span><span style={{ color: "#F5C842" }} aria-label={`Total amount: ${curr}${finalTotal.toFixed(2)}`}>{curr}{finalTotal.toFixed(2)}</span>
               </div>
             </div>
 
@@ -757,12 +876,12 @@ export default function POSScreen() {
               <button 
                 className="btn-accent flex-[2] flex items-center justify-center gap-2 py-3 text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] focus-visible:ring-offset-2 focus-visible:ring-offset-[#141418]"
                 onClick={handleCheckout}
-                disabled={processing || cart.length === 0 || (paymentMethod === "cash" && (amountPaid || 0) < totals.total)}
+                disabled={processing || cart.length === 0 || (paymentMethod === "cash" && (amountPaid || 0) < finalTotal)}
                 data-checkout-button
-                aria-label={processing ? "Processing order..." : `Complete order - Charge ${curr}${totals.total.toFixed(2)}`}
+                aria-label={processing ? "Processing order..." : `Complete order - Charge ${curr}${finalTotal.toFixed(2)}`}
               >
                 {processing ? <RefreshCw size={16} className="spin" aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
-                {processing ? "Processing..." : `Charge ${curr}${totals.total.toFixed(2)}`}
+                {processing ? "Processing..." : `Charge ${curr}${finalTotal.toFixed(2)}`}
               </button>
             </div>
           </div>
@@ -770,17 +889,21 @@ export default function POSScreen() {
       </div>
 
       {/* Held Orders Modal */}
-      {showHeldOrders && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
-          <div className="card p-6 w-[500px] max-h-[80vh] overflow-y-auto fade-in" role="dialog" aria-modal="true" aria-labelledby="held-orders-title">
-            <div className="flex items-center justify-between mb-4">
-              <h2 id="held-orders-title" className="font-display text-lg flex items-center gap-2" style={{ color: "#F5C842" }}>
-                <Clock size={20} /> Held Orders
-              </h2>
-              <button onClick={() => setShowHeldOrders(false)} className="btn-ghost py-1 px-3" aria-label="Close">
-                <X size={16} />
-              </button>
-            </div>
+       {showHeldOrders && (
+         <div 
+           className="fixed inset-0 z-50 flex items-center justify-center" 
+          style={{ background: "rgba(0,0,0,0.7)" }}
+          onClick={(e) => e.target === e.currentTarget && setShowHeldOrders(false)}
+        >
+           <div className="card p-6 w-[500px] max-h-[80vh] overflow-y-auto fade-in" role="dialog" aria-modal="true" aria-labelledby="held-orders-title">
+             <div className="flex items-center justify-between mb-4">
+               <h2 id="held-orders-title" className="font-display text-lg flex items-center gap-2" style={{ color: "#F5C842" }}>
+                 <Clock size={20} /> Held Orders
+               </h2>
+               <button onClick={() => setShowHeldOrders(false)} className="btn-ghost py-1 px-3" aria-label="Close">
+                 <X size={16} />
+               </button>
+             </div>
 
             {heldOrders.length === 0 ? (
               <div className="text-center py-8" style={{ color: "#4A4A5A" }}>

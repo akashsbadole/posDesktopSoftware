@@ -175,33 +175,36 @@ export default function WalletScreen() {
         </div>
       </div>
 
-      {showLoadForm && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="card p-6 w-96">
-            <h2 className="text-lg font-bold mb-4">Load Money to Wallet</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Amount</label>
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full text-2xl font-bold text-center"
-                  placeholder="0.00"
-                  autoFocus
-                />
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {[100, 200, 500, 1000].map((v) => (
-                  <button key={v} onClick={() => setAmount(v)} className="btn-ghost py-2">{v}</button>
-                ))}
-              </div>
-              <button onClick={handleLoadMoney} className="btn-accent w-full">Load ₹{amount}</button>
-              <button onClick={() => setShowLoadForm(false)} className="btn-ghost w-full">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
+       {showLoadForm && (
+         <div 
+           className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+           onClick={(e) => e.target === e.currentTarget && setShowLoadForm(false)}
+         >
+           <div className="card p-6 w-96">
+             <h2 className="text-lg font-bold mb-4">Load Money to Wallet</h2>
+             <div className="space-y-4">
+               <div>
+                 <label className="block text-sm text-gray-400 mb-1">Amount</label>
+                 <input
+                   type="number"
+                   value={amount}
+                   onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+                   className="w-full text-2xl font-bold text-center"
+                   placeholder="0.00"
+                   autoFocus
+                 />
+               </div>
+               <div className="grid grid-cols-4 gap-2">
+                 {[100, 200, 500, 1000].map((v) => (
+                   <button key={v} onClick={() => setAmount(v)} className="btn-ghost py-2">{v}</button>
+                 ))}
+               </div>
+               <button onClick={handleLoadMoney} className="btn-accent w-full">Load ₹{amount}</button>
+               <button onClick={() => setShowLoadForm(false)} className="btn-ghost w-full">Cancel</button>
+             </div>
+           </div>
+         </div>
+       )}
     </div>
   );
 }

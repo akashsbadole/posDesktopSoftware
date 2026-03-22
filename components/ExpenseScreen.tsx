@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, DollarSign, Calendar, Filter, Download, TrendingDown } from "lucide-react";
-import { getExpenses, getExpensesByRange, saveExpense, deleteExpense, getExpenseCategories } from "@/lib/db";
+import { Plus, Trash2, DollarSign, Calendar, Filter, Download, TrendingDown, Settings } from "lucide-react";
+import { getExpenses, getExpensesByRange, saveExpense, deleteExpense, getExpenseCategories, saveExpenseCategory } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 
 interface Expense {
@@ -47,6 +47,8 @@ export default function ExpenseScreen() {
     end: new Date().toISOString().split("T")[0],
   });
   const [totalExpenses, setTotalExpenses] = useState(0);
+  const [showCatForm, setShowCatForm] = useState(false);
+  const [catForm, setCatForm] = useState({ name: "", icon: "📝" });
 
   useEffect(() => {
     loadExpenses();
@@ -75,6 +77,14 @@ export default function ExpenseScreen() {
     await saveExpense(expense);
     setShowForm(false);
     setFormData({ category: "Miscellaneous", amount: 0, description: "", payment_method: "cash" });
+    loadExpenses();
+  };
+
+  const handleSaveCategory = async () => {
+    if (!catForm.name.trim()) return;
+    await saveExpenseCategory({ id: uuid(), name: catForm.name.trim(), icon: catForm.icon });
+    setShowCatForm(false);
+    setCatForm({ name: "", icon: "📝" });
     loadExpenses();
   };
 
@@ -108,6 +118,9 @@ export default function ExpenseScreen() {
         <div className="flex gap-2">
           <button onClick={exportCSV} className="btn-ghost flex items-center gap-2">
             <Download size={18} /> Export
+          </button>
+          <button onClick={() => setShowCatForm(true)} className="btn-ghost flex items-center gap-2">
+            <Settings size={18} /> Categories
           </button>
           <button onClick={() => setShowForm(true)} className="btn-accent flex items-center gap-2">
             <Plus size={18} /> Add Expense
@@ -172,37 +185,69 @@ export default function ExpenseScreen() {
         </div>
       )}
 
-      {showForm && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="card p-6 w-96">
-            <h2 className="text-lg font-bold mb-4">Add Expense</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Category</label>
-                <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="w-full">
-                  {categories.map((c) => (<option key={c.id} value={c.name}>{c.icon} {c.name}</option>))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Amount</label>
-                <input type="number" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })} className="w-full" placeholder="0.00" />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Description</label>
-                <input type="text" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="w-full" placeholder="Optional" />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Payment Method</label>
-                <select value={formData.payment_method} onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })} className="w-full">
-                  <option value="cash">Cash</option>
-                  <option value="upi">UPI</option>
-                  <option value="card">Card</option>
-                  <option value="bank">Bank Transfer</option>
-                </select>
-              </div>
-              <button onClick={handleSave} className="btn-accent w-full">Save Expense</button>
+       {showForm && (
+         <div 
+           className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+           onClick={(e) => e.target === e.currentTarget && setShowForm(false)}
+         >
+           <div className="card p-6 w-96">
+             <h2 className="text-lg font-bold mb-4">Add Expense</h2>
+             <div className="space-y-4">
+               <div>
+                 <label className="block text-sm text-gray-400 mb-1">Category</label>
+                 <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="w-full">
+                   {categories.map((c) => (<option key={c.id} value={c.name}>{c.icon} {c.name}</option>))}
+                 </select>
+               </div>
+               <div>
+                 <label className="block text-sm text-gray-400 mb-1">Amount</label>
+                 <input type="number" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })} className="w-full" placeholder="0.00" />
+               </div>
+               <div>
+                 <label className="block text-sm text-gray-400 mb-1">Description</label>
+                 <input type="text" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="w-full" placeholder="Optional" />
+               </div>
+               <div>
+                 <label className="block text-sm text-gray-400 mb-1">Payment Method</label>
+                 <select value={formData.payment_method} onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })} className="w-full">
+                   <option value="cash">Cash</option>
+                   <option value="upi">UPI</option>
+                   <option value="card">Card</option>
+                   <option value="bank">Bank Transfer</option>
+                 </select>
+               </div>
+               <button onClick={handleSave} className="btn-accent w-full">Save Expense</button>
+             </div>
+             <button onClick={() => setShowForm(false)} className="absolute top-4 right-4 btn-ghost p-1"><Trash2 size={20} /></button>
+           </div>
+         </div>
+       )}
+
+       {/* Category Management Modal */}
+       {showCatForm && (
+         <div 
+           className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+           onClick={(e) => e.target === e.currentTarget && setShowCatForm(false)}
+         >
+           <div className="card p-6 w-96 fade-in">
+             <h2 className="text-lg font-bold mb-4">Manage Categories</h2>
+             <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+               {categories.map((cat) => (
+                <div key={cat.id} className="flex items-center gap-2 p-2 rounded-lg" style={{ background: "#1E1E26" }}>
+                  <span>{cat.icon}</span>
+                  <span className="text-sm">{cat.name}</span>
+                </div>
+              ))}
             </div>
-            <button onClick={() => setShowForm(false)} className="absolute top-4 right-4 btn-ghost p-1"><Trash2 size={20} /></button>
+            <div className="border-t pt-4" style={{ borderColor: "var(--border)" }}>
+              <h3 className="text-sm font-semibold mb-2">Add New Category</h3>
+              <div className="flex gap-2">
+                <input value={catForm.icon} onChange={(e) => setCatForm({ ...catForm, icon: e.target.value })} style={{ width: 48, textAlign: "center" }} placeholder="📝" />
+                <input value={catForm.name} onChange={(e) => setCatForm({ ...catForm, name: e.target.value })} className="flex-1" placeholder="Category name" onKeyDown={(e) => { if (e.key === "Enter") handleSaveCategory(); }} />
+                <button onClick={handleSaveCategory} className="btn-accent py-2 px-3 text-sm" disabled={!catForm.name.trim()}>Add</button>
+              </div>
+            </div>
+            <button onClick={() => setShowCatForm(false)} className="btn-ghost w-full mt-4">Close</button>
           </div>
         </div>
       )}

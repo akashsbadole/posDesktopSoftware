@@ -139,51 +139,54 @@ export default function StaffScheduling() {
         </div>
       )}
 
-      {showForm && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="card p-6 w-96">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold">{editingShift ? "Edit Shift" : "Add Shift"}</h2>
-              <button onClick={() => { setShowForm(false); setEditingShift(null); }} className="btn-ghost p-1"><X size={20} /></button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Staff Member</label>
-                <select value={formData.staff_id} onChange={(e) => setFormData({ ...formData, staff_id: e.target.value })} className="w-full">
-                  <option value="">Select Staff</option>
-                  {staff.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Start Time</label>
-                  <input type="time" value={formData.start_time} onChange={(e) => setFormData({ ...formData, start_time: e.target.value })} className="w-full" />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">End Time</label>
-                  <input type="time" value={formData.end_time} onChange={(e) => setFormData({ ...formData, end_time: e.target.value })} className="w-full" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Role</label>
-                <select value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })} className="w-full">
-                  <option value="cashier">Cashier</option>
-                  <option value="waiter">Waiter</option>
-                  <option value="kitchen">Kitchen</option>
-                  <option value="manager">Manager</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Notes</label>
-                <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="w-full" rows={2} />
-              </div>
-              <button onClick={handleSave} className="btn-accent w-full flex items-center justify-center gap-2">
-                <Save size={18} /> Save Shift
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+       {showForm && (
+         <div 
+           className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+           onClick={(e) => e.target === e.currentTarget && setShowForm(false)}
+         >
+           <div className="card p-6 w-96">
+             <div className="flex items-center justify-between mb-4">
+               <h2 className="text-lg font-bold">{editingShift ? "Edit Shift" : "Add Shift"}</h2>
+               <button onClick={() => { setShowForm(false); setEditingShift(null); }} className="btn-ghost p-1"><X size={20} /></button>
+             </div>
+             <div className="space-y-4">
+               <div>
+                 <label className="block text-sm text-gray-400 mb-1">Staff Member</label>
+                 <select value={formData.staff_id} onChange={(e) => setFormData({ ...formData, staff_id: e.target.value })} className="w-full">
+                   <option value="">Select Staff</option>
+                   {staff.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+                 </select>
+               </div>
+               <div className="grid grid-cols-2 gap-4">
+                 <div>
+                   <label className="block text-sm text-gray-400 mb-1">Start Time</label>
+                   <input type="time" value={formData.start_time} onChange={(e) => setFormData({ ...formData, start_time: e.target.value })} className="w-full" />
+                 </div>
+                 <div>
+                   <label className="block text-sm text-gray-400 mb-1">End Time</label>
+                   <input type="time" value={formData.end_time} onChange={(e) => setFormData({ ...formData, end_time: e.target.value })} className="w-full" />
+                 </div>
+               </div>
+               <div>
+                 <label className="block text-sm text-gray-400 mb-1">Role</label>
+                 <select value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })} className="w-full">
+                   <option value="cashier">Cashier</option>
+                   <option value="waiter">Waiter</option>
+                   <option value="kitchen">Kitchen</option>
+                   <option value="manager">Manager</option>
+                 </select>
+               </div>
+               <div>
+                 <label className="block text-sm text-gray-400 mb-1">Notes</label>
+                 <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="w-full" rows={2} />
+               </div>
+               <button onClick={handleSave} className="btn-accent w-full flex items-center justify-center gap-2">
+                 <Save size={18} /> Save Shift
+               </button>
+             </div>
+           </div>
+         </div>
+       )}
     </div>
   );
 }

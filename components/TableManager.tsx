@@ -7,15 +7,26 @@ import { useTablesStore } from "@/lib/stores";
 
 interface TableManagerProps {
   onClose?: () => void;
+  isOpen?: boolean;
 }
 
-export default function TableManager({ onClose }: TableManagerProps) {
+export default function TableManager({ onClose, isOpen = true }: TableManagerProps) {
   const { tables, isLoading, fetchTables, addTable, deleteTable, setTableStatus, updateTable } = useTablesStore();
   const [editingTable, setEditingTable] = useState<Table | null>(null);
+  const [showModal, setShowModal] = useState(isOpen);
+
+  useEffect(() => {
+    setShowModal(isOpen);
+  }, [isOpen]);
 
   useEffect(() => {
     fetchTables();
   }, []);
+
+  const handleClose = () => {
+    setShowModal(false);
+    onClose?.();
+  };
 
   const handleSave = async () => {
     if (!editingTable) return;
@@ -75,15 +86,21 @@ export default function TableManager({ onClose }: TableManagerProps) {
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)" }}>
-      <div className="card w-[700px] max-h-[80vh] overflow-hidden flex flex-col fade-in" role="dialog" aria-modal="true" aria-labelledby="table-manager-title">
-        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--border)" }}>
-          <h2 id="table-manager-title" className="font-display text-lg font-bold flex items-center gap-2">
-            <Users size={20} style={{ color: "#F5C842" }} /> Table Manager
-          </h2>
-          <button onClick={onClose} className="btn-ghost py-1 px-3"><X size={18} /></button>
-        </div>
+  if (!showModal) return null;
+
+   return (
+      <div 
+        className="fixed inset-0 z-50 flex items-center justify-center" 
+       style={{ background: "rgba(0,0,0,0.7)" }}
+       onClick={(e) => e.target === e.currentTarget && handleClose()}
+     >
+       <div className="card w-[700px] max-h-[80vh] overflow-hidden flex flex-col fade-in" role="dialog" aria-modal="true" aria-labelledby="table-manager-title">
+         <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--border)" }}>
+           <h2 id="table-manager-title" className="font-display text-lg font-bold flex items-center gap-2">
+             <Users size={20} style={{ color: "#F5C842" }} /> Table Manager
+           </h2>
+              <button onClick={handleClose} className="btn-ghost py-1 px-3"><X size={18} /></button>
+         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
           {isLoading ? (

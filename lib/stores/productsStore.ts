@@ -39,27 +39,48 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
   },
 
   addProduct: async (product: Product) => {
-    await dbSaveProduct(product);
-    await get().fetchProducts();
+    try {
+      await dbSaveProduct(product);
+      await get().fetchProducts();
+    } catch (err) {
+      set({ error: (err as Error).message });
+      throw err;
+    }
   },
 
   updateProduct: async (product: Product) => {
-    await dbSaveProduct(product);
-    await get().fetchProducts();
+    try {
+      await dbSaveProduct(product);
+      await get().fetchProducts();
+    } catch (err) {
+      set({ error: (err as Error).message });
+      throw err;
+    }
   },
 
   deleteProduct: async (id: string) => {
-    await dbDeleteProduct(id);
-    await get().fetchProducts();
+    try {
+      await dbDeleteProduct(id);
+      await get().fetchProducts();
+    } catch (err) {
+      set({ error: (err as Error).message });
+      throw err;
+    }
   },
 
   updateStock: async (id: string, delta: number) => {
+    const previousProducts = get().products;
     set((state) => ({
       products: state.products.map((p) =>
         p.id === id ? { ...p, stock: Math.max(0, p.stock + delta) } : p
       ),
     }));
-    await dbUpdateStock(id, delta);
+    try {
+      await dbUpdateStock(id, delta);
+    } catch (err) {
+      set({ products: previousProducts, error: (err as Error).message });
+      throw err;
+    }
   },
 
   setSelectedCategory: (selectedCategory) => set({ selectedCategory }),

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
+import HeaderBar from "@/components/HeaderBar";
 import POSScreen from "@/components/POSScreen";
 import OrdersScreen from "@/components/OrdersScreen";
 import ProductsScreen from "@/components/ProductsScreen";
@@ -20,12 +21,21 @@ import TableManager from "@/components/TableManager";
 import CouponsScreen from "@/components/CouponsScreen";
 import WalletScreen from "@/components/WalletScreen";
 import GstReportsScreen from "@/components/GstReportsScreen";
+import SuppliersScreen from "@/components/SuppliersScreen";
+import PurchaseOrdersScreen from "@/components/PurchaseOrdersScreen";
+import ReservationsScreen from "@/components/ReservationsScreen";
+import IngredientsScreen from "@/components/IngredientsScreen";
+import StaffScheduling from "@/components/StaffScheduling";
+import DayEndReconciliation from "@/components/DayEndReconciliation";
+import RefundRequestsScreen from "@/components/RefundRequestsScreen";
+import InventoryAlertsScreen from "@/components/InventoryAlertsScreen";
+import ContactTraining from "@/components/ContactTraining";
 import { dbGetPendingOrdersCount } from "@/lib/db";
 import { useAuthStore } from "@/lib/stores";
 
-export type Screen = "pos" | "orders" | "products" | "dashboard" | "settings" | "reports" | "logs" | "kds" | "expenses" | "staff" | "customers" | "tables" | "coupons" | "wallet" | "gst";
+export type Screen = "pos" | "orders" | "products" | "dashboard" | "settings" | "reports" | "logs" | "kds" | "expenses" | "staff" | "customers" | "tables" | "coupons" | "wallet" | "gst" | "suppliers" | "purchase_orders" | "reservations" | "ingredients" | "scheduling" | "reconciliation" | "refund_requests" | "inventory_alerts" | "contact_training";
 
-const adminScreens: Screen[] = ["settings", "reports", "logs", "expenses", "staff", "coupons", "wallet", "gst"];
+const adminScreens: Screen[] = ["settings", "reports", "logs", "expenses", "staff", "coupons", "wallet", "gst", "suppliers", "purchase_orders", "ingredients", "scheduling", "reconciliation", "refund_requests", "inventory_alerts"];
 
 const screenShortcuts: Record<string, Screen> = {
   "F1": "pos",
@@ -44,6 +54,7 @@ export default function Home() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
   const [showRecovery, setShowRecovery] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
 
   const { user, isAuthenticated, logout } = useAuthStore();
 
@@ -51,6 +62,13 @@ export default function Home() {
     setMounted(true);
     checkPendingOrders();
   }, []);
+
+  useEffect(() => {
+    if (isLocked && user) {
+      logout();
+      setIsLocked(false);
+    }
+  }, [isLocked, user, logout]);
 
   const checkPendingOrders = async () => {
     try {
@@ -69,6 +87,12 @@ export default function Home() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       
+      if ((e.ctrlKey || e.metaKey) && e.key === "l") {
+        e.preventDefault();
+        setIsLocked(true);
+        return;
+      }
+
       if (e.key === "?") {
         e.preventDefault();
         setShowShortcuts((prev) => !prev);
@@ -92,6 +116,11 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isAuthenticated, showShortcuts, user]);
 
+  const handleLock = () => {
+    setIsLocked(true);
+    logout();
+  };
+
   if (!mounted) return null;
 
   const isAdmin = user?.role === "admin";
@@ -103,42 +132,67 @@ export default function Home() {
 
   if (isAdminScreen && !isAdmin) {
     return (
-      <div className="flex h-screen overflow-hidden bg-bg" role="application" aria-label="POS Application">
-        <Sidebar activeScreen={screen} setScreen={setScreen} user={user!} />
-        <main id="main-content" className="flex-1 overflow-hidden flex items-center justify-center" role="main" aria-label="Access denied">
-          <div className="text-center" style={{ color: "#4A4A5A" }} role="alert">
-            <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
-            <p>You need admin privileges to access this section.</p>
-          </div>
-        </main>
+      <div className="flex flex-col h-screen overflow-hidden bg-bg" role="application" aria-label="POS Application">
+        <HeaderBar 
+          user={user} 
+          onShowShortcuts={() => setShowShortcuts(true)} 
+          onLock={handleLock}
+          currentScreen={screen}
+        />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar activeScreen={screen} setScreen={setScreen} user={user!} onLock={handleLock} />
+          <main id="main-content" className="flex-1 overflow-hidden flex items-center justify-center" role="main" aria-label="Access denied">
+            <div className="text-center" style={{ color: "#4A4A5A" }} role="alert">
+              <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+              <p>You need admin privileges to access this section.</p>
+            </div>
+          </main>
+        </div>
       </div>
     );
   }
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen overflow-hidden bg-bg" role="application" aria-label="POS Application">
-        {showRecovery && <CrashRecovery onComplete={() => setShowRecovery(false)} />}
-        <Sidebar activeScreen={screen} setScreen={setScreen} user={user!} />
-        <main id="main-content" className="flex-1 overflow-hidden" role="main" aria-label="Main content">
-          <ErrorBoundary>
-            {screen === "pos" && <POSScreen />}
-            {screen === "orders" && <OrdersScreen />}
-            {screen === "products" && <ProductsScreen />}
-            {screen === "dashboard" && <DashboardScreen />}
-            {screen === "settings" && <SettingsScreen />}
-            {screen === "reports" && <ReportsScreen />}
-            {screen === "logs" && <ActivityLogsScreen />}
-            {screen === "kds" && <KDSScreen />}
-            {screen === "expenses" && <ExpenseScreen />}
-            {screen === "staff" && <StaffAttendance />}
-            {screen === "customers" && <CustomerCRM />}
-            {screen === "tables" && <TableManager />}
-            {screen === "coupons" && <CouponsScreen />}
-            {screen === "wallet" && <WalletScreen />}
-            {screen === "gst" && <GstReportsScreen />}
-          </ErrorBoundary>
-        </main>
+      <div className="flex flex-col h-screen overflow-hidden bg-bg" role="application" aria-label="POS Application">
+        <HeaderBar 
+          user={user} 
+          onShowShortcuts={() => setShowShortcuts(true)} 
+          onLock={handleLock}
+          currentScreen={screen}
+        />
+        <div className="flex flex-1 overflow-hidden">
+          {showRecovery && <CrashRecovery onComplete={() => setShowRecovery(false)} />}
+          <Sidebar activeScreen={screen} setScreen={setScreen} user={user!} onLock={handleLock} />
+          <main id="main-content" className="flex-1 overflow-hidden" role="main" aria-label="Main content">
+            <ErrorBoundary>
+              {screen === "pos" && <POSScreen />}
+              {screen === "orders" && <OrdersScreen />}
+              {screen === "products" && <ProductsScreen />}
+              {screen === "dashboard" && <DashboardScreen />}
+              {screen === "settings" && <SettingsScreen />}
+              {screen === "reports" && <ReportsScreen />}
+              {screen === "logs" && <ActivityLogsScreen />}
+              {screen === "kds" && <KDSScreen />}
+              {screen === "expenses" && <ExpenseScreen />}
+              {screen === "staff" && <StaffAttendance />}
+              {screen === "customers" && <CustomerCRM />}
+              {screen === "tables" && <TableManager />}
+              {screen === "coupons" && <CouponsScreen />}
+              {screen === "wallet" && <WalletScreen />}
+              {screen === "gst" && <GstReportsScreen />}
+              {screen === "suppliers" && <SuppliersScreen />}
+              {screen === "purchase_orders" && <PurchaseOrdersScreen />}
+              {screen === "reservations" && <ReservationsScreen />}
+              {screen === "ingredients" && <IngredientsScreen />}
+              {screen === "scheduling" && <StaffScheduling />}
+              {screen === "reconciliation" && <DayEndReconciliation />}
+              {screen === "refund_requests" && <RefundRequestsScreen />}
+              {screen === "inventory_alerts" && <InventoryAlertsScreen />}
+              {screen === "contact_training" && <ContactTraining />}
+            </ErrorBoundary>
+          </main>
+        </div>
         <KeyboardShortcutsModal 
           isOpen={showShortcuts} 
           onClose={() => setShowShortcuts(false)}

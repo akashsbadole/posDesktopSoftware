@@ -71,7 +71,7 @@ export default function ProductsScreen() {
     await deleteProduct(id);
   };
 
-  const curr = settings?.currency ?? "₹";
+  const curr = settings?.currency_symbol ?? "₹";
 
   return (
     <div className="h-full flex overflow-hidden">

@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>POS Tauri — Restaurant Billing Made Simple</title>
+  <meta name="description" content="A fully offline, restaurant-grade Point of Sale desktop application. Built with Tauri, Next.js, SQLite. Works on Windows, macOS, Linux." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0D0D0F;
+      --surface: #141418;
+      --surface-2: #1E1E26;
+      --border: #2A2A36;
+      --text: #E8E8F0;
+      --text-muted: #9090A8;
+      --accent: #F5C842;
+      --accent-dim: rgba(245, 200, 66, 0.12);
+      --green: #2ECC71;
+      --blue: #3498DB;
+      --red: #E74C3C;
+      --purple: #9B59B6;
+      --orange: #F39C12;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── NAV ────────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 16px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(13, 13, 15, 0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 20px;
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .nav-logo .logo-box {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: var(--bg);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    .nav-cta {
+      background: var(--accent);
+      color: var(--bg) !important;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .nav-cta:hover { opacity: 0.9; }
+
+    /* ─── HERO ───────────────────────────────────────── */
+    .hero {
+      padding: 160px 48px 100px;
+      text-align: center;
+      max-width: 900px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(245, 200, 66, 0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(245, 200, 66, 0.2);
+      color: var(--accent);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 28px;
+    }
+
+    .hero h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 56px;
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 20px;
+      letter-spacing: -1px;
+    }
+
+    .hero h1 span { color: var(--accent); }
+
+    .hero p {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 620px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+
+    .hero-buttons {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 56px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg);
+      padding: 14px 32px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 15px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+
+    .btn-secondary {
+      background: var(--surface-2);
+      color: var(--text);
+      padding: 14px 32px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover { border-color: var(--text-muted); }
+
+    /* ─── STATS BAR ──────────────────────────────────── */
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 56px;
+      padding: 40px 48px;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-num {
+      font-family: 'Syne', sans-serif;
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--accent);
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* ─── SECTIONS ───────────────────────────────────── */
+    section {
+      padding: 80px 48px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 36px;
+      font-weight: 800;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+
+    .section-desc {
+      font-size: 16px;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin-bottom: 48px;
+    }
+
+    /* ─── FEATURE GRID ───────────────────────────────── */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px;
+      transition: all 0.25s;
+    }
+
+    .feature-card:hover {
+      border-color: rgba(245, 200, 66, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .feature-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      margin-bottom: 16px;
+    }
+
+    .feature-card h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* ─── ALL FEATURES TABLE ─────────────────────────── */
+    .features-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 32px;
+    }
+
+    .features-table th {
+      text-align: left;
+      padding: 12px 16px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 2px solid var(--border);
+    }
+
+    .features-table td {
+      padding: 10px 16px;
+      font-size: 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .features-table tr:hover td {
+      background: var(--surface);
+    }
+
+    .cat-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .cat-pos       { background: rgba(245,200,66,0.12); color: var(--accent); }
+    .cat-orders    { background: rgba(46,204,113,0.12); color: var(--green); }
+    .cat-products  { background: rgba(52,152,219,0.12); color: var(--blue); }
+    .cat-staff     { background: rgba(155,89,182,0.12); color: var(--purple); }
+    .cat-finance   { background: rgba(243,156,18,0.12); color: var(--orange); }
+    .cat-tables    { background: rgba(231,76,60,0.12); color: var(--red); }
+    .cat-integrations { background: rgba(46,204,113,0.12); color: var(--green); }
+
+    /* ─── SCREENSHOTS / MOCKUP ───────────────────────── */
+    .screens-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-top: 40px;
+    }
+
+    .screen-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      text-align: center;
+      transition: all 0.25s;
+    }
+
+    .screen-card:hover {
+      border-color: rgba(245, 200, 66, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .screen-placeholder {
+      height: 160px;
+      border-radius: 8px;
+      background: var(--surface-2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      margin-bottom: 14px;
+    }
+
+    .screen-card h4 {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .screen-card p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ─── TECH STACK ─────────────────────────────────── */
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-top: 40px;
+    }
+
+    .tech-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .tech-card .tech-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
+
+    .tech-card h4 {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .tech-card p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ─── CTA ────────────────────────────────────────── */
+    .cta-section {
+      text-align: center;
+      padding: 100px 48px;
+      position: relative;
+    }
+
+    .cta-section::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(245, 200, 66, 0.05) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .cta-section h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 40px;
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+
+    .cta-section p {
+      font-size: 16px;
+      color: var(--text-muted);
+      margin-bottom: 32px;
+    }
+
+    /* ─── FOOTER ─────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    footer a:hover { color: var(--text); }
+
+    /* ─── RESPONSIVE ─────────────────────────────────── */
+    @media (max-width: 900px) {
+      nav { padding: 12px 20px; }
+      .nav-links { display: none; }
+      .hero { padding: 120px 20px 60px; }
+      .hero h1 { font-size: 36px; }
+      .hero p { font-size: 16px; }
+      .stats { flex-wrap: wrap; gap: 32px; }
+      section { padding: 60px 20px; }
+      .feature-grid, .screens-row, .tech-grid { grid-template-columns: 1fr; }
+      .section-title { font-size: 28px; }
+      .cta-section { padding: 60px 20px; }
+      .cta-section h2 { font-size: 28px; }
+      footer { flex-direction: column; gap: 12px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <a href="#" class="nav-logo">
+      <div class="logo-box">⚡</div>
+      POS Tauri
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#screens">Screens</a></li>
+      <li><a href="#stack">Tech Stack</a></li>
+      <li><a href="#all-features">All Features</a></li>
+      <li><a href="#cta" class="nav-cta">Download</a></li>
+    </ul>
+  </nav>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-badge">⚡ Desktop-first • Offline-capable</div>
+    <h1>Restaurant Billing<br/><span>Made Simple.</span></h1>
+    <p>A fully offline, restaurant-grade Point of Sale desktop application. No internet required. No subscriptions. Your data stays on your machine.</p>
+    <div class="hero-buttons">
+      <a href="#cta" class="btn-primary">Download for Free</a>
+      <a href="#features" class="btn-secondary">Explore Features</a>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-num">23</div>
+      <div class="stat-label">Screens</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">98</div>
+      <div class="stat-label">Backend Commands</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">28</div>
+      <div class="stat-label">Database Tables</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">3</div>
+      <div class="stat-label">Platforms</div>
+    </div>
+  </div>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <div class="section-label">Features</div>
+    <h2 class="section-title">Everything you need to run a restaurant.</h2>
+    <p class="section-desc">Built for speed, designed for offline use. No internet? No problem. All your data lives in a local SQLite database.</p>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(245,200,66,0.12);">🛒</div>
+        <h3>Point of Sale</h3>
+        <p>Full billing with product grid, barcode scanner support, Cash/Card/UPI payments, per-item and global discounts, tax calculation, and instant receipt generation.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(46,204,113,0.12);">📋</div>
+        <h3>Order Management</h3>
+        <p>Complete order history with delivery tracking, order notes, refunds, cancellations with reason capture, and a full refund approval workflow.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(52,152,219,0.12);">👨‍🍳</div>
+        <h3>Kitchen Display</h3>
+        <p>Dedicated KDS window for kitchen staff. Item-level completion tracking, auto-refresh every 10 seconds, separate Tauri window for second screen.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(155,89,182,0.12);">👥</div>
+        <h3>Customer CRM</h3>
+        <p>Customer database with loyalty points, wallet system, visit tracking, spend history, and phone-based lookup at checkout.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(243,156,18,0.12);">🪑</div>
+        <h3>Table & Reservations</h3>
+        <p>Visual table grid with status tracking (Available/Occupied/Reserved), table booking system, and order-to-table assignment.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(231,76,60,0.12);">📊</div>
+        <h3>Analytics & Reports</h3>
+        <p>Real-time dashboard, hourly sales, staff performance, top products, low-stock alerts, GST reports (GSTR-1/GSTR-3B), Tally & QuickBooks export.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(46,204,113,0.12);">💰</div>
+        <h3>Finance</h3>
+        <p>Expense tracking with custom categories, coupon/promo system, customer wallet, day-end cash reconciliation, and full audit trail.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(52,152,219,0.12);">👤</div>
+        <h3>Staff Management</h3>
+        <p>PIN-based login with role-based access (Admin/Staff), attendance clock-in/out, shift scheduling, and performance tracking.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(155,89,182,0.12);">🔧</div>
+        <h3>Inventory & Supply</h3>
+        <p>Product catalog with stock tracking, ingredient management with recipes, supplier directory, and purchase order workflow.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(245,200,66,0.12);">🔒</div>
+        <h3>Security</h3>
+        <p>AES-256-GCM encryption for credentials, bcrypt PIN hashing, brute-force lockout, role-based screen access, immutable audit logs.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(243,156,18,0.12);">☁️</div>
+        <h3>Cloud & LAN Sync</h3>
+        <p>Push/pull to Neon PostgreSQL, LAN server for local network devices, SMS via Twilio, WhatsApp messaging integration.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background: rgba(231,76,60,0.12);">⌨️</div>
+        <h3>Keyboard Shortcuts</h3>
+        <p>F1-F8 navigation, P for checkout, C for clear cart, 1-3 for order types, ? for help. Built for speed at the counter.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREENS -->
+  <section id="screens">
+    <div class="section-label">Screens</div>
+    <h2 class="section-title">23 screens. Every feature has a UI.</h2>
+    <p class="section-desc">From billing to reports, every screen is designed for speed and clarity. Dark mode by default.</p>
+
+    <div class="screens-row">
+      <div class="screen-card">
+        <div class="screen-placeholder">🛒</div>
+        <h4>POS Checkout</h4>
+        <p>Product grid, cart, payments, coupons, wallet</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">📋</div>
+        <h4>Orders</h4>
+        <p>History, filters, refunds, cancellations, notes</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">📦</div>
+        <h4>Products</h4>
+        <p>CRUD, stock tracking, CSV import/export</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">📊</div>
+        <h4>Dashboard</h4>
+        <p>Revenue, charts, top products, alerts</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">👨‍🍳</div>
+        <h4>Kitchen Display</h4>
+        <p>Live orders, item-level done tracking</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">🪑</div>
+        <h4>Tables</h4>
+        <p>Visual grid, status, capacity, booking</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">📅</div>
+        <h4>Reservations</h4>
+        <p>Bookings by date, party size, customer</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">👥</div>
+        <h4>Customers</h4>
+        <p>CRM, loyalty points, order history</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">💳</div>
+        <h4>Wallet</h4>
+        <p>Load balance, deduct, transaction ledger</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">🏷️</div>
+        <h4>Coupons</h4>
+        <p>Create promos, usage limits, validity dates</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">💰</div>
+        <h4>Expenses</h4>
+        <p>Track costs, custom categories, export</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">👤</div>
+        <h4>Staff Attendance</h4>
+        <p>Clock in/out, shift scheduling</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">📈</div>
+        <h4>Reports</h4>
+        <p>Sales, hourly, staff, Tally/QuickBooks export</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">🧾</div>
+        <h4>GST Reports</h4>
+        <p>GSTR-1 & GSTR-3B with CSV export</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">📝</div>
+        <h4>Activity Logs</h4>
+        <p>Full audit trail, user attribution</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">⚙️</div>
+        <h4>Settings</h4>
+        <p>Store info, tax, sync, SMS, WhatsApp, PIN</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">🚚</div>
+        <h4>Suppliers</h4>
+        <p>Supplier directory with contact details</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">📦</div>
+        <h4>Purchase Orders</h4>
+        <p>PO creation, line items, receiving</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">🌾</div>
+        <h4>Ingredients</h4>
+        <p>Stock levels, recipes, reorder alerts</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">🛡️</div>
+        <h4>Refund Requests</h4>
+        <p>Submit, approve, reject workflow</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">🔔</div>
+        <h4>Inventory Alerts</h4>
+        <p>Low stock, out of stock monitoring</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">📅</div>
+        <h4>Scheduling</h4>
+        <p>Staff shift calendar, role assignment</p>
+      </div>
+      <div class="screen-card">
+        <div class="screen-placeholder">🧮</div>
+        <h4>Day-End Reconciliation</h4>
+        <p>Cash count, expected vs actual, expenses</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- TECH STACK -->
+  <section id="stack">
+    <div class="section-label">Tech Stack</div>
+    <h2 class="section-title">Built with modern, battle-tested tools.</h2>
+    <p class="section-desc">Rust for performance. React for UI. SQLite for reliability. Zero external dependencies at runtime.</p>
+
+    <div class="tech-grid">
+      <div class="tech-card">
+        <div class="tech-icon">🦀</div>
+        <h4>Tauri 1.x</h4>
+        <p>Rust-powered desktop shell</p>
+      </div>
+      <div class="tech-card">
+        <div class="tech-icon">⚛️</div>
+        <h4>Next.js 16</h4>
+        <p>React framework with App Router</p>
+      </div>
+      <div class="tech-card">
+        <div class="tech-icon">🗄️</div>
+        <h4>SQLite</h4>
+        <p>WAL mode, crash-safe, local DB</p>
+      </div>
+      <div class="tech-card">
+        <div class="tech-icon">🐘</div>
+        <h4>Neon PostgreSQL</h4>
+        <p>Optional cloud sync</p>
+      </div>
+      <div class="tech-card">
+        <div class="tech-icon">🎨</div>
+        <h4>Tailwind CSS</h4>
+        <p>Utility-first styling</p>
+      </div>
+      <div class="tech-card">
+        <div class="tech-icon">🐻</div>
+        <h4>Zustand</h4>
+        <p>Lightweight state management</p>
+      </div>
+      <div class="tech-card">
+        <div class="tech-icon">🔐</div>
+        <h4>AES-256-GCM + bcrypt</h4>
+        <p>Encrypted credentials, hashed PINs</p>
+      </div>
+      <div class="tech-card">
+        <div class="tech-icon">🖥️</div>
+        <h4>Windows • macOS • Linux</h4>
+        <p>Cross-platform desktop builds</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ALL FEATURES TABLE -->
+  <section id="all-features">
+    <div class="section-label">Complete Feature List</div>
+    <h2 class="section-title">Every feature. Verified and working.</h2>
+    <p class="section-desc">All 98 backend commands with matching frontend UI. Nothing listed here is a stub or placeholder.</p>
+
+    <table class="features-table">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Feature</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- POS -->
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Product grid with category filtering and search</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Barcode scanner support (keyboard input)</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Cart management — add, remove, update quantity, per-item discounts</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Global percentage discount with live total recalculation</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Multiple payment methods — Cash, Card, UPI</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Cash payment change calculation</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Order types — Dine In, Takeaway, Delivery</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Delivery details with address, phone, and status tracking</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Hold orders — save cart and resume later</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Coupon and promo code system with validation and usage limits</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Customer wallet payments with balance deduction at checkout</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Receipt generation, printing, save to file</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Share receipts via WhatsApp and Email</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Open cash drawer command for hardware integration</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Automatic stock deduction on order completion</td></tr>
+        <tr><td><span class="cat-badge cat-pos">POS</span></td><td>Quick checkout keyboard shortcut (P key)</td></tr>
+
+        <!-- Orders -->
+        <tr><td><span class="cat-badge cat-orders">Orders</span></td><td>Order history with status tracking (completed, refunded, cancelled)</td></tr>
+        <tr><td><span class="cat-badge cat-orders">Orders</span></td><td>Filter by status, order type, and date range</td></tr>
+        <tr><td><span class="cat-badge cat-orders">Orders</span></td><td>Full refund with automatic stock restoration</td></tr>
+        <tr><td><span class="cat-badge cat-orders">Orders</span></td><td>Refund request workflow — submit, approve, reject</td></tr>
+        <tr><td><span class="cat-badge cat-orders">Orders</span></td><td>Order cancellation with reason capture</td></tr>
+        <tr><td><span class="cat-badge cat-orders">Orders</span></td><td>Delivery status updates — Pending, Out for Delivery, Delivered</td></tr>
+        <tr><td><span class="cat-badge cat-orders">Orders</span></td><td>Order notes and internal comments per order</td></tr>
+
+        <!-- Products -->
+        <tr><td><span class="cat-badge cat-products">Products</span></td><td>Full CRUD — name, price, category, barcode, stock, tax rate</td></tr>
+        <tr><td><span class="cat-badge cat-products">Products</span></td><td>Manual stock adjustment with positive/negative delta</td></tr>
+        <tr><td><span class="cat-badge cat-products">Products</span></td><td>CSV export and import for bulk operations</td></tr>
+        <tr><td><span class="cat-badge cat-products">Products</span></td><td>Inventory alerts for low-stock and out-of-stock items</td></tr>
+        <tr><td><span class="cat-badge cat-products">Products</span></td><td>Seed data with 12 default products and 4 categories</td></tr>
+
+        <!-- Tables & Reservations -->
+        <tr><td><span class="cat-badge cat-tables">Tables</span></td><td>Visual table grid with status indicators (Available/Occupied/Reserved)</td></tr>
+        <tr><td><span class="cat-badge cat-tables">Tables</span></td><td>Table CRUD with name, capacity, and grid position</td></tr>
+        <tr><td><span class="cat-badge cat-tables">Tables</span></td><td>Table-to-order assignment for dine-in</td></tr>
+        <tr><td><span class="cat-badge cat-tables">Tables</span></td><td>Reservation system — date, time, party size, customer details</td></tr>
+
+        <!-- Kitchen -->
+        <tr><td><span class="cat-badge cat-pos">Kitchen</span></td><td>Kitchen Display System (KDS) in separate Tauri window</td></tr>
+        <tr><td><span class="cat-badge cat-pos">Kitchen</span></td><td>Item-level completion tracking</td></tr>
+        <tr><td><span class="cat-badge cat-pos">Kitchen</span></td><td>Auto-refresh every 10 seconds</td></tr>
+
+        <!-- Customers -->
+        <tr><td><span class="cat-badge cat-orders">Customers</span></td><td>Customer database with name, phone, email</td></tr>
+        <tr><td><span class="cat-badge cat-orders">Customers</span></td><td>Loyalty points system</td></tr>
+        <tr><td><span class="cat-badge cat-orders">Customers</span></td><td>Phone-based customer lookup at checkout</td></tr>
+        <tr><td><span class="cat-badge cat-orders">Customers</span></td><td>Visit and total spent tracking</td></tr>
+        <tr><td><span class="cat-badge cat-orders">Customers</span></td><td>Customer wallet — load, deduct, transaction history</td></tr>
+
+        <!-- Staff -->
+        <tr><td><span class="cat-badge cat-staff">Staff</span></td><td>PIN-based login with role-based access (Admin / Staff)</td></tr>
+        <tr><td><span class="cat-badge cat-staff">Staff</span></td><td>Brute-force protection — lockout after 3 failed attempts</td></tr>
+        <tr><td><span class="cat-badge cat-staff">Staff</span></td><td>Clock-in and clock-out with timestamp tracking</td></tr>
+        <tr><td><span class="cat-badge cat-staff">Staff</span></td><td>Today's attendance dashboard</td></tr>
+        <tr><td><span class="cat-badge cat-staff">Staff</span></td><td>Shift scheduling with date, time, role, and notes</td></tr>
+        <tr><td><span class="cat-badge cat-staff">Staff</span></td><td>Staff performance reports — revenue and orders by staff</td></tr>
+        <tr><td><span class="cat-badge cat-staff">Staff</span></td><td>PIN change functionality in Settings</td></tr>
+
+        <!-- Finance -->
+        <tr><td><span class="cat-badge cat-finance">Finance</span></td><td>Expense tracking with category, amount, description, payment method</td></tr>
+        <tr><td><span class="cat-badge cat-finance">Finance</span></td><td>Pre-configured expense categories (Rent, Utilities, Supplies, etc.)</td></tr>
+        <tr><td><span class="cat-badge cat-finance">Finance</span></td><td>Custom expense category management</td></tr>
+        <tr><td><span class="cat-badge cat-finance">Finance</span></td><td>Date-range expense filtering and CSV export</td></tr>
+        <tr><td><span class="cat-badge cat-finance">Finance</span></td><td>Day-end cash reconciliation — opening, expected, actual, difference</td></tr>
+        <tr><td><span class="cat-badge cat-finance">Finance</span></td><td>Coupon creation with percentage or flat discount, usage limits, validity dates</td></tr>
+
+        <!-- Reports -->
+        <tr><td><span class="cat-badge cat-finance">Reports</span></td><td>Real-time daily summary — revenue, transactions, avg order, items sold</td></tr>
+        <tr><td><span class="cat-badge cat-finance">Reports</span></td><td>7-day weekly revenue bar chart</td></tr>
+        <tr><td><span class="cat-badge cat-finance">Reports</span></td><td>Top-selling products ranked by revenue</td></tr>
+        <tr><td><span class="cat-badge cat-finance">Reports</span></td><td>Hourly sales breakdown report</td></tr>
+        <tr><td><span class="cat-badge cat-finance">Reports</span></td><td>Sales by item report with quantity and revenue</td></tr>
+        <tr><td><span class="cat-badge cat-finance">Reports</span></td><td>GST reports — GSTR-1 detailed and GSTR-3B summary</td></tr>
+        <tr><td><span class="cat-badge cat-finance">Reports</span></td><td>Export to Tally (XML) and QuickBooks (JSON)</td></tr>
+        <tr><td><span class="cat-badge cat-finance">Reports</span></td><td>Full database backup and restore (JSON)</td></tr>
+
+        <!-- Inventory -->
+        <tr><td><span class="cat-badge cat-products">Inventory</span></td><td>Ingredient catalog with stock, unit, and reorder level</td></tr>
+        <tr><td><span class="cat-badge cat-products">Inventory</span></td><td>Recipe management linking products to ingredients</td></tr>
+        <tr><td><span class="cat-badge cat-products">Inventory</span></td><td>Supplier directory with contact details</td></tr>
+        <tr><td><span class="cat-badge cat-products">Inventory</span></td><td>Purchase orders with line items, quantities, unit costs</td></tr>
+        <tr><td><span class="cat-badge cat-products">Inventory</span></td><td>PO status tracking and receiving workflow</td></tr>
+
+        <!-- Integrations -->
+        <tr><td><span class="cat-badge cat-integrations">Integrations</span></td><td>Neon PostgreSQL cloud sync with push/pull and retry logic</td></tr>
+        <tr><td><span class="cat-badge cat-integrations">Integrations</span></td><td>LAN sync server for multi-device local network</td></tr>
+        <tr><td><span class="cat-badge cat-integrations">Integrations</span></td><td>Twilio SMS notifications</td></tr>
+        <tr><td><span class="cat-badge cat-integrations">Integrations</span></td><td>WhatsApp messaging via configurable API</td></tr>
+        <tr><td><span class="cat-badge cat-integrations">Integrations</span></td><td>Multi-country currency presets (30 countries)</td></tr>
+        <tr><td><span class="cat-badge cat-integrations">Integrations</span></td><td>Whitelabel customization — logo, colors, footer</td></tr>
+
+        <!-- Security & Reliability -->
+        <tr><td><span class="cat-badge cat-staff">Security</span></td><td>AES-256-GCM encryption for sensitive settings and credentials</td></tr>
+        <tr><td><span class="cat-badge cat-staff">Security</span></td><td>bcrypt PIN hashing</td></tr>
+        <tr><td><span class="cat-badge cat-staff">Security</span></td><td>Role-based screen access — admin-only sections</td></tr>
+        <tr><td><span class="cat-badge cat-staff">Security</span></td><td>Immutable audit trail with user attribution</td></tr>
+        <tr><td><span class="cat-badge cat-staff">Security</span></td><td>Crash recovery — detects pending orders on startup</td></tr>
+        <tr><td><span class="cat-badge cat-staff">Security</span></td><td>Error boundary for graceful crash handling</td></tr>
+
+        <!-- UX -->
+        <tr><td><span class="cat-badge cat-pos">UX</span></td><td>Dark mode (default) and light mode</td></tr>
+        <tr><td><span class="cat-badge cat-pos">UX</span></td><td>Keyboard shortcuts — F1-F8, P, C, 1-3, ?, Enter, Escape</td></tr>
+        <tr><td><span class="cat-badge cat-pos">UX</span></td><td>Keyboard shortcut help modal</td></tr>
+        <tr><td><span class="cat-badge cat-pos">UX</span></td><td>ARIA labels and focus indicators for accessibility</td></tr>
+        <tr><td><span class="cat-badge cat-pos">UX</span></td><td>Responsive sidebar navigation with live clock</td></tr>
+        <tr><td><span class="cat-badge cat-pos">UX</span></td><td>Input validation on all settings forms</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- CTA -->
+  <div class="cta-section" id="cta">
+    <h2>Ready to get started?</h2>
+    <p>Free. Open source. Works offline. No subscriptions.</p>
+    <div class="hero-buttons">
+      <a href="#" class="btn-primary">Download for Windows (64-bit)</a>
+      <a href="#" class="btn-primary" style="background: var(--surface-2); color: var(--text); border: 1px solid var(--border);">Download for Windows (32-bit)</a>
+    </div>
+    <div style="margin-top: 16px;">
+      <a href="#" class="btn-secondary" style="margin-right: 8px;">macOS</a>
+      <a href="#" class="btn-secondary">Linux</a>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <div>© 2026 POS Tauri. Built with ❤️ using Tauri + Next.js + SQLite</div>
+    <div style="display: flex; gap: 20px;">
+      <a href="#">GitHub</a>
+      <a href="#">Docs</a>
+      <a href="#">Report Issue</a>
+    </div>
+  </footer>
+
+</body>
+</html>

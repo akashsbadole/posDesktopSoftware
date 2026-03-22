@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { dbGetPendingOrders, dbDeletePendingOrder, Order } from "@/lib/db";
-import { AlertTriangle, Trash2, RefreshCw, X } from "lucide-react";
+import { useSettingsStore } from "@/lib/stores";
+import { AlertTriangle, Trash2, RefreshCw } from "lucide-react";
 
 interface CrashRecoveryProps {
   onComplete: () => void;
@@ -10,6 +11,8 @@ interface CrashRecoveryProps {
 export default function CrashRecovery({ onComplete }: CrashRecoveryProps) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const { settings } = useSettingsStore();
+  const curr = settings?.currency_symbol ?? "₹";
 
   useEffect(() => {
     loadPendingOrders();
@@ -30,45 +33,68 @@ export default function CrashRecovery({ onComplete }: CrashRecoveryProps) {
     if (!confirm("Are you sure you want to discard this order?")) return;
     try {
       await dbDeletePendingOrder(id);
-      await loadPendingOrders();
+      const updated = orders.filter(o => o.id !== id);
+      setOrders(updated);
+       if (updated.length === 0) onComplete?.();
     } catch (err) {
       console.error("Failed to discard order:", err);
     }
   };
 
-  const handleDismiss = () => {
-    onComplete();
+  const handleDiscardAll = async () => {
+    if (!confirm("Discard all pending orders? This cannot be undone.")) return;
+     try {
+       for (const order of orders) {
+         await dbDeletePendingOrder(order.id);
+       }
+       setOrders([]);
+     } catch (err) {
+       console.error("Failed to discard orders:", err);
+     }
+     onComplete?.();
   };
 
-  if (loading) {
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.9)" }}>
-        <div className="card p-8 text-center">
-          <RefreshCw size={32} className="spin mx-auto mb-4" style={{ color: "#F5C842" }} />
-          <p>Checking for pending orders...</p>
-        </div>
-      </div>
-    );
-  }
+   const handleKeepOrders = () => {
+     onComplete?.();
+   };
+
+   if (loading) {
+      return (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center" 
+         style={{ background: "rgba(0,0,0,0.9)" }}
+         onClick={(e) => e.target === e.currentTarget && onComplete?.()}
+        >
+         <div className="card p-8 text-center">
+           <RefreshCw size={32} className="spin mx-auto mb-4" style={{ color: "#F5C842" }} />
+           <p>Checking for pending orders...</p>
+         </div>
+       </div>
+     );
+   }
 
   if (orders.length === 0) {
     return null;
   }
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.9)" }}>
-      <div className="card p-6 w-[500px] max-h-[80vh] overflow-y-auto fade-in" role="alertdialog" aria-labelledby="recovery-title">
-        <div className="flex items-center gap-3 mb-4">
-          <AlertTriangle size={28} style={{ color: "#F5C842" }} />
-          <div>
-            <h2 id="recovery-title" className="font-display text-lg" style={{ color: "#F5C842" }}>
-              Pending Orders Found
-            </h2>
-            <p className="text-sm" style={{ color: "#9090A8" }}>
-              The app was closed with {orders.length} pending order{orders.length > 1 ? "s" : ""}
-            </p>
-          </div>
-        </div>
+    return (
+      <div 
+        className="fixed inset-0 z-[100] flex items-center justify-center" 
+       style={{ background: "rgba(0,0,0,0.9)" }}
+       onClick={(e) => e.target === e.currentTarget && onComplete?.()}
+     >
+       <div className="card p-6 w-[500px] max-h-[80vh] overflow-y-auto fade-in" role="alertdialog" aria-labelledby="recovery-title">
+         <div className="flex items-center gap-3 mb-4">
+           <AlertTriangle size={28} style={{ color: "#F5C842" }} />
+           <div>
+             <h2 id="recovery-title" className="font-display text-lg" style={{ color: "#F5C842" }}>
+               Pending Orders Found
+             </h2>
+             <p className="text-sm" style={{ color: "#9090A8" }}>
+               The app was closed with {orders.length} pending order{orders.length > 1 ? "s" : ""}
+             </p>
+           </div>
+         </div>
 
         <div className="space-y-3 mb-4">
           {orders.map((order, idx) => (
@@ -83,7 +109,7 @@ export default function CrashRecovery({ onComplete }: CrashRecoveryProps) {
                 </span>
               </div>
               <div className="text-sm mb-2" style={{ color: "#9090A8" }}>
-                {order.items.length} items • ₹{order.total.toFixed(2)}
+                {order.items.length} items • {curr}{order.total.toFixed(2)}
               </div>
               <div className="text-xs mb-3" style={{ color: "#4A4A5A" }}>
                 {new Date(order.created_at).toLocaleString()}
@@ -101,21 +127,22 @@ export default function CrashRecovery({ onComplete }: CrashRecoveryProps) {
 
         <div className="flex gap-3">
           <button
-            onClick={handleDismiss}
+            onClick={handleKeepOrders}
             className="btn-accent flex-1 py-3"
           >
-            Restore Orders
+            Keep Orders
           </button>
           <button
-            onClick={handleDismiss}
+            onClick={handleDiscardAll}
             className="btn-ghost py-3 px-4"
+            style={{ color: "#E74C3C" }}
           >
-            Dismiss
+            Discard All
           </button>
         </div>
 
         <p className="text-xs mt-4 text-center" style={{ color: "#4A4A5A" }}>
-          Click "Restore Orders" to continue with these pending orders, or "Discard" to remove them.
+          Click "Keep Orders" to review them in Orders screen, or "Discard All" to remove them.
         </p>
       </div>
     </div>

@@ -41,11 +41,11 @@ export default function KeyboardShortcutsModal({ isOpen, onClose, showPOS = fals
 
     previousFocusRef.current = document.activeElement as HTMLElement;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
+     const handleKeyDown = (e: KeyboardEvent) => {
+       if (e.key === "Escape") {
+         onClose?.();
+         return;
+       }
 
       if (e.key === "Tab" && modalRef.current) {
         const focusableElements = modalRef.current.querySelectorAll(
@@ -80,12 +80,12 @@ export default function KeyboardShortcutsModal({ isOpen, onClose, showPOS = fals
 
   if (!isOpen) return null;
 
-  return (
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.7)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
+   return (
+     <div 
+       className="fixed inset-0 z-50 flex items-center justify-center"
+       style={{ background: "rgba(0,0,0,0.7)" }}
+       onClick={(e) => e.target === e.currentTarget && onClose?.()}
+     >
       <div 
         ref={modalRef}
         className="card p-6 w-[480px] max-h-[80vh] overflow-y-auto fade-in"
