@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useRef, useCallback, useState } from "react";
-import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet } from "lucide-react";
-import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet } from "@/lib/db";
+import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet, Package } from "lucide-react";
+import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet, Combo } from "@/lib/db";
 import { invoke } from "@tauri-apps/api/tauri";
-import { useCartStore, useProductsStore, useSettingsStore, useAuthStore } from "@/lib/stores";
+import { useCartStore, useProductsStore, useSettingsStore, useAuthStore, useCombosStore } from "@/lib/stores";
 import { useGridNavigation } from "@/lib/keyboard";
 import { v4 as uuid } from "uuid";
 import { Order } from "@/lib/db";
@@ -47,6 +47,8 @@ export default function POSScreen() {
     searchQuery
   } = useProductsStore();
 
+  const { combos, fetchCombos, getActiveCombos } = useCombosStore();
+
   const { settings, fetchSettings } = useSettingsStore();
   const { user } = useAuthStore();
 
@@ -69,6 +71,7 @@ export default function POSScreen() {
     fetchProducts(); 
     fetchSettings();
     loadHeldOrders();
+    fetchCombos();
   }, []);
 
   const loadHeldOrders = async () => {
@@ -157,6 +160,17 @@ export default function POSScreen() {
   const handleAddToCart = (product: typeof products[0]) => {
     if (product.stock === 0) return;
     addItem(product);
+  };
+
+  const handleAddComboToCart = (combo: Combo) => {
+    combo.items.forEach(item => {
+      const product = products.find(p => p.id === item.product_id);
+      if (product) {
+        for (let i = 0; i < item.quantity; i++) {
+          addItem(product);
+        }
+      }
+    });
   };
 
   const handleApplyCoupon = async () => {
@@ -449,7 +463,9 @@ export default function POSScreen() {
     );
   }
 
-  const allCategories = ["All", ...categories];
+  const allCategories = ["All", "Combos", ...categories];
+  const activeCombos = getActiveCombos();
+  const showCombos = selectedCategory === "Combos";
 
   return (
     <div className="flex h-full overflow-hidden" id="main-content" role="main" aria-label="POS Screen">
@@ -471,20 +487,30 @@ export default function POSScreen() {
             <span id="search-hint" className="sr-only">Press Enter to search by barcode, Escape to clear</span>
           </div>
           <div className="flex gap-1" role="group" aria-label="Filter by category">
-            {allCategories.map((c) => (
-              <button 
-                key={c} 
-                onClick={() => setSelectedCategory(c === "All" ? null : c)}
-                aria-pressed={c === "All" ? !selectedCategory : selectedCategory === c}
-                className="px-3 py-2 rounded-lg text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842]"
-                style={{
-                  background: (c === "All" ? !selectedCategory : selectedCategory === c) ? "rgba(245,200,66,0.1)" : "#141418",
-                  color: (c === "All" ? !selectedCategory : selectedCategory === c) ? "#F5C842" : "#4A4A5A",
-                  border: `1px solid ${(c === "All" ? !selectedCategory : selectedCategory === c) ? "rgba(245,200,66,0.2)" : "#1E1E26"}`,
-                }}>
-                {c}
-              </button>
-            ))}
+            {allCategories.map((c) => {
+              const isSelected = c === "All" ? !selectedCategory : selectedCategory === c;
+              const isCombos = c === "Combos";
+              return (
+                <button 
+                  key={c} 
+                  onClick={() => setSelectedCategory(c === "All" ? null : c === "Combos" ? "Combos" : c)}
+                  aria-pressed={isSelected}
+                  className="px-3 py-2 rounded-lg text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] flex items-center gap-1"
+                  style={{
+                    background: isSelected ? "rgba(245,200,66,0.1)" : "#141418",
+                    color: isSelected ? "#F5C842" : "#4A4A5A",
+                    border: `1px solid ${isSelected ? "rgba(245,200,66,0.2)" : "#1E1E26"}`,
+                  }}>
+                  {isCombos && <Tag size={12} />}
+                  {c}
+                  {isCombos && activeCombos.length > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded text-[10px]" style={{ background: "#2ECC71", color: "#0D0D0F" }}>
+                      {activeCombos.length}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
           <button onClick={() => fetchProducts()} className="btn-ghost py-2 px-3" title="Refresh" aria-label="Refresh products">
             <RefreshCw size={15} className={productsLoading ? "spin" : ""} aria-hidden="true" />
@@ -505,48 +531,106 @@ export default function POSScreen() {
             onFocus={() => setIsGridFocused(true)}
             style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 12, alignContent: "start", outline: "none" }}
             role="grid"
-            aria-label="Product grid"
+            aria-label={showCombos ? "Combo deals grid" : "Product grid"}
             aria-readonly="true"
           >
-            {filtered.map((p, idx) => {
-              const inCart = cart.find((i) => i.product.id === p.id);
-              const oos = p.stock === 0;
-              const isFocused = focusedProductIndex === idx;
-              return (
-                <button 
-                  key={p.id} 
-                  onClick={() => handleAddToCart(p)} 
-                  disabled={oos}
-                  ref={(el) => {
-                    if (isFocused && el) {
-                      el.focus();
-                    }
-                  }}
-                  className="card card-hover p-3 text-left transition-all relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842]"
-                  style={{ 
-                    opacity: oos ? 0.4 : 1, 
-                    border: inCart ? "1px solid rgba(245,200,66,0.3)" : isFocused ? "2px solid #F5C842" : undefined 
-                  }}
-                  role="gridcell"
-                  aria-label={`${p.name}, ${p.category}, ${curr}${p.price}, Stock: ${p.stock}${inCart ? `, Quantity in cart: ${inCart.quantity}` : ''}${oos ? ', Out of stock' : ''}`}
-                >
-                  {inCart && (
-                    <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
-                      style={{ background: "#F5C842", color: "#0D0D0F" }} aria-hidden="true">{inCart.quantity}</div>
-                  )}
-                  <div className="w-8 h-8 rounded-lg mb-2 flex items-center justify-center text-sm font-bold"
-                    style={{ background: "rgba(245,200,66,0.08)", color: "#F5C842" }} aria-hidden="true">{p.name[0]}</div>
-                  <div className="text-sm font-medium leading-tight mb-1">{p.name}</div>
-                  <div className="text-xs" style={{ color: "#4A4A5A" }}>{p.category}</div>
-                  <div className="mt-2 font-semibold" style={{ color: "#F5C842", fontSize: 14 }}>{curr}{p.price}</div>
-                  <div style={{ color: "#4A4A5A", fontSize: 10 }}>Stock: {p.stock}</div>
-                  {oos && (
-                    <div className="absolute inset-0 flex items-center justify-center rounded-xl"
-                      style={{ background: "rgba(13,13,15,0.7)", fontSize: 10, color: "#E74C3C" }} aria-hidden="true">OUT OF STOCK</div>
-                  )}
-                </button>
-              );
-            })}
+            {showCombos ? (
+              activeCombos.length === 0 ? (
+                <div className="col-span-full flex flex-col items-center justify-center py-12" style={{ color: "#4A4A5A" }}>
+                  <Tag size={48} className="mb-4 opacity-50" />
+                  <p className="text-lg mb-2">No Active Combos</p>
+                  <p className="text-sm">Create combo deals in Products menu</p>
+                </div>
+              ) : (
+                activeCombos.map((combo, idx) => {
+                  const totalItemsPrice = combo.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                  const isFocused = focusedProductIndex === idx;
+                  return (
+                    <button 
+                      key={combo.id}
+                      onClick={() => handleAddComboToCart(combo)}
+                      ref={(el) => {
+                        if (isFocused && el) {
+                          el.focus();
+                        }
+                      }}
+                      className="card card-hover p-3 text-left transition-all relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842]"
+                      style={{ 
+                        border: isFocused ? "2px solid #F5C842" : undefined 
+                      }}
+                      role="gridcell"
+                      aria-label={`Combo: ${combo.name}, ${combo.items.length} items, ${curr}${combo.combo_price}`}
+                    >
+                      <div className="absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold"
+                        style={{ background: "#2ECC71", color: "#0D0D0F" }}>
+                        {combo.discount_percent.toFixed(0)}% OFF
+                      </div>
+                      <div className="w-10 h-10 rounded-lg mb-2 flex items-center justify-center" style={{ background: "#F5C842" }} aria-hidden="true">
+                        <Tag size={20} color="#0D0D0F" />
+                      </div>
+                      <div className="text-sm font-medium leading-tight mb-1">{combo.name}</div>
+                      <div className="text-xs mb-2" style={{ color: "#4A4A5A" }}>
+                        {combo.items.length} items
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-bold" style={{ color: "#2ECC71", fontSize: 16 }}>{curr}{combo.combo_price.toFixed(0)}</span>
+                        <span className="text-xs line-through" style={{ color: "#4A4A5A" }}>{curr}{totalItemsPrice.toFixed(0)}</span>
+                      </div>
+                      <div className="mt-2 text-[10px]" style={{ color: "#9090A8" }}>
+                        {combo.items.slice(0, 2).map((item, i) => (
+                          <span key={i}>{item.quantity}x {item.product_name}{i < Math.min(combo.items.length, 2) - 1 ? ", " : ""}</span>
+                        ))}
+                        {combo.items.length > 2 && <span> +{combo.items.length - 2} more</span>}
+                      </div>
+                    </button>
+                  );
+                })
+              )
+            ) : (
+              filtered.map((p, idx) => {
+                const inCart = cart.find((i) => i.product.id === p.id);
+                const oos = p.stock === 0;
+                const isFocused = focusedProductIndex === idx;
+                return (
+                  <button 
+                    key={p.id} 
+                    onClick={() => handleAddToCart(p)} 
+                    disabled={oos}
+                    ref={(el) => {
+                      if (isFocused && el) {
+                        el.focus();
+                      }
+                    }}
+                    className="card card-hover p-3 text-left transition-all relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842]"
+                    style={{ 
+                      opacity: oos ? 0.4 : 1, 
+                      border: inCart ? "1px solid rgba(245,200,66,0.3)" : isFocused ? "2px solid #F5C842" : undefined 
+                    }}
+                    role="gridcell"
+                    aria-label={`${p.name}, ${p.category}, ${curr}${p.price}, Stock: ${p.stock}${inCart ? `, Quantity in cart: ${inCart.quantity}` : ''}${oos ? ', Out of stock' : ''}`}
+                  >
+                    {inCart && (
+                      <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
+                        style={{ background: "#F5C842", color: "#0D0D0F" }} aria-hidden="true">{inCart.quantity}</div>
+                    )}
+                    {p.image_url ? (
+                      <img src={p.image_url} alt={p.name} className="w-full h-16 rounded-lg mb-2 object-cover" style={{ background: "#1E1E26" }} />
+                    ) : (
+                      <div className="w-full h-16 rounded-lg mb-2 flex items-center justify-center text-lg font-bold"
+                        style={{ background: "rgba(245,200,66,0.08)", color: "#F5C842" }} aria-hidden="true">{p.name[0]}</div>
+                    )}
+                    <div className="text-sm font-medium leading-tight mb-1">{p.name}</div>
+                    <div className="text-xs" style={{ color: "#4A4A5A" }}>{p.category}</div>
+                    <div className="mt-2 font-semibold" style={{ color: "#F5C842", fontSize: 14 }}>{curr}{p.price}</div>
+                    <div style={{ color: "#4A4A5A", fontSize: 10 }}>Stock: {p.stock}</div>
+                    {oos && (
+                      <div className="absolute inset-0 flex items-center justify-center rounded-xl"
+                        style={{ background: "rgba(13,13,15,0.7)", fontSize: 10, color: "#E74C3C" }} aria-hidden="true">OUT OF STOCK</div>
+                    )}
+                  </button>
+                );
+              })
+            )}
           </div>
         )}
       </div>

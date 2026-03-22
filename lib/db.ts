@@ -16,6 +16,29 @@ export interface Product {
   barcode: string;
   tax: number;
   created_at?: string;
+  image_url?: string;
+  is_combo?: boolean;
+  combo_items?: ComboItem[];
+  combo_discount?: number;
+}
+
+export interface ComboItem {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  price: number;
+}
+
+export interface Combo {
+  id: string;
+  name: string;
+  description: string;
+  items: ComboItem[];
+  combo_price: number;
+  discount_amount: number;
+  discount_percent: number;
+  is_active: boolean;
+  created_at?: string;
 }
 
 export interface OrderItem {
@@ -364,6 +387,23 @@ export async function dbDeleteProduct(id: string): Promise<void> {
 
 export async function dbUpdateStock(id: string, delta: number): Promise<void> {
   return sql("update_stock", { id, delta });
+}
+
+// ─── Combos ──────────────────────────────────────────────────────────────────
+export async function dbGetCombos(): Promise<Combo[]> {
+  return sql<Combo[]>("get_combos");
+}
+
+export async function dbSaveCombo(combo: Combo): Promise<void> {
+  return sql("save_combo", { combo });
+}
+
+export async function dbDeleteCombo(id: string): Promise<void> {
+  return sql("delete_combo", { id });
+}
+
+export async function dbToggleCombo(id: string, isActive: boolean): Promise<void> {
+  return sql("toggle_combo", { id, isActive });
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
@@ -977,6 +1017,29 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       return { synced: 0, error: "Neon sync only available in Tauri desktop app" } as T;
     case "sync_from_neon":
       return { imported: 0, error: "Neon sync only available in Tauri desktop app" } as T;
+    case "get_combos": {
+      const combos = lsGet<Combo[]>("pos_combos") || [];
+      return combos as T;
+    }
+    case "save_combo": {
+      const combos = lsGet<Combo[]>("pos_combos") || [];
+      const combo = (args as any).combo as Combo;
+      const idx = combos.findIndex((x) => x.id === combo.id);
+      if (idx >= 0) combos[idx] = combo; else combos.push(combo);
+      lsSet("pos_combos", combos);
+      return undefined as T;
+    }
+    case "delete_combo": {
+      const combos = (lsGet<Combo[]>("pos_combos") || []).filter((c) => c.id !== (args as any).id);
+      lsSet("pos_combos", combos);
+      return undefined as T;
+    }
+    case "toggle_combo": {
+      const combos = lsGet<Combo[]>("pos_combos") || [];
+      const combo = combos.find((c) => c.id === (args as any).id);
+      if (combo) { combo.is_active = (args as any).isActive; lsSet("pos_combos", combos); }
+      return undefined as T;
+    }
     default:
       throw new Error(`Unknown command: ${cmd}`);
   }
