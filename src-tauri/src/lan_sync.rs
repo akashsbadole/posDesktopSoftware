@@ -104,7 +104,7 @@ async fn handle_client(mut socket: tokio::net::TcpStream) {
     let mut buffer = [0u8; 8192];
     
     match socket.read(&mut buffer).await {
-        Ok(0) => return,
+        Ok(0) => (),
         Ok(n) => {
             let request = String::from_utf8_lossy(&buffer[..n]);
             eprintln!("[LAN Sync] Received: {}", request);

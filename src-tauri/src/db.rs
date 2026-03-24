@@ -60,6 +60,28 @@ pub struct Product {
     pub stock: i64,
     pub barcode: String,
     pub tax: f64,
+    pub image_url: Option<String>,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ComboItem {
+    pub product_id: String,
+    pub product_name: String,
+    pub quantity: i64,
+    pub price: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Combo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub items: Vec<ComboItem>,
+    pub combo_price: f64,
+    pub discount_amount: f64,
+    pub discount_percent: f64,
+    pub is_active: bool,
     pub created_at: Option<String>,
 }
 
@@ -131,6 +153,20 @@ pub struct Settings {
     // Contact
     pub contact_email: String,
     pub contact_website: String,
+    // Multi-tax support
+    pub tax_inclusive: bool,
+    pub tax_breakdown: String,
+    // Auto-print KOT
+    pub auto_print_kot: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TaxRate {
+    pub id: String,
+    pub name: String,
+    pub rate: f64,
+    pub is_default: bool,
+    pub country: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -522,6 +558,8 @@ impl Database {
         db.migrate_schema()?;
         db.seed_if_empty()?;
         db.seed_tables()?;
+        db.seed_expense_categories()?;
+        db.seed_tax_rates()?;
         db.init_users()?;
 
         // Perform initial checkpoint to ensure data is written
@@ -562,6 +600,30 @@ impl Database {
             "ALTER TABLE orders ADD COLUMN user_name TEXT NOT NULL DEFAULT ''",
             [],
         );
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN image_url TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE shifts ADD COLUMN staff_name TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE order_items ADD COLUMN done INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        // Ensure tax_rates table exists for existing databases
+        let _ = self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS tax_rates (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                rate REAL NOT NULL,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                country TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )",
+            [],
+        );
         Ok(())
     }
 
@@ -576,6 +638,7 @@ impl Database {
                 stock       INTEGER NOT NULL DEFAULT 0,
                 barcode     TEXT NOT NULL DEFAULT '',
                 tax         REAL NOT NULL DEFAULT 18,
+                image_url   TEXT NOT NULL DEFAULT '',
                 created_at  TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -608,7 +671,8 @@ impl Database {
                 price        REAL NOT NULL,
                 quantity     INTEGER NOT NULL,
                 discount     REAL NOT NULL DEFAULT 0,
-                tax          REAL NOT NULL DEFAULT 18
+                tax          REAL NOT NULL DEFAULT 18,
+                done         INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS settings (
@@ -772,14 +836,10 @@ impl Database {
                 FOREIGN KEY (table_id) REFERENCES tables(id)
             );
 
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-
             CREATE TABLE IF NOT EXISTS shifts (
                 id TEXT PRIMARY KEY,
                 staff_id TEXT NOT NULL,
+                staff_name TEXT NOT NULL DEFAULT '',
                 date TEXT NOT NULL,
                 start_time TEXT NOT NULL,
                 end_time TEXT NOT NULL,
@@ -802,6 +862,15 @@ impl Database {
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 icon TEXT NOT NULL DEFAULT '📦'
+            );
+
+            CREATE TABLE IF NOT EXISTS tax_rates (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                rate REAL NOT NULL,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                country TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
             CREATE TABLE IF NOT EXISTS customer_wallets (
@@ -851,6 +920,20 @@ impl Database {
                 created_by TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS combos (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                items TEXT NOT NULL,
+                combo_price REAL NOT NULL,
+                discount_amount REAL NOT NULL DEFAULT 0,
+                discount_percent REAL NOT NULL DEFAULT 0,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_combos_active ON combos(is_active);
         ",
         )?;
         Ok(())
@@ -890,7 +973,7 @@ impl Database {
 
     pub fn get_products(&self) -> Result<Vec<Product>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, price, category, stock, barcode, tax, created_at FROM products ORDER BY name"
+            "SELECT id, name, price, category, stock, barcode, tax, image_url, created_at FROM products ORDER BY name"
         )?;
         let products = stmt
             .query_map([], |row| {
@@ -902,7 +985,8 @@ impl Database {
                     stock: row.get(4)?,
                     barcode: row.get(5)?,
                     tax: row.get(6)?,
-                    created_at: row.get(7)?,
+                    image_url: row.get(7)?,
+                    created_at: row.get(8)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -910,13 +994,14 @@ impl Database {
     }
 
     pub fn upsert_product(&self, p: &Product) -> Result<()> {
+        let image_url = p.image_url.clone().unwrap_or_default();
         self.conn.execute(
-            "INSERT INTO products (id, name, price, category, stock, barcode, tax)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "INSERT INTO products (id, name, price, category, stock, barcode, tax, image_url)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(id) DO UPDATE SET
                name=excluded.name, price=excluded.price, category=excluded.category,
-               stock=excluded.stock, barcode=excluded.barcode, tax=excluded.tax",
-            params![p.id, p.name, p.price, p.category, p.stock, p.barcode, p.tax],
+               stock=excluded.stock, barcode=excluded.barcode, tax=excluded.tax, image_url=excluded.image_url",
+            params![p.id, p.name, p.price, p.category, p.stock, p.barcode, p.tax, image_url],
         )?;
         Ok(())
     }
@@ -931,6 +1016,62 @@ impl Database {
         self.conn.execute(
             "UPDATE products SET stock = MAX(0, stock + ?1) WHERE id = ?2",
             params![delta, id],
+        )?;
+        Ok(())
+    }
+
+    // ─── Combos ────────────────────────────────────────────────────────────────
+
+    pub fn get_combos(&self) -> Result<Vec<Combo>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, description, items, combo_price, discount_amount, discount_percent, is_active, created_at FROM combos ORDER BY name"
+        )?;
+        let combos = stmt
+            .query_map([], |row| {
+                let items_json: String = row.get(3)?;
+                let items: Vec<ComboItem> = serde_json::from_str(&items_json).unwrap_or_default();
+                Ok(Combo {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                    items,
+                    combo_price: row.get(4)?,
+                    discount_amount: row.get(5)?,
+                    discount_percent: row.get(6)?,
+                    is_active: row.get::<_, i32>(7)? == 1,
+                    created_at: row.get(8)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(combos)
+    }
+
+    pub fn save_combo(&self, c: &Combo) -> Result<()> {
+        let items_json = serde_json::to_string(&c.items).unwrap_or_default();
+        let is_active: i32 = if c.is_active { 1 } else { 0 };
+        self.conn.execute(
+            "INSERT INTO combos (id, name, description, items, combo_price, discount_amount, discount_percent, is_active)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+               name=excluded.name, description=excluded.description, items=excluded.items,
+               combo_price=excluded.combo_price, discount_amount=excluded.discount_amount,
+               discount_percent=excluded.discount_percent, is_active=excluded.is_active",
+            params![c.id, c.name, c.description, items_json, c.combo_price, c.discount_amount, c.discount_percent, is_active],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_combo(&self, id: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM combos WHERE id=?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn toggle_combo(&self, id: &str, active: bool) -> Result<()> {
+        let is_active: i32 = if active { 1 } else { 0 };
+        self.conn.execute(
+            "UPDATE combos SET is_active=?1 WHERE id=?2",
+            params![is_active, id],
         )?;
         Ok(())
     }
@@ -994,6 +1135,40 @@ impl Database {
     }
 
     pub fn save_order(&self, o: &Order) -> Result<()> {
+        // Validate order status
+        let valid_statuses = [
+            "completed",
+            "refunded",
+            "hold",
+            "cancelled",
+            "pending",
+            "processing",
+        ];
+        if !valid_statuses.contains(&o.status.as_str()) {
+            return Err(rusqlite::Error::InvalidParameterName(format!(
+                "Invalid order status: {}",
+                o.status
+            )));
+        }
+
+        // Validate order type
+        let valid_order_types = ["dine_in", "takeaway", "delivery"];
+        if !valid_order_types.contains(&o.order_type.as_str()) {
+            return Err(rusqlite::Error::InvalidParameterName(format!(
+                "Invalid order type: {}",
+                o.order_type
+            )));
+        }
+
+        // Validate payment method
+        let valid_payment_methods = ["cash", "card", "upi", "wallet"];
+        if !valid_payment_methods.contains(&o.payment_method.as_str()) {
+            return Err(rusqlite::Error::InvalidParameterName(format!(
+                "Invalid payment method: {}",
+                o.payment_method
+            )));
+        }
+
         // Check if this is a new order or update
         let is_new = self.conn.query_row(
             "SELECT COUNT(*) FROM orders WHERE id = ?1",
@@ -1180,6 +1355,9 @@ impl Database {
             footer_text: get("footer_text", "Powered by POS Billing"),
             contact_email: get("contact_email", ""),
             contact_website: get("contact_website", ""),
+            tax_inclusive: get("tax_inclusive", "false") == "true",
+            tax_breakdown: get("tax_breakdown", "[]"),
+            auto_print_kot: get("auto_print_kot", "false") == "true",
         })
     }
 
@@ -1216,6 +1394,9 @@ impl Database {
             ("footer_text", s.footer_text.clone()),
             ("contact_email", s.contact_email.clone()),
             ("contact_website", s.contact_website.clone()),
+            ("tax_inclusive", s.tax_inclusive.to_string()),
+            ("tax_breakdown", s.tax_breakdown.clone()),
+            ("auto_print_kot", s.auto_print_kot.to_string()),
         ];
         for (k, v) in pairs {
             self.conn.execute(
@@ -1305,9 +1486,9 @@ impl Database {
     }
 
     pub fn get_low_stock(&self) -> Result<Vec<LowStockItem>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT name, stock FROM products WHERE stock <= 10 ORDER BY stock ASC")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT name, stock FROM products WHERE stock <= 10 ORDER BY stock ASC LIMIT 10",
+        )?;
         let items = stmt
             .query_map([], |r| {
                 Ok(LowStockItem {
@@ -1317,6 +1498,28 @@ impl Database {
             })?
             .collect::<Result<Vec<_>>>()?;
         Ok(items)
+    }
+
+    pub fn get_sales_by_payment_method(&self, date: &str) -> Result<(f64, f64, f64)> {
+        let cash: f64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='completed' AND payment_method='cash' AND DATE(created_at)=?1",
+            params![date],
+            |r| r.get(0),
+        ).unwrap_or(0.0);
+
+        let upi: f64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='completed' AND payment_method='upi' AND DATE(created_at)=?1",
+            params![date],
+            |r| r.get(0),
+        ).unwrap_or(0.0);
+
+        let card: f64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='completed' AND payment_method='card' AND DATE(created_at)=?1",
+            params![date],
+            |r| r.get(0),
+        ).unwrap_or(0.0);
+
+        Ok((cash, upi, card))
     }
 
     // ─── CSV Export ─────────────────────────────────────────────────────────────
@@ -1584,6 +1787,7 @@ impl Database {
 
     // ─── Activity Logging ─────────────────────────────────────────────────────
 
+    #[allow(clippy::too_many_arguments)]
     pub fn log_activity(
         &self,
         order_id: &str,
@@ -1827,7 +2031,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_customer_orders(&self, _customer_phone: &str) -> Result<Vec<Order>> {
+    pub fn get_customer_orders(&self, customer_name: &str) -> Result<Vec<Order>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, subtotal, tax_amount, discount_amount, total, payment_method,
                     amount_paid, change_amount, customer_name, status, order_type, delivery_status,
@@ -1835,8 +2039,10 @@ impl Database {
              FROM orders WHERE customer_name LIKE ?1 ORDER BY created_at DESC LIMIT 50",
         )?;
 
+        let search_pattern = format!("%{}%", customer_name);
+
         let mut orders: Vec<Order> = stmt
-            .query_map([], |row| {
+            .query_map(params![search_pattern], |row| {
                 Ok(Order {
                     id: row.get(0)?,
                     items: vec![],
@@ -1939,7 +2145,7 @@ impl Database {
                 product_id: id,
                 product_name: name,
                 current_stock: stock as i32,
-                threshold: threshold,
+                threshold,
                 alert_type: alert_type.to_string(),
                 created_at: chrono::Utc::now().to_rfc3339(),
             });
@@ -2259,6 +2465,90 @@ impl Database {
         Ok(())
     }
 
+    pub fn seed_expense_categories(&self) -> Result<()> {
+        let count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM expense_categories", [], |r| r.get(0))?;
+        if count == 0 {
+            let categories = vec![
+                ("cat1", "Rent", "🏠"),
+                ("cat2", "Utilities", "💡"),
+                ("cat3", "Supplies", "📦"),
+                ("cat4", "Salaries", "👥"),
+                ("cat5", "Marketing", "📢"),
+                ("cat6", "Maintenance", "🔧"),
+                ("cat7", "Other", "📝"),
+            ];
+            for (id, name, icon) in categories {
+                self.conn.execute(
+                    "INSERT INTO expense_categories (id, name, icon) VALUES (?1, ?2, ?3)",
+                    params![id, name, icon],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn seed_tax_rates(&self) -> Result<()> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM tax_rates", [], |r| r.get(0))?;
+        if count == 0 {
+            let tax_rates = vec![
+                // Americas
+                ("tax_us_sales", "US Sales Tax (Average)", 8.25, 1, "US"),
+                ("tax_us_ca", "US - California", 7.25, 0, "US"),
+                ("tax_us_ny", "US - New York", 8.0, 0, "US"),
+                ("tax_us_tx", "US - Texas", 6.25, 0, "US"),
+                ("tax_us_fl", "US - Florida", 6.0, 0, "US"),
+                ("tax_ca_gst", "Canada GST", 5.0, 0, "CA"),
+                ("tax_ca_hst", "Canada HST (Ontario)", 13.0, 0, "CA"),
+                ("tax_ca_pst", "Canada PST (BC)", 12.0, 0, "CA"),
+                ("tax_mx_iva", "Mexico IVA", 16.0, 0, "MX"),
+                ("tax_br_icms", "Brazil ICMS", 18.0, 0, "BR"),
+                // Europe
+                ("tax_uk_vat", "UK VAT", 20.0, 0, "GB"),
+                ("tax_de_vat", "Germany VAT", 19.0, 0, "DE"),
+                ("tax_fr_vat", "France VAT", 20.0, 0, "FR"),
+                ("tax_it_vat", "Italy VAT", 22.0, 0, "IT"),
+                ("tax_es_vat", "Spain VAT", 21.0, 0, "ES"),
+                ("tax_nl_vat", "Netherlands VAT", 21.0, 0, "NL"),
+                ("tax_be_vat", "Belgium VAT", 21.0, 0, "BE"),
+                ("tax_pl_vat", "Poland VAT", 23.0, 0, "PL"),
+                ("tax_se_vat", "Sweden VAT", 25.0, 0, "SE"),
+                // Asia Pacific
+                ("tax_in_gst", "India GST (Standard)", 18.0, 0, "IN"),
+                ("tax_in_cgst", "India GST (CGST+SGST)", 18.0, 0, "IN"),
+                ("tax_au_gst", "Australia GST", 10.0, 0, "AU"),
+                ("tax_nz_gst", "New Zealand GST", 15.0, 0, "NZ"),
+                ("tax_sg_gst", "Singapore GST", 9.0, 0, "SG"),
+                ("tax_jp_consump", "Japan Consumption Tax", 10.0, 0, "JP"),
+                ("tax_kr_vat", "Korea VAT", 10.0, 0, "KR"),
+                ("tax_my_sst", "Malaysia SST", 6.0, 0, "MY"),
+                ("tax_th_vat", "Thailand VAT", 7.0, 0, "TH"),
+                ("tax_ph_vat", "Philippines VAT", 12.0, 0, "PH"),
+                ("tax_id_vat", "Indonesia VAT", 11.0, 0, "ID"),
+                ("tax_vn_vat", "Vietnam VAT", 10.0, 0, "VN"),
+                // Middle East
+                ("tax_ae_vat", "UAE VAT", 5.0, 0, "AE"),
+                ("tax_sa_vat", "Saudi Arabia VAT", 15.0, 0, "SA"),
+                ("tax_il_vat", "Israel VAT", 17.0, 0, "IL"),
+                ("tax_eg_vat", "Egypt VAT", 14.0, 0, "EG"),
+                // Africa
+                ("tax_za_vat", "South Africa VAT", 15.0, 0, "ZA"),
+                ("tax_ng_vat", "Nigeria VAT", 7.5, 0, "NG"),
+                ("tax_ke_vat", "Kenya VAT", 16.0, 0, "KE"),
+            ];
+            for (id, name, rate, is_default, country) in tax_rates {
+                self.conn.execute(
+                    "INSERT INTO tax_rates (id, name, rate, is_default, country) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![id, name, rate, is_default, country],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     // ─── Database Maintenance ────────────────────────────────────────────────
 
     #[allow(dead_code)]
@@ -2372,15 +2662,15 @@ impl Database {
 
         let mut result = Vec::new();
         for mut order in orders {
-            let mut stmt = self
-                .conn
-                .prepare("SELECT product_name, quantity FROM order_items WHERE order_id=?1")?;
+            let mut stmt = self.conn.prepare(
+                "SELECT product_name, quantity, done FROM order_items WHERE order_id=?1",
+            )?;
             let items: Vec<KdsItem> = stmt
                 .query_map(params![order.id], |row| {
                     Ok(KdsItem {
                         product_name: row.get(0)?,
                         quantity: row.get(1)?,
-                        done: false,
+                        done: row.get::<_, i32>(2)? == 1,
                     })
                 })?
                 .collect::<Result<Vec<_>>>()?;
@@ -2391,9 +2681,18 @@ impl Database {
         Ok(result)
     }
 
-    pub fn mark_kds_item_done(&self, _order_id: &str, _item_index: usize) -> Result<()> {
-        // In a full implementation, this would update the order_items table
-        // For now, this is a placeholder for KDS functionality
+    pub fn mark_kds_item_done(&self, order_id: &str, item_index: usize) -> Result<()> {
+        // Get the item at the given index for this order
+        let item_id: i64 = self.conn.query_row(
+            "SELECT id FROM order_items WHERE order_id=?1 ORDER BY id LIMIT 1 OFFSET ?2",
+            params![order_id, item_index as i64],
+            |row| row.get(0),
+        )?;
+
+        self.conn.execute(
+            "UPDATE order_items SET done = 1 WHERE id = ?1",
+            params![item_id],
+        )?;
         Ok(())
     }
 
@@ -2675,11 +2974,10 @@ impl Database {
 
     pub fn get_shifts(&self, date: &str) -> Result<Vec<Shift>> {
         let mut stmt = self.conn.prepare(
-            "SELECT s.id, s.staff_id, u.name, s.date, s.start_time, s.end_time, s.role, s.notes, s.created_at
-             FROM shifts s
-             LEFT JOIN users u ON s.staff_id = u.id
-             WHERE s.date=?1
-             ORDER BY s.start_time"
+            "SELECT id, staff_id, staff_name, date, start_time, end_time, role, notes, created_at
+             FROM shifts
+             WHERE date=?1
+             ORDER BY start_time",
         )?;
 
         let shifts = stmt
@@ -2687,7 +2985,7 @@ impl Database {
                 Ok(Shift {
                     id: row.get(0)?,
                     staff_id: row.get(1)?,
-                    staff_name: row.get::<_, String>(2).unwrap_or_default(),
+                    staff_name: row.get(2)?,
                     date: row.get(3)?,
                     start_time: row.get(4)?,
                     end_time: row.get(5)?,
@@ -2703,10 +3001,10 @@ impl Database {
 
     pub fn save_shift(&self, s: &Shift) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO shifts (id, staff_id, date, start_time, end_time, role, notes)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(id) DO UPDATE SET staff_id=excluded.staff_id, date=excluded.date, start_time=excluded.start_time, end_time=excluded.end_time, role=excluded.role, notes=excluded.notes",
-            params![s.id, s.staff_id, s.date, s.start_time, s.end_time, s.role, s.notes],
+            "INSERT INTO shifts (id, staff_id, staff_name, date, start_time, end_time, role, notes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET staff_id=excluded.staff_id, staff_name=excluded.staff_name, date=excluded.date, start_time=excluded.start_time, end_time=excluded.end_time, role=excluded.role, notes=excluded.notes",
+            params![s.id, s.staff_id, s.staff_name, s.date, s.start_time, s.end_time, s.role, s.notes],
         )?;
         Ok(())
     }
@@ -2810,6 +3108,46 @@ impl Database {
         Ok(())
     }
 
+    // ─── Tax Rates ───────────────────────────────────────────────────────────────
+
+    pub fn get_tax_rates(&self) -> Result<Vec<TaxRate>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name, rate, is_default, country FROM tax_rates ORDER BY name")?;
+        let rates = stmt
+            .query_map([], |row| {
+                Ok(TaxRate {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    rate: row.get(2)?,
+                    is_default: row.get::<_, i32>(3)? == 1,
+                    country: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(rates)
+    }
+
+    pub fn save_tax_rate(&self, t: &TaxRate) -> Result<()> {
+        if t.is_default {
+            self.conn
+                .execute("UPDATE tax_rates SET is_default = 0", [])?;
+        }
+        self.conn.execute(
+            "INSERT INTO tax_rates (id, name, rate, is_default, country)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO UPDATE SET name=excluded.name, rate=excluded.rate, is_default=excluded.is_default, country=excluded.country",
+            params![t.id, t.name, t.rate, if t.is_default { 1 } else { 0 }, t.country],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_tax_rate(&self, id: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM tax_rates WHERE id=?1", params![id])?;
+        Ok(())
+    }
+
     // ─── Customer Wallet ──────────────────────────────────────────────────────
 
     pub fn get_customer_wallet(&self, customer_id: &str) -> Result<CustomerWallet> {
@@ -2858,30 +3196,25 @@ impl Database {
     ) -> Result<()> {
         let id = uuid::Uuid::new_v4().to_string();
 
-        let balance: f64 = self
-            .conn
-            .query_row(
-                "SELECT balance FROM customer_wallets WHERE customer_id=?1",
-                params![customer_id],
-                |row| row.get(0),
-            )
-            .unwrap_or(0.0);
+        let tx = self.conn.unchecked_transaction()?;
 
-        if balance < amount {
-            return Err(rusqlite::Error::InvalidQuery);
-        }
-
-        self.conn.execute(
-            "UPDATE customer_wallets SET balance = balance - ?1, total_spent = total_spent + ?1 WHERE customer_id=?2",
+        let rows_updated = tx.execute(
+            "UPDATE customer_wallets SET balance = balance - ?1, total_spent = total_spent + ?1 WHERE customer_id=?2 AND balance >= ?1",
             params![amount, customer_id],
         )?;
 
-        self.conn.execute(
+        if rows_updated == 0 {
+            tx.rollback()?;
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+
+        tx.execute(
             "INSERT INTO wallet_transactions (id, customer_id, amount, transaction_type, order_id)
              VALUES (?1, ?2, ?3, 'debit', ?4)",
             params![id, customer_id, amount, order_id],
         )?;
 
+        tx.commit()?;
         Ok(())
     }
 
@@ -2963,19 +3296,31 @@ impl Database {
                 valid_until: row.get(8)?,
                 active: row.get::<_, i32>(9)? == 1,
             }),
-        )?;
+        ).map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         let now = chrono::Local::now().format("%Y-%m-%d").to_string();
-        if now < coupon.valid_from || now > coupon.valid_until {
-            return Err(rusqlite::Error::InvalidQuery);
+        if now < coupon.valid_from {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "Coupon not yet valid".to_string(),
+            ));
+        }
+        if now > coupon.valid_until {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "Coupon has expired".to_string(),
+            ));
         }
 
         if coupon.used_count >= coupon.max_uses {
-            return Err(rusqlite::Error::InvalidQuery);
+            return Err(rusqlite::Error::InvalidParameterName(
+                "Coupon usage limit reached".to_string(),
+            ));
         }
 
         if order_amount < coupon.min_order_amount {
-            return Err(rusqlite::Error::InvalidQuery);
+            return Err(rusqlite::Error::InvalidParameterName(format!(
+                "Minimum order amount of {} not met",
+                coupon.min_order_amount
+            )));
         }
 
         Ok(coupon)
@@ -3118,7 +3463,7 @@ impl Database {
         limit: i32,
     ) -> Result<Vec<ActivityLogEntry>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, entity_type, entity_id, previous_value, new_value, reason, user_id, user_name, created_at
+            "SELECT id, order_id, action, previous_data, new_data, reason, user_id, user_name, created_at
              FROM activity_logs
              WHERE DATE(created_at) BETWEEN ?1 AND ?2
              ORDER BY created_at DESC LIMIT ?3"
@@ -3129,11 +3474,11 @@ impl Database {
                 Ok(ActivityLogEntry {
                     id: row.get(0)?,
                     action: row.get(1)?,
-                    entity_type: row.get(2)?,
-                    entity_id: row.get(3)?,
+                    entity_type: Some(row.get::<_, String>(2)?),
+                    entity_id: Some(row.get::<_, String>(3)?),
                     previous_value: row.get(4)?,
                     new_value: row.get(5)?,
-                    reason: row.get(6)?,
+                    reason: Some(row.get::<_, String>(6)?),
                     user_id: row.get(7)?,
                     user_name: row.get(8)?,
                     created_at: row.get(9)?,

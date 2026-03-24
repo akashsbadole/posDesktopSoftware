@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { CheckCircle, DollarSign, CreditCard, Smartphone, TrendingUp, TrendingDown, Save, X, Calculator } from "lucide-react";
-import { getDayEndReconciliation, saveDayEndReconciliation, dbGetDailySummary, getExpenses, dbGetSettings } from "@/lib/db";
+import { getDayEndReconciliation, saveDayEndReconciliation, dbGetDailySummary, getExpenses, dbGetSettings, getSalesByPaymentMethod } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 
 interface DayEndReconciliation {
@@ -32,22 +32,25 @@ export default function DayEndReconciliationScreen() {
     notes: "",
   });
   const [saving, setSaving] = useState(false);
+  const [paymentBreakdown, setPaymentBreakdown] = useState({ cash: 0, upi: 0, card: 0 });
 
   useEffect(() => {
     loadData();
   }, [selectedDate]);
 
   const loadData = async () => {
-    const [rec, sum, exp, set] = await Promise.all([
+    const [rec, sum, exp, set, payments] = await Promise.all([
       getDayEndReconciliation(selectedDate),
       dbGetDailySummary(),
       getExpenses(selectedDate),
       dbGetSettings(),
+      getSalesByPaymentMethod(selectedDate),
     ]);
     setReconciliation(rec);
     setSummary(sum);
     setExpenses(exp);
     setSettings(set);
+    setPaymentBreakdown(payments);
     if (rec) {
       setFormData({
         opening_cash: rec.opening_cash,
@@ -61,28 +64,30 @@ export default function DayEndReconciliationScreen() {
 
   const calculateExpected = () => {
     if (!summary) return 0;
-    return formData.opening_cash + summary.revenue;
+    return formData.opening_cash + paymentBreakdown.cash;
   };
 
   const calculateDifference = () => {
-    return formData.actual_cash - calculateExpected() + (expenses.reduce((s, e) => s + e.amount, 0));
+    const cashExpenses = expenses.filter((e: any) => e.payment_method === "cash").reduce((s: number, e: any) => s + e.amount, 0);
+    return formData.actual_cash - calculateExpected() + cashExpenses;
   };
 
   const handleSave = async () => {
     setSaving(true);
     const expected = calculateExpected();
-    const difference = calculateDifference();
+    const cashExpenses = expenses.filter((e: any) => e.payment_method === "cash").reduce((s: number, e: any) => s + e.amount, 0);
+    const difference = formData.actual_cash - expected + cashExpenses;
     const rec: DayEndReconciliation = {
       id: reconciliation?.id || uuid(),
       date: selectedDate,
       opening_cash: formData.opening_cash,
-      expected_cash: expected - expenses.reduce((s, e) => s + e.amount, 0),
+      expected_cash: expected - cashExpenses,
       actual_cash: formData.actual_cash,
       difference,
-      cash_sales: summary?.revenue || 0,
-      upi_sales: 0,
-      card_sales: 0,
-      total_expenses: expenses.reduce((s, e) => s + e.amount, 0),
+      cash_sales: paymentBreakdown.cash,
+      upi_sales: paymentBreakdown.upi,
+      card_sales: paymentBreakdown.card,
+      total_expenses: expenses.reduce((s: number, e: any) => s + e.amount, 0),
       notes: formData.notes,
       created_by: "admin",
       created_at: new Date().toISOString(),
@@ -178,12 +183,20 @@ export default function DayEndReconciliationScreen() {
               <span>₹{formData.opening_cash.toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
-              <span className="text-gray-400">+ Total Sales</span>
-              <span className="text-green-400">₹{(summary?.revenue || 0).toFixed(2)}</span>
+              <span className="text-gray-400">+ Cash Sales</span>
+              <span className="text-green-400">₹{paymentBreakdown.cash.toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
-              <span className="text-gray-400">- Expenses</span>
-              <span className="text-red-400">-₹{expenses.reduce((s, e) => s + e.amount, 0).toFixed(2)}</span>
+              <span className="text-gray-400">+ UPI Sales</span>
+              <span className="text-blue-400">₹{paymentBreakdown.upi.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between py-2 border-b border-[#1E1E26]">
+              <span className="text-gray-400">+ Card Sales</span>
+              <span className="text-purple-400">₹{paymentBreakdown.card.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between py-2 border-b border-[#1E1E26]">
+              <span className="text-gray-400">- Total Expenses</span>
+              <span className="text-red-400">-₹{expenses.reduce((s: number, e: any) => s + e.amount, 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">Expected Cash</span>

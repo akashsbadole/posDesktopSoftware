@@ -13,6 +13,7 @@ export default function POSScreen() {
     items: cart, 
     orderType, 
     customerInfo, 
+    tableName,
     notes, 
     globalDiscount, 
     paymentMethod, 
@@ -318,6 +319,56 @@ export default function POSScreen() {
       alert("Failed to hold order");
     }
     setProcessing(false);
+  };
+
+  const handlePrintKOT = async () => {
+    if (cart.length === 0 || processing) return;
+    setProcessing(true);
+
+    const order = toOrder(uuid(), user?.id || "system", user?.name || "System");
+    order.status = "processing";
+    order.payment_method = "cash";
+    order.amount_paid = 0;
+    order.change_amount = 0;
+    order.customer_name = customerInfo?.name || "";
+    order.delivery_status = "pending";
+    order.delivery_address = customerInfo?.address || "";
+    order.delivery_phone = customerInfo?.phone || "";
+
+    try {
+      await invoke("save_order", { order });
+      const kotText = generateKOTText(order);
+      await invoke("print_receipt", { receipt: kotText });
+      alert("KOT sent to printer!");
+      clearCart();
+    } catch (err) {
+      console.error("Failed to print KOT:", err);
+      alert("Failed to print KOT");
+    }
+    setProcessing(false);
+  };
+
+  const generateKOTText = (order: Order): string => {
+    const lines = [
+      "=".repeat(32),
+      "KITCHEN ORDER TICKET",
+      "=".repeat(32),
+      `Order #: ${order.id.slice(0, 8).toUpperCase()}`,
+      `Type: ${order.order_type.toUpperCase()}`,
+      `Table: ${tableName || "N/A"}`,
+      `Customer: ${order.customer_name || "Guest"}`,
+      `Time: ${new Date().toLocaleTimeString()}`,
+      "-".repeat(32),
+      "ITEMS:",
+      ...order.items.map((item, idx) => 
+        `${idx + 1}. ${item.product_name} x${item.quantity}`
+      ),
+      "-".repeat(32),
+      notes ? `Notes: ${notes}` : "",
+      "=".repeat(32),
+      "",
+    ].filter(Boolean);
+    return lines.join("\n");
   };
 
   const handleRestoreOrder = (order: Order) => {
@@ -943,19 +994,35 @@ export default function POSScreen() {
 
             <div className="flex gap-2">
               {cart.length > 0 && (
-                <button 
-                  className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
-                  style={{ 
-                    background: "transparent", 
-                    border: "1px solid #2E2E3E", 
-                    color: "#9090A8" 
-                  }}
-                  onClick={handleHoldOrder}
-                  disabled={processing}
-                  aria-label="Hold order for later"
-                >
-                  Hold
-                </button>
+                <>
+                  <button 
+                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
+                    style={{ 
+                      background: "transparent", 
+                      border: "1px solid #2E2E3E", 
+                      color: "#9090A8" 
+                    }}
+                    onClick={handlePrintKOT}
+                    disabled={processing}
+                    aria-label="Print Kitchen Order Ticket"
+                  >
+                    <Printer size={14} />
+                    KOT
+                  </button>
+                  <button 
+                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
+                    style={{ 
+                      background: "transparent", 
+                      border: "1px solid #2E2E3E", 
+                      color: "#9090A8" 
+                    }}
+                    onClick={handleHoldOrder}
+                    disabled={processing}
+                    aria-label="Hold order for later"
+                  >
+                    Hold
+                  </button>
+                </>
               )}
               <button 
                 className="btn-accent flex-[2] flex items-center justify-center gap-2 py-3 text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] focus-visible:ring-offset-2 focus-visible:ring-offset-[#141418]"

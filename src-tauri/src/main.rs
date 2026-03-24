@@ -42,6 +42,32 @@ fn update_stock(id: String, delta: i64) -> Result<(), String> {
     db.update_stock(&id, delta).map_err(|e| e.to_string())
 }
 
+// ─── Combo Commands ───────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn get_combos() -> Result<Vec<db::Combo>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_combos().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_combo(combo: db::Combo) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.save_combo(&combo).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_combo(id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.delete_combo(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn toggle_combo(id: String, active: bool) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.toggle_combo(&id, active).map_err(|e| e.to_string())
+}
+
 // ─── Order Commands ───────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -82,6 +108,24 @@ fn save_settings(settings: db::Settings) -> Result<(), String> {
     db.save_settings(&settings).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_tax_rates() -> Result<Vec<db::TaxRate>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_tax_rates().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_tax_rate(tax_rate: db::TaxRate) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.save_tax_rate(&tax_rate).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_tax_rate(id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.delete_tax_rate(&id).map_err(|e| e.to_string())
+}
+
 // ─── Analytics Commands ───────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -106,6 +150,12 @@ fn get_top_products() -> Result<Vec<db::TopProduct>, String> {
 fn get_low_stock() -> Result<Vec<db::LowStockItem>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.get_low_stock().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_sales_by_payment_method(date: String) -> Result<(f64, f64, f64), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_sales_by_payment_method(&date).map_err(|e| e.to_string())
 }
 
 // ─── CSV Commands ───────────────────────────────────────────────────────────
@@ -963,16 +1013,24 @@ fn main() {
             upsert_product,
             delete_product,
             update_stock,
+            get_combos,
+            save_combo,
+            delete_combo,
+            toggle_combo,
             get_orders,
             save_order,
             refund_order,
             update_delivery_status,
             get_settings,
             save_settings,
+            get_tax_rates,
+            save_tax_rate,
+            delete_tax_rate,
             get_daily_summary,
             get_weekly_revenue,
             get_top_products,
             get_low_stock,
+            get_sales_by_payment_method,
             export_products_csv,
             export_orders_csv,
             import_products_csv,

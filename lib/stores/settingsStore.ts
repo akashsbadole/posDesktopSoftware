@@ -42,9 +42,12 @@ const defaultSettings: Settings = {
   primary_color: '#F5C842',
   secondary_color: '#1E1E26',
   accent_color: '#2ECC71',
-  footer_text: 'Powered by POS Billing',
+  footer_text: 'Powered by AppIXEN',
   contact_email: '',
   contact_website: '',
+  tax_inclusive: false,
+  tax_breakdown: '[]',
+  auto_print_kot: false,
 };
 
 export const useSettingsStore = create<SettingsState>()(
