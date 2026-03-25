@@ -624,6 +624,10 @@ impl Database {
             )",
             [],
         );
+        let _ = self.conn.execute(
+            "ALTER TABLE coupons ADD COLUMN created_at TEXT NOT NULL DEFAULT (datetime('now'))",
+            [],
+        );
         Ok(())
     }
 
@@ -902,7 +906,8 @@ impl Database {
                 used_count INTEGER NOT NULL DEFAULT 0,
                 valid_from TEXT NOT NULL,
                 valid_until TEXT NOT NULL,
-                active INTEGER NOT NULL DEFAULT 1
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
             CREATE TABLE IF NOT EXISTS day_end_reconciliations (
@@ -1013,10 +1018,37 @@ impl Database {
     }
 
     pub fn update_stock(&self, id: &str, delta: i64) -> Result<()> {
+        let (name, old_stock): (String, i64) = self.conn.query_row(
+            "SELECT name, stock FROM products WHERE id = ?1",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
         self.conn.execute(
             "UPDATE products SET stock = MAX(0, stock + ?1) WHERE id = ?2",
             params![delta, id],
         )?;
+
+        let new_stock = (old_stock + delta).max(0);
+
+        self.log_activity(
+            id,
+            "stock_updated",
+            Some(&old_stock.to_string()),
+            Some(&new_stock.to_string()),
+            &format!(
+                "Manual stock adjustment for {}: {}",
+                name,
+                if delta >= 0 {
+                    format!("+{}", delta)
+                } else {
+                    delta.to_string()
+                }
+            ),
+            "system",
+            "System",
+        )?;
+
         Ok(())
     }
 

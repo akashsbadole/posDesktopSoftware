@@ -249,8 +249,8 @@ A full-featured Point of Sale (POS) desktop application for restaurants, built w
 ## 🔄 PARTIALLY IMPLEMENTED
 
 ### Inventory - Auto-deduction
-- [ ] Recipe mapping for all products ⚠️ (needs complete product-ingredient mapping)
-- [ ] Real-time stock auto-deduction on sale ⚠️ (partially works)
+- [x] Recipe mapping for all products
+- [x] Real-time stock auto-deduction on sale
 
 ### KDS
 - [ ] Audio alerts for new orders ⚠️ (needs implementation in Rust backend)
