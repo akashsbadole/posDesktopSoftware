@@ -1415,7 +1415,15 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       return undefined as T;
     }
     case "get_reservations": {
-      const reservations = lsGet<Reservation[]>("pos_reservations") || [];
+      const reservations = lsGet<Reservation[]>("pos_reservations");
+      if (!reservations) {
+        const today = new Date().toISOString().slice(0, 10);
+        const seeds: Reservation[] = [
+          { id: "r1", table_id: "t4", table_name: "Table 4", customer_name: "David Lee", phone: "9876543215", date: today, time: "19:00", party_size: 4, status: "confirmed", notes: "Birthday celebration", created_at: new Date().toISOString() },
+        ];
+        lsSet("pos_reservations", seeds);
+        return seeds as T;
+      }
       const date = (args as any).date as string;
       return reservations.filter((r) => r.date === date) as T;
     }
@@ -1623,9 +1631,41 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     case "get_kds_orders": {
       const orders = (lsGet<Order[]>(LS.orders) || []).filter((o) => (o.status === "completed" || o.status === "processing") && o.order_type !== "takeaway");
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-      return orders.filter((o) => o.created_at > twoHoursAgo).slice(0, 50).map((o) => ({ id: o.id, items: o.items.map((i) => ({ product_name: i.product_name, quantity: i.quantity, done: false })), order_type: o.order_type, customer_name: o.customer_name, created_at: o.created_at })) as T;
+      const doneStates = lsGet<Record<string, boolean[]>>("pos_kds_done_states") || {};
+
+      return orders.filter((o) => o.created_at > twoHoursAgo).slice(0, 50).map((o) => {
+        const orderDoneStates = doneStates[o.id] || new Array(o.items.length).fill(false);
+        return {
+          id: o.id,
+          items: o.items.map((i, idx) => ({
+            product_name: i.product_name,
+            quantity: i.quantity,
+            done: orderDoneStates[idx] || false
+          })),
+          order_type: o.order_type,
+          customer_name: o.customer_name,
+          created_at: o.created_at
+        };
+      }) as T;
     }
-    case "mark_kds_item_done": return undefined as T;
+    case "mark_kds_item_done": {
+      const { orderId, itemIndex } = args as { orderId: string; itemIndex: number };
+      const doneStates = lsGet<Record<string, boolean[]>>("pos_kds_done_states") || {};
+      if (!doneStates[orderId]) {
+        const orders = lsGet<Order[]>(LS.orders) || [];
+        const order = orders.find(o => o.id === orderId);
+        if (order) {
+          doneStates[orderId] = new Array(order.items.length).fill(false);
+        } else {
+          doneStates[orderId] = [];
+        }
+      }
+      if (doneStates[orderId].length > itemIndex) {
+        doneStates[orderId][itemIndex] = true;
+      }
+      lsSet("pos_kds_done_states", doneStates);
+      return undefined as T;
+    }
     case "get_inventory_alerts": {
       const alerts = lsGet<InventoryAlert[]>("pos_inventory_alerts") || [];
       return alerts as T;
@@ -1743,7 +1783,16 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       return results as T;
     }
     case "get_staff_performance": {
-      return [] as T;
+      const orders = (lsGet<Order[]>(LS.orders) || []).filter((o) => o.status === "completed");
+      const map: Record<string, StaffPerformance> = {};
+      orders.forEach((o) => {
+        const userId = o.user_id || "unknown";
+        const userName = o.user_name || "Unknown Staff";
+        if (!map[userId]) map[userId] = { user_id: userId, user_name: userName, total_orders: 0, total_revenue: 0 };
+        map[userId].total_orders += 1;
+        map[userId].total_revenue += o.total;
+      });
+      return Object.values(map) as T;
     }
     case "get_sales_by_item": {
       const orders = (lsGet<Order[]>(LS.orders) || []).filter((o) => o.status === "completed");
@@ -1914,6 +1963,10 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     case "delete_tax_rate": {
       const rates = (lsGet<TaxRate[]>("pos_tax_rates") || []).filter((t) => t.id !== (args as any).id);
       lsSet("pos_tax_rates", rates);
+      return undefined as T;
+    }
+    case "send_whatsapp_message": {
+      console.log("WhatsApp message (simulated):", args);
       return undefined as T;
     }
     default:
@@ -2133,3 +2186,8 @@ export async function createCompressedBackup(): Promise<number[]> {
 export async function sendWhatsAppMessage(phone: string, message: string): Promise<void> {
   return sql("send_whatsapp_message", { phone, message });
 }
+
+// Add browser fallback for WhatsApp
+// Already handled by the default throw in browserFallback,
+// but lets add an explicit case if needed or just let it be.
+// Actually, I should add it to the switch in browserFallback.

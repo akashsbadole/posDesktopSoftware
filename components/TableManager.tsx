@@ -14,6 +14,7 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
   const { tables, isLoading, fetchTables, addTable, deleteTable, setTableStatus, updateTable } = useTablesStore();
   const [editingTable, setEditingTable] = useState<Table | null>(null);
   const [showModal, setShowModal] = useState(isOpen);
+  const isModal = !!onClose;
 
   useEffect(() => {
     setShowModal(isOpen);
@@ -24,8 +25,10 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
   }, []);
 
   const handleClose = () => {
-    setShowModal(false);
-    onClose?.();
+    if (isModal) {
+      setShowModal(false);
+      onClose?.();
+    }
   };
 
   const handleSave = async () => {
@@ -86,23 +89,18 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
     }
   };
 
-  if (!showModal) return null;
+  if (isModal && !showModal) return null;
 
-   return (
-      <div 
-        className="fixed inset-0 z-50 flex items-center justify-center" 
-       style={{ background: "rgba(0,0,0,0.7)" }}
-       onClick={(e) => e.target === e.currentTarget && handleClose()}
-     >
-       <div className="card w-[700px] max-h-[80vh] overflow-hidden flex flex-col fade-in" role="dialog" aria-modal="true" aria-labelledby="table-manager-title">
-         <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--border)" }}>
-           <h2 id="table-manager-title" className="font-display text-lg font-bold flex items-center gap-2">
-             <Users size={20} style={{ color: "#F5C842" }} /> Table Manager
-           </h2>
-              <button onClick={handleClose} className="btn-ghost py-1 px-3"><X size={18} /></button>
-         </div>
+  const content = (
+    <div className={`${isModal ? "card w-[700px] max-h-[80vh]" : "h-full flex flex-col"} overflow-hidden fade-in`} role="dialog" aria-modal={isModal} aria-labelledby="table-manager-title">
+      <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--border)" }}>
+        <h2 id="table-manager-title" className="font-display text-lg font-bold flex items-center gap-2">
+          <Users size={20} style={{ color: "#F5C842" }} /> Table Manager
+        </h2>
+        {isModal && <button onClick={handleClose} className="btn-ghost py-1 px-3"><X size={18} /></button>}
+      </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4">
           {isLoading ? (
             <div className="flex items-center justify-center h-32" style={{ color: "#4A4A5A" }}>Loading...</div>
           ) : (
@@ -166,7 +164,20 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
             </div>
           </div>
         )}
-      </div>
     </div>
   );
+
+  if (isModal) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center"
+        style={{ background: "rgba(0,0,0,0.7)" }}
+        onClick={(e) => e.target === e.currentTarget && handleClose()}
+      >
+        {content}
+      </div>
+    );
+  }
+
+  return content;
 }

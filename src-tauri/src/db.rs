@@ -1285,32 +1285,33 @@ impl Database {
 
     pub fn refund_order(&self, id: &str, user_id: &str, user_name: &str) -> Result<()> {
         // Get order details first
-        let order_total: f64 = self.conn.query_row(
-            "SELECT total FROM orders WHERE id = ?1",
+        let (order_total, status): (f64, String) = self.conn.query_row(
+            "SELECT total, status FROM orders WHERE id = ?1",
             params![id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
 
-        let items = {
-            let mut stmt = self
-                .conn
-                .prepare("SELECT product_id, quantity FROM order_items WHERE order_id=?1")?;
-            let items: Vec<(String, i64)> = stmt
-                .query_map(params![id], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-                })?
-                .collect::<Result<Vec<_>>>()?;
-            items
+        if status != "completed" {
+            return Ok(());
+        }
+
+        let tx = self.conn.unchecked_transaction()?;
+
+        let items: Vec<(String, i64)> = {
+            let mut stmt = tx.prepare("SELECT product_id, quantity FROM order_items WHERE order_id=?1")?;
+            stmt.query_map(params![id], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .filter_map(|r| r.ok())
+                .collect()
         };
 
         for (product_id, qty) in items {
-            self.conn.execute(
+            tx.execute(
                 "UPDATE products SET stock = stock + ?1 WHERE id = ?2",
                 params![qty, product_id],
             )?;
 
             // Restore ingredients based on recipes
-            let mut recipe_stmt = self.conn.prepare(
+            let mut recipe_stmt = tx.prepare(
                 "SELECT ingredient_id, quantity FROM recipes WHERE product_id = ?1",
             )?;
             let recipes: Vec<(String, f64)> = recipe_stmt
@@ -1321,17 +1322,19 @@ impl Database {
                 .collect();
 
             for (ing_id, ing_qty) in recipes {
-                self.conn.execute(
+                tx.execute(
                     "UPDATE ingredients SET stock = stock + ?1 WHERE id = ?2",
                     params![ing_qty * qty as f64, ing_id],
                 )?;
             }
         }
 
-        self.conn.execute(
-            "UPDATE orders SET status='refunded' WHERE id=?1 AND status='completed'",
+        tx.execute(
+            "UPDATE orders SET status='refunded' WHERE id=?1",
             params![id],
         )?;
+
+        tx.commit()?;
 
         // Log activity
         self.log_activity(
@@ -2426,35 +2429,39 @@ impl Database {
             |row| Ok((row.get(0)?,)),
         )?;
 
+        let tx = self.conn.unchecked_transaction()?;
+
         // If order was active, restore stock
         if status == "completed" || status == "processing" {
             let items: Vec<(String, i64)> = {
-                let mut stmt = self.conn.prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?1")?;
+                let mut stmt = tx.prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?1")?;
                 stmt.query_map(params![id], |row| Ok((row.get(0)?, row.get(1)?)))?
                     .filter_map(|r| r.ok())
                     .collect()
             };
 
             for (prod_id, qty) in items {
-                self.conn.execute("UPDATE products SET stock = stock + ?1 WHERE id = ?2", params![qty, prod_id])?;
+                tx.execute("UPDATE products SET stock = stock + ?1 WHERE id = ?2", params![qty, prod_id])?;
 
                 // Restore ingredients
                 let recipes: Vec<(String, f64)> = {
-                    let mut stmt = self.conn.prepare("SELECT ingredient_id, quantity FROM recipes WHERE product_id = ?1")?;
+                    let mut stmt = tx.prepare("SELECT ingredient_id, quantity FROM recipes WHERE product_id = ?1")?;
                     stmt.query_map(params![prod_id], |row| Ok((row.get(0)?, row.get(1)?)))?
                         .filter_map(|r| r.ok())
                         .collect()
                 };
                 for (ing_id, ing_qty) in recipes {
-                    self.conn.execute("UPDATE ingredients SET stock = stock + ?1 WHERE id = ?2", params![ing_qty * qty as f64, ing_id])?;
+                    tx.execute("UPDATE ingredients SET stock = stock + ?1 WHERE id = ?2", params![ing_qty * qty as f64, ing_id])?;
                 }
             }
         }
 
-        self.conn.execute(
+        tx.execute(
             "UPDATE orders SET status='cancelled' WHERE id=?1",
             params![id],
         )?;
+
+        tx.commit()?;
 
         self.log_activity(
             id,
