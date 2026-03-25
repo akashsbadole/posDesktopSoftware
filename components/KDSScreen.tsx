@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Check, X, Clock, RefreshCw, ChefHat, ArrowLeft, Utensils } from "lucide-react";
-import { KdsOrder, getKdsOrders, markKdsItemDone } from "@/lib/db";
-import { invoke } from "@tauri-apps/api/tauri";
+import { KdsOrder, getKdsOrders, markKdsItemDone, openKdsWindow } from "@/lib/db";
 
 export default function KDSScreen() {
   const [orders, setOrders] = useState<KdsOrder[]>([]);
@@ -58,9 +57,9 @@ export default function KDSScreen() {
     }
   };
 
-  const openKdsWindow = async () => {
+  const handleOpenKdsWindow = async () => {
     try {
-      await invoke("open_kds_window");
+      await openKdsWindow();
     } catch (err) {
       console.error("Failed to open KDS window:", err);
     }
@@ -96,7 +95,7 @@ export default function KDSScreen() {
       <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button 
-            onClick={openKdsWindow} 
+            onClick={handleOpenKdsWindow}
             className="btn-ghost py-2 px-3 flex items-center gap-2"
             title="Open in separate window"
           >

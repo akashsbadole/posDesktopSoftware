@@ -48,6 +48,7 @@ export interface OrderItem {
   quantity: number;
   discount: number;
   tax: number;
+  done?: boolean;
 }
 
 export interface Order {
@@ -519,6 +520,10 @@ export async function exportBackup(): Promise<string> {
   return sql<string>("export_backup");
 }
 
+export async function importBackup(backupJson: string): Promise<{ products_imported: number; orders_imported: number }> {
+  return sql<{ products_imported: number; orders_imported: number }>("import_backup", { backupJson });
+}
+
 // ─── Activity Logs ─────────────────────────────────────────────────────────
 export interface ActivityLog {
   id: string;
@@ -678,8 +683,24 @@ export async function printToPrinter(receipt: string, printerName?: string): Pro
   return sql("print_to_printer", { receipt, printerName });
 }
 
+export async function printReceipt(receipt: string): Promise<void> {
+  return sql("print_receipt", { receipt });
+}
+
 export async function openCashDrawer(): Promise<void> {
   return sql("open_cash_drawer");
+}
+
+export async function saveReceiptToFile(receipt: string, fileName: string): Promise<string> {
+  return sql<string>("save_receipt_to_file", { receipt, fileName });
+}
+
+export async function openWhatsAppShare(receipt: string): Promise<void> {
+  return sql("open_whatsapp_share", { receipt });
+}
+
+export async function openEmailShare(receipt: string, subject: string): Promise<void> {
+  return sql("open_email_share", { receipt, subject });
 }
 
 // ─── Neon Sync ────────────────────────────────────────────────────────────────
@@ -1064,11 +1085,24 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       lsSet(LS.orders, orders);
       // deduct stock
       const products = lsGet<Product[]>(LS.products) || [];
+      const ingredients = lsGet<Ingredient[]>("pos_ingredients") || [];
+      const recipes = lsGet<Recipe[]>("pos_recipes") || [];
+
       o.items.forEach((item) => {
         const p = products.find((x) => x.id === item.product_id);
         if (p) p.stock = Math.max(0, p.stock - item.quantity);
+
+        // Deduct ingredients
+        const productRecipes = recipes.filter(r => r.product_id === item.product_id);
+        productRecipes.forEach(recipe => {
+          const ing = ingredients.find(i => i.id === recipe.ingredient_id);
+          if (ing) {
+            ing.stock = Math.max(0, ing.stock - (recipe.quantity * item.quantity));
+          }
+        });
       });
       lsSet(LS.products, products);
+      lsSet("pos_ingredients", ingredients);
       return undefined as T;
     }
     case "refund_order": {
@@ -1096,50 +1130,17 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       }
     }
     case "save_settings": {
-      // Try Tauri first, fallback to localStorage
-      try {
-        // @ts-ignore
-        await invoke("save_settings", { settings: (args as any).settings });
-      } catch {
+      if (IS_TAURI) {
+        try {
+          // @ts-ignore
+          await invoke("save_settings", { settings: (args as any).settings });
+        } catch (e) {
+          lsSet(LS.settings, (args as any).settings);
+        }
+      } else {
         lsSet(LS.settings, (args as any).settings);
       }
       return undefined as T;
-    }
-    case "get_daily_summary": {
-      const orders = (lsGet<Order[]>(LS.orders) || []).filter(
-        (o) => o.status === "completed" && new Date(o.created_at).toDateString() === new Date().toDateString()
-      );
-      const revenue = orders.reduce((s, o) => s + o.total, 0);
-      const transactions = orders.length;
-      const avg_order = transactions ? revenue / transactions : 0;
-      const items_sold = orders.reduce((s, o) => s + o.items.reduce((a, i) => a + i.quantity, 0), 0);
-      return { revenue, transactions, avg_order, items_sold } as T;
-    }
-    case "get_weekly_revenue": {
-      const orders = (lsGet<Order[]>(LS.orders) || []).filter((o) => o.status === "completed");
-      const days = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(); d.setDate(d.getDate() - i);
-        const label = d.toLocaleDateString("en", { weekday: "short" });
-        const revenue = orders.filter((o) => new Date(o.created_at).toDateString() === d.toDateString())
-          .reduce((s, o) => s + o.total, 0);
-        days.push({ label, revenue });
-      }
-      return days as T;
-    }
-    case "get_top_products": {
-      const orders = (lsGet<Order[]>(LS.orders) || []).filter((o) => o.status === "completed");
-      const map: Record<string, { name: string; qty: number; revenue: number }> = {};
-      orders.forEach((o) => o.items.forEach((item) => {
-        if (!map[item.product_id]) map[item.product_id] = { name: item.product_name, qty: 0, revenue: 0 };
-        map[item.product_id].qty += item.quantity;
-        map[item.product_id].revenue += item.price * item.quantity;
-      }));
-      return Object.values(map).sort((a, b) => b.revenue - a.revenue).slice(0, 5) as T;
-    }
-    case "get_low_stock": {
-      const products = lsGet<Product[]>(LS.products) || [];
-      return products.filter((p) => p.stock <= 10).map((p) => ({ name: p.name, stock: p.stock })) as T;
     }
     case "export_products_csv": {
       const products = lsGet<Product[]>(LS.products) || [];
@@ -1170,17 +1171,6 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       }
       lsSet(LS.products, products);
       return { imported, errors } as T;
-    }
-    case "get_sales_report": {
-      const startDate = (args as any).startDate as string;
-      const endDate = (args as any).endDate as string;
-      const orders = (lsGet<Order[]>(LS.orders) || []).filter(
-        (o) => o.status === "completed" && o.created_at >= startDate && o.created_at <= endDate + "T23:59:59"
-      );
-      const total_revenue = orders.reduce((s, o) => s + o.total, 0);
-      const total_orders = orders.length;
-      const avg_order = total_orders ? total_revenue / total_orders : 0;
-      return { start_date: startDate, end_date: endDate, total_revenue, total_orders, avg_order } as T;
     }
     case "sync_to_neon":
       return { synced: 0, error: "Neon sync only available in Tauri desktop app" } as T;
@@ -1569,9 +1559,25 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     case "get_kds_orders": {
       const orders = (lsGet<Order[]>(LS.orders) || []).filter((o) => (o.status === "completed" || o.status === "processing") && o.order_type !== "takeaway");
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-      return orders.filter((o) => o.created_at > twoHoursAgo).slice(0, 50).map((o) => ({ id: o.id, items: o.items.map((i) => ({ product_name: i.product_name, quantity: i.quantity, done: false })), order_type: o.order_type, customer_name: o.customer_name, created_at: o.created_at })) as T;
+      return orders.filter((o) => o.created_at > twoHoursAgo).slice(0, 50).map((o) => ({
+        id: o.id,
+        items: o.items.map((i) => ({ product_name: i.product_name, quantity: i.quantity, done: !!i.done })),
+        order_type: o.order_type,
+        customer_name: o.customer_name,
+        created_at: o.created_at
+      })) as T;
     }
-    case "mark_kds_item_done": return undefined as T;
+    case "mark_kds_item_done": {
+      const orderId = (args as any).orderId;
+      const itemIndex = (args as any).itemIndex;
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const order = orders.find(o => o.id === orderId);
+      if (order && order.items[itemIndex]) {
+        order.items[itemIndex].done = true;
+        lsSet(LS.orders, orders);
+      }
+      return undefined as T;
+    }
     case "get_inventory_alerts": {
       const alerts = lsGet<InventoryAlert[]>("pos_inventory_alerts") || [];
       return alerts as T;
@@ -1702,8 +1708,18 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     }
     case "change_pin": return undefined as T;
     case "get_activity_logs": {
-      const logs = lsGet<ActivityLogEntry[]>("pos_activity_logs") || [];
-      return logs.slice(0, (args as any).limit || 100) as T;
+      const logs = lsGet<any[]>("pos_activity_logs") || [];
+      return logs.map(l => ({
+        id: l.id,
+        order_id: l.order_id || l.entity_id || "",
+        action: l.action,
+        previous_data: l.previous_data || l.previous_value || null,
+        new_data: l.new_data || l.new_value || null,
+        reason: l.reason || "",
+        user_id: l.user_id,
+        user_name: l.user_name,
+        created_at: l.created_at
+      })).slice(0, (args as any).limit || 100) as T;
     }
     case "get_daily_summary": {
       const orders = (lsGet<Order[]>(LS.orders) || []).filter((o) => o.status === "completed" && new Date(o.created_at).toDateString() === new Date().toDateString());
@@ -1762,7 +1778,24 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       const products = lsGet<Product[]>(LS.products) || [];
       const orders = lsGet<Order[]>(LS.orders) || [];
       const settings = lsGet<Settings>(LS.settings) || defaultSettings();
-      return JSON.stringify({ products, orders, settings, exported_at: new Date().toISOString() }) as T;
+      const backup = JSON.stringify({ products, orders, settings, exported_at: new Date().toISOString() });
+      // Return base64 encoded to match Rust backend behavior if needed,
+      // but POSScreen.tsx handles it by checking if it can be b64 decoded.
+      // Actually, POSScreen.tsx just takes the return value.
+      return btoa(backup) as T;
+    }
+    case "import_backup": {
+      const backupJson = (args as any).backupJson as string;
+      let data: any;
+      try {
+        data = JSON.parse(atob(backupJson));
+      } catch {
+        data = JSON.parse(backupJson);
+      }
+      if (data.products) lsSet(LS.products, data.products);
+      if (data.orders) lsSet(LS.orders, data.orders);
+      if (data.settings) lsSet(LS.settings, data.settings);
+      return { products_imported: data.products?.length || 0, orders_imported: data.orders?.length || 0 } as T;
     }
     case "export_to_tally": return "<ENVELOPE></ENVELOPE>" as T;
     case "export_to_quickbooks": return "{}" as T;
@@ -1829,8 +1862,30 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       lsSet("pos_tax_rates", rates);
       return undefined as T;
     }
+    case "print_receipt":
+      console.log("Printing receipt:", (args as any).receipt);
+      return undefined as T;
+    case "print_to_printer":
+      console.log(`Printing to ${(args as any).printerName || "default printer"}:`, (args as any).receipt);
+      return undefined as T;
+    case "open_cash_drawer":
+      console.log("Opening cash drawer...");
+      return undefined as T;
+    case "save_receipt_to_file":
+      console.log(`Saving receipt to ${(args as any).fileName}:`, (args as any).receipt);
+      return "browser-saved-path" as T;
+    case "open_whatsapp_share":
+      window.open(`https://wa.me/?text=${encodeURIComponent((args as any).receipt)}`, "_blank");
+      return undefined as T;
+    case "open_email_share":
+      window.open(`mailto:?subject=${encodeURIComponent((args as any).subject)}&body=${encodeURIComponent((args as any).receipt)}`, "_blank");
+      return undefined as T;
+    case "open_kds_window":
+      console.log("Opening KDS window...");
+      return undefined as T;
     default:
-      throw new Error(`Unknown command: ${cmd}`);
+      console.warn(`Unknown command: ${cmd}`, args);
+      return undefined as T;
   }
 }
 
