@@ -1695,7 +1695,7 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       return [{ id: "admin", name: "Administrator", role: "admin" }, { id: "cashier", name: "Cashier", role: "cashier" }] as T;
     }
     case "verify_pin": {
-      const pin = args as unknown as string;
+      const pin = (args as any).pin;
       if (pin === "1234") return { id: "admin", name: "Administrator", role: "admin" } as T;
       if (pin === "0000") return { id: "cashier", name: "Cashier", role: "cashier" } as T;
       return null as T;
