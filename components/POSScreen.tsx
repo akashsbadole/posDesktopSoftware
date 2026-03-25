@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useRef, useCallback, useState } from "react";
 import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet, Package } from "lucide-react";
-import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet, Combo } from "@/lib/db";
-import { invoke } from "@tauri-apps/api/tauri";
+import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet, Combo, dbHoldOrder, openCashDrawer, printReceipt, openWhatsAppShare, openEmailShare, saveReceiptToFile } from "@/lib/db";
 import { useCartStore, useProductsStore, useSettingsStore, useAuthStore, useCombosStore } from "@/lib/stores";
 import { useGridNavigation } from "@/lib/keyboard";
 import { v4 as uuid } from "uuid";
@@ -278,7 +277,7 @@ export default function POSScreen() {
       }
 
       try {
-        await invoke("open_cash_drawer");
+        await openCashDrawer();
       } catch (e) {
         console.log("Cash drawer not available");
       }
@@ -316,7 +315,7 @@ export default function POSScreen() {
     order.delivery_phone = customerInfo?.phone || "";
 
     try {
-      await invoke("hold_order", { order });
+      await dbHoldOrder(order);
       alert("Order held successfully!");
       clearCart();
       await loadHeldOrders();
@@ -342,9 +341,9 @@ export default function POSScreen() {
     order.delivery_phone = customerInfo?.phone || "";
 
     try {
-      await invoke("save_order", { order });
+      await dbSaveOrder(order);
       const kotText = generateKOTText(order);
-      await invoke("print_receipt", { receipt: kotText });
+      await printReceipt(kotText);
       alert("KOT sent to printer!");
       clearCart();
     } catch (err) {
@@ -451,7 +450,7 @@ export default function POSScreen() {
   const handleWhatsAppShare = async () => {
     if (!receipt) return;
     try {
-      await invoke("open_whatsapp_share", { receipt });
+      await openWhatsAppShare(receipt);
     } catch {
       const encoded = encodeURIComponent(receipt);
       window.open(`https://wa.me/?text=${encoded}`, "_blank");
@@ -462,7 +461,7 @@ export default function POSScreen() {
     if (!receipt) return;
     const subject = `Receipt - ${new Date().toLocaleDateString()}`;
     try {
-      await invoke("open_email_share", { receipt, subject });
+      await openEmailShare(receipt, subject);
     } catch {
       const encoded = encodeURIComponent(receipt);
       window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encoded}`, "_blank");
@@ -474,7 +473,7 @@ export default function POSScreen() {
     const date = new Date().toISOString().split("T")[0];
     const fileName = `receipt_${date}_${uuid()}.txt`;
     try {
-      const path = await invoke("save_receipt_to_file", { receipt, fileName });
+      const path = await saveReceiptToFile(receipt, fileName);
       alert(`Receipt saved to: ${path}`);
     } catch (err) {
       console.error("Failed to save receipt:", err);

@@ -1,8 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { Check, Store, Database, CloudUpload, CloudDownload, RefreshCw, Info, Moon, Sun, Download, Upload, Save, Palette, Mail, AlertCircle, Key } from "lucide-react";
-import { syncToNeon, syncFromNeon, sendSmsNotification, sendWhatsAppMessage, startLanServer, stopLanServer, getLanServerStatus, LanServerStatus, changePin, Settings } from "@/lib/db";
-import { invoke } from "@tauri-apps/api/tauri";
+import { syncToNeon, syncFromNeon, sendSmsNotification, sendWhatsAppMessage, startLanServer, stopLanServer, getLanServerStatus, LanServerStatus, changePin, Settings, exportBackup, importBackup } from "@/lib/db";
 import { useSettingsStore, useAuthStore } from "@/lib/stores";
 
 const validatePhone = (phone: string): string | null => {
@@ -221,7 +220,7 @@ export default function SettingsScreen() {
   const handleExportBackup = async () => {
     setBackingUp(true); setBackupMsg(null);
     try {
-      const backupData = await invoke<string>("export_backup");
+      const backupData = await exportBackup();
       const binaryString = atob(backupData);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
@@ -247,7 +246,7 @@ export default function SettingsScreen() {
     setBackingUp(true); setBackupMsg(null);
     try {
       const text = await file.text();
-      const result = await invoke<{ products_imported: number; orders_imported: number }>("import_backup", { backupJson: text });
+      const result = await importBackup(text);
       setBackupMsg({ text: `✓ Imported ${result.products_imported} products and ${result.orders_imported} orders`, ok: true });
     } catch (err) {
       setBackupMsg({ text: `Error: ${err}`, ok: false });
