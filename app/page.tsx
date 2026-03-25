@@ -33,19 +33,59 @@ import ContactTraining from "@/components/ContactTraining";
 import { dbGetPendingOrdersCount } from "@/lib/db";
 import { useAuthStore } from "@/lib/stores";
 
-export type Screen = "pos" | "orders" | "products" | "dashboard" | "settings" | "reports" | "logs" | "kds" | "expenses" | "staff" | "customers" | "tables" | "coupons" | "wallet" | "gst" | "suppliers" | "purchase_orders" | "reservations" | "ingredients" | "scheduling" | "reconciliation" | "refund_requests" | "inventory_alerts" | "contact_training";
+export type Screen =
+  | "pos"
+  | "orders"
+  | "products"
+  | "dashboard"
+  | "settings"
+  | "reports"
+  | "logs"
+  | "kds"
+  | "expenses"
+  | "staff"
+  | "customers"
+  | "tables"
+  | "coupons"
+  | "wallet"
+  | "gst"
+  | "suppliers"
+  | "purchase_orders"
+  | "reservations"
+  | "ingredients"
+  | "scheduling"
+  | "reconciliation"
+  | "refund_requests"
+  | "inventory_alerts"
+  | "contact_training";
 
-const adminScreens: Screen[] = ["settings", "reports", "logs", "expenses", "staff", "coupons", "wallet", "gst", "suppliers", "purchase_orders", "ingredients", "scheduling", "reconciliation", "refund_requests", "inventory_alerts"];
+const adminScreens: Screen[] = [
+  "settings",
+  "reports",
+  "logs",
+  "expenses",
+  "staff",
+  "coupons",
+  "wallet",
+  "gst",
+  "suppliers",
+  "purchase_orders",
+  "ingredients",
+  "scheduling",
+  "reconciliation",
+  "refund_requests",
+  "inventory_alerts",
+];
 
 const screenShortcuts: Record<string, Screen> = {
-  "F1": "pos",
-  "F2": "dashboard",
-  "F3": "orders",
-  "F4": "products",
-  "F5": "kds",
-  "F6": "reports",
-  "F7": "logs",
-  "F8": "settings",
+  F1: "pos",
+  F2: "dashboard",
+  F3: "orders",
+  F4: "products",
+  F5: "kds",
+  F6: "reports",
+  F7: "logs",
+  F8: "settings",
 };
 
 export default function Home() {
@@ -85,8 +125,12 @@ export default function Home() {
   useEffect(() => {
     if (!isAuthenticated) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return;
+
       if ((e.ctrlKey || e.metaKey) && e.key === "l") {
         e.preventDefault();
         setIsLocked(true);
@@ -103,7 +147,7 @@ export default function Home() {
         setShowShortcuts(false);
         return;
       }
-      
+
       const screen = screenShortcuts[e.key];
       if (screen) {
         e.preventDefault();
@@ -132,17 +176,35 @@ export default function Home() {
 
   if (isAdminScreen && !isAdmin) {
     return (
-      <div className="flex flex-col h-screen overflow-hidden bg-bg" role="application" aria-label="POS Application">
-        <HeaderBar 
-          user={user} 
-          onShowShortcuts={() => setShowShortcuts(true)} 
+      <div
+        className="flex flex-col h-screen overflow-hidden bg-bg"
+        role="application"
+        aria-label="POS Application"
+      >
+        <HeaderBar
+          user={user}
+          onShowShortcuts={() => setShowShortcuts(true)}
           onLock={handleLock}
           currentScreen={screen}
         />
         <div className="flex flex-1 overflow-hidden">
-          <Sidebar activeScreen={screen} setScreen={setScreen} user={user!} onLock={handleLock} />
-          <main id="main-content" className="flex-1 overflow-hidden flex items-center justify-center" role="main" aria-label="Access denied">
-            <div className="text-center" style={{ color: "#4A4A5A" }} role="alert">
+          <Sidebar
+            activeScreen={screen}
+            setScreen={setScreen}
+            user={user!}
+            onLock={handleLock}
+          />
+          <main
+            id="main-content"
+            className="flex-1 overflow-hidden flex items-center justify-center"
+            role="main"
+            aria-label="Access denied"
+          >
+            <div
+              className="text-center"
+              style={{ color: "#4A4A5A" }}
+              role="alert"
+            >
               <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
               <p>You need admin privileges to access this section.</p>
             </div>
@@ -154,17 +216,33 @@ export default function Home() {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-col h-screen overflow-hidden bg-bg" role="application" aria-label="POS Application">
-        <HeaderBar 
-          user={user} 
-          onShowShortcuts={() => setShowShortcuts(true)} 
+      <div
+        className="flex flex-col h-screen overflow-hidden bg-bg"
+        role="application"
+        aria-label="POS Application"
+      >
+        <HeaderBar
+          user={user}
+          onShowShortcuts={() => setShowShortcuts(true)}
           onLock={handleLock}
           currentScreen={screen}
         />
         <div className="flex flex-1 overflow-hidden">
-          {showRecovery && <CrashRecovery onComplete={() => setShowRecovery(false)} />}
-          <Sidebar activeScreen={screen} setScreen={setScreen} user={user!} onLock={handleLock} />
-          <main id="main-content" className="flex-1 overflow-hidden" role="main" aria-label="Main content">
+          {showRecovery && (
+            <CrashRecovery onComplete={() => setShowRecovery(false)} />
+          )}
+          <Sidebar
+            activeScreen={screen}
+            setScreen={setScreen}
+            user={user!}
+            onLock={handleLock}
+          />
+          <main
+            id="main-content"
+            className="flex-1 overflow-hidden"
+            role="main"
+            aria-label="Main content"
+          >
             <ErrorBoundary>
               {screen === "pos" && <POSScreen />}
               {screen === "orders" && <OrdersScreen />}
@@ -174,15 +252,15 @@ export default function Home() {
               {screen === "reports" && <ReportsScreen />}
               {screen === "logs" && <ActivityLogsScreen />}
               {screen === "kds" && <KDSScreen />}
-              {screen === "expenses" && <ExpenseScreen />}
+              {/* {screen === "expenses" && <ExpenseScreen />} */}
               {screen === "staff" && <StaffAttendance />}
-              {screen === "customers" && <CustomerCRM />}
+              {/* {screen === "customers" && <CustomerCRM />} */}
               {screen === "tables" && <TableManager />}
               {screen === "coupons" && <CouponsScreen />}
-              {screen === "wallet" && <WalletScreen />}
+              {/* {screen === "wallet" && <WalletScreen />} */}
               {screen === "gst" && <GstReportsScreen />}
               {screen === "suppliers" && <SuppliersScreen />}
-              {screen === "purchase_orders" && <PurchaseOrdersScreen />}
+              {/* {screen === "purchase_orders" && <PurchaseOrdersScreen />} */}
               {screen === "reservations" && <ReservationsScreen />}
               {screen === "ingredients" && <IngredientsScreen />}
               {screen === "scheduling" && <StaffScheduling />}
@@ -193,8 +271,8 @@ export default function Home() {
             </ErrorBoundary>
           </main>
         </div>
-        <KeyboardShortcutsModal 
-          isOpen={showShortcuts} 
+        <KeyboardShortcutsModal
+          isOpen={showShortcuts}
           onClose={() => setShowShortcuts(false)}
           showPOS={screen === "pos"}
         />

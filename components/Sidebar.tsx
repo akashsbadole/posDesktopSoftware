@@ -1,51 +1,150 @@
 "use client";
 import { useState, useEffect } from "react";
-import { ShoppingCart, ClipboardList, Package, BarChart2, Settings, Zap, FileText, LogOut, History, ChefHat, DollarSign, Users, UsersRound, Tag, Wallet, Truck, CalendarDays, Wheat, Shield, Bell, Calculator, GraduationCap, Lock } from "lucide-react";
+import {
+  ShoppingCart,
+  ClipboardList,
+  Package,
+  BarChart2,
+  Settings,
+  Zap,
+  FileText,
+  LogOut,
+  History,
+  ChefHat,
+  DollarSign,
+  Users,
+  UsersRound,
+  Tag,
+  Wallet,
+  Truck,
+  CalendarDays,
+  Wheat,
+  Shield,
+  Bell,
+  Calculator,
+  GraduationCap,
+  Lock,
+} from "lucide-react";
 import { Screen } from "@/app/page";
 import { User } from "@/lib/db";
 import { useAuthStore } from "@/lib/stores";
 
 const allNavItems = [
   { id: "pos" as Screen, label: "POS", icon: ShoppingCart, adminOnly: false },
-  { id: "dashboard" as Screen, label: "Dashboard", icon: BarChart2, adminOnly: false },
-  { id: "orders" as Screen, label: "Orders", icon: ClipboardList, adminOnly: false },
-  { id: "products" as Screen, label: "Products", icon: Package, adminOnly: false },
-  { id: "tables" as Screen, label: "Tables", icon: UsersRound, adminOnly: false },
-  { id: "reservations" as Screen, label: "Bookings", icon: CalendarDays, adminOnly: false },
+  {
+    id: "dashboard" as Screen,
+    label: "Dashboard",
+    icon: BarChart2,
+    adminOnly: false,
+  },
+  {
+    id: "orders" as Screen,
+    label: "Orders",
+    icon: ClipboardList,
+    adminOnly: false,
+  },
+  {
+    id: "products" as Screen,
+    label: "Products",
+    icon: Package,
+    adminOnly: false,
+  },
+  {
+    id: "tables" as Screen,
+    label: "Tables",
+    icon: UsersRound,
+    adminOnly: false,
+  },
+  {
+    id: "reservations" as Screen,
+    label: "Bookings",
+    icon: CalendarDays,
+    adminOnly: false,
+  },
   { id: "kds" as Screen, label: "Kitchen", icon: ChefHat, adminOnly: false },
-  { id: "customers" as Screen, label: "Customers", icon: Users, adminOnly: false },
-  { id: "wallet" as Screen, label: "Wallet", icon: Wallet, adminOnly: false },
+  {
+    id: "customers" as Screen,
+    label: "Customers",
+    icon: Users,
+    adminOnly: false,
+  },
+  // { id: "wallet" as Screen, label: "Wallet", icon: Wallet, adminOnly: false },
   { id: "coupons" as Screen, label: "Coupons", icon: Tag, adminOnly: false },
-  { id: "inventory_alerts" as Screen, label: "Alerts", icon: Bell, adminOnly: false },
-  { id: "refund_requests" as Screen, label: "Refunds", icon: Shield, adminOnly: true },
-  { id: "ingredients" as Screen, label: "Ingredients", icon: Wheat, adminOnly: true },
-  { id: "suppliers" as Screen, label: "Suppliers", icon: Truck, adminOnly: true },
-  { id: "purchase_orders" as Screen, label: "PO", icon: ClipboardList, adminOnly: true },
-  { id: "scheduling" as Screen, label: "Schedule", icon: CalendarDays, adminOnly: true },
-  { id: "reconciliation" as Screen, label: "Day End", icon: Calculator, adminOnly: true },
-  { id: "expenses" as Screen, label: "Expenses", icon: DollarSign, adminOnly: true },
+  {
+    id: "inventory_alerts" as Screen,
+    label: "Alerts",
+    icon: Bell,
+    adminOnly: false,
+  },
+  {
+    id: "refund_requests" as Screen,
+    label: "Refunds",
+    icon: Shield,
+    adminOnly: true,
+  },
+  // { id: "ingredients" as Screen, label: "Ingredients", icon: Wheat, adminOnly: true },
+  // { id: "suppliers" as Screen, label: "Suppliers", icon: Truck, adminOnly: true },
+  // { id: "purchase_orders" as Screen, label: "PO", icon: ClipboardList, adminOnly: true },
+  // { id: "scheduling" as Screen, label: "Schedule", icon: CalendarDays, adminOnly: true },
+  // { id: "reconciliation" as Screen, label: "Day End", icon: Calculator, adminOnly: true },
+  // { id: "expenses" as Screen, label: "Expenses", icon: DollarSign, adminOnly: true },
   { id: "staff" as Screen, label: "Staff", icon: Users, adminOnly: true },
-  { id: "reports" as Screen, label: "Reports", icon: FileText, adminOnly: true },
+  {
+    id: "reports" as Screen,
+    label: "Reports",
+    icon: FileText,
+    adminOnly: true,
+  },
   { id: "gst" as Screen, label: "GST", icon: FileText, adminOnly: true },
   { id: "logs" as Screen, label: "Logs", icon: History, adminOnly: true },
-  { id: "settings" as Screen, label: "Settings", icon: Settings, adminOnly: true },
-  { id: "contact_training" as Screen, label: "Training", icon: GraduationCap, adminOnly: false },
+  {
+    id: "settings" as Screen,
+    label: "Settings",
+    icon: Settings,
+    adminOnly: true,
+  },
+  {
+    id: "contact_training" as Screen,
+    label: "Training",
+    icon: GraduationCap,
+    adminOnly: false,
+  },
 ];
 
-export default function Sidebar({ activeScreen, setScreen, user, onLock }: { activeScreen: Screen; setScreen: (s: Screen) => void; user?: User | null; onLock?: () => void }) {
+export default function Sidebar({
+  activeScreen,
+  setScreen,
+  user,
+  onLock,
+}: {
+  activeScreen: Screen;
+  setScreen: (s: Screen) => void;
+  user?: User | null;
+  onLock?: () => void;
+}) {
   const { logout } = useAuthStore();
   const isAdmin = user?.role === "admin";
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
-  
+
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const formatDate = (d: Date) => d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  const formatTime = (d: Date) => d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  
-  const nav = allNavItems.filter(item => !item.adminOnly || isAdmin);
+  const formatDate = (d: Date) =>
+    d.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  const formatTime = (d: Date) =>
+    d.toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+
+  const nav = allNavItems.filter((item) => !item.adminOnly || isAdmin);
 
   const handleLogout = () => {
     logout();
@@ -56,31 +155,64 @@ export default function Sidebar({ activeScreen, setScreen, user, onLock }: { act
   };
 
   return (
-    <aside style={{ width: 72 }} className="flex flex-col items-center py-4 bg-surface border-r border-border h-full shrink-0" role="navigation" aria-label="Main navigation">
+    <aside
+      style={{ width: 72 }}
+      className="flex flex-col items-center py-4 bg-surface border-r border-border h-full shrink-0"
+      role="navigation"
+      aria-label="Main navigation"
+    >
       <div className="mb-4">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#F5C842" }} role="img" aria-label="POS Application Logo">
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center"
+          style={{ background: "#F5C842" }}
+          role="img"
+          aria-label="POS Application Logo"
+        >
           <Zap size={20} color="#0D0D0F" fill="#0D0D0F" aria-hidden="true" />
         </div>
       </div>
       <div className="mb-4 text-center px-1">
-        <div style={{ fontSize: 9, fontWeight: 600, color: "#F5C842" }}>{formatDate(currentTime)}</div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#4A4A5A", fontFamily: "monospace" }}>{formatTime(currentTime)}</div>
+        <div style={{ fontSize: 9, fontWeight: 600, color: "#F5C842" }}>
+          {formatDate(currentTime)}
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: "#4A4A5A",
+            fontFamily: "monospace",
+          }}
+        >
+          {formatTime(currentTime)}
+        </div>
       </div>
-      <nav className="flex flex-col gap-1 flex-1 w-full px-2 overflow-y-auto" role="menubar" aria-label="Navigation menu">
+      <nav
+        className="flex flex-col gap-1 flex-1 w-full px-2 overflow-y-auto"
+        role="menubar"
+        aria-label="Navigation menu"
+      >
         {nav.map(({ id, label, icon: Icon }) => {
           const active = activeScreen === id;
           return (
-            <button 
-              key={id} 
-              onClick={() => setScreen(id)} 
+            <button
+              key={id}
+              onClick={() => setScreen(id)}
               title={label}
               role="menuitem"
               aria-current={active ? "page" : undefined}
               aria-label={label}
               className="relative flex flex-col items-center justify-center rounded-xl py-3 gap-1 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] focus-visible:ring-offset-2 focus-visible:ring-offset-[#141418]"
-              style={{ background: active ? "rgba(245,200,66,0.1)" : "transparent", color: active ? "#F5C842" : "#4A4A5A" }}
+              style={{
+                background: active ? "rgba(245,200,66,0.1)" : "transparent",
+                color: active ? "#F5C842" : "#4A4A5A",
+              }}
             >
-              {active && <div className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r" style={{ background: "#F5C842" }} />}
+              {active && (
+                <div
+                  className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r"
+                  style={{ background: "#F5C842" }}
+                />
+              )}
               <Icon size={18} aria-hidden="true" />
               <span style={{ fontSize: 9, fontWeight: 600 }}>{label}</span>
             </button>
@@ -88,8 +220,8 @@ export default function Sidebar({ activeScreen, setScreen, user, onLock }: { act
         })}
       </nav>
       <div className="w-full px-2">
-        <button 
-          onClick={handleLock} 
+        <button
+          onClick={handleLock}
           title="Lock Screen (Ctrl+L)"
           className="w-full flex flex-col items-center justify-center rounded-xl py-2 gap-1 transition-all hover:bg-[rgba(245,200,66,0.1)] mb-1"
           style={{ color: "#9090A8" }}
@@ -98,8 +230,8 @@ export default function Sidebar({ activeScreen, setScreen, user, onLock }: { act
           <Lock size={16} aria-hidden="true" />
           <span style={{ fontSize: 8, fontWeight: 600 }}>Lock</span>
         </button>
-        <button 
-          onClick={handleLogout} 
+        <button
+          onClick={handleLogout}
           title="Logout"
           className="w-full flex flex-col items-center justify-center rounded-xl py-2 gap-1 transition-all hover:bg-red-500/10"
           style={{ color: "#E74C3C" }}

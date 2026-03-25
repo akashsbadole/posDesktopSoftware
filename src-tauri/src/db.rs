@@ -483,6 +483,7 @@ pub struct Coupon {
     pub valid_from: String,
     pub valid_until: String,
     pub active: bool,
+    pub created_at: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -3295,7 +3296,7 @@ impl Database {
 
     pub fn get_coupons(&self) -> Result<Vec<Coupon>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active
+            "SELECT id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active, created_at
              FROM coupons ORDER BY created_at DESC"
         )?;
 
@@ -3312,6 +3313,7 @@ impl Database {
                     valid_from: row.get(7)?,
                     valid_until: row.get(8)?,
                     active: row.get::<_, i32>(9)? == 1,
+                    created_at: row.get(10)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -3331,7 +3333,7 @@ impl Database {
 
     pub fn validate_coupon(&self, code: &str, order_amount: f64) -> Result<Coupon> {
         let coupon = self.conn.query_row(
-            "SELECT id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active
+            "SELECT id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active, created_at
              FROM coupons WHERE code=?1 AND active=1",
             params![code],
             |row| Ok(Coupon {
@@ -3345,6 +3347,7 @@ impl Database {
                 valid_from: row.get(7)?,
                 valid_until: row.get(8)?,
                 active: row.get::<_, i32>(9)? == 1,
+                created_at: row.get(10)?,
             }),
         ).map_err(|_| rusqlite::Error::InvalidQuery)?;
 
