@@ -624,6 +624,10 @@ impl Database {
             )",
             [],
         );
+        let _ = self.conn.execute(
+            "ALTER TABLE coupons ADD COLUMN created_at TEXT NOT NULL DEFAULT (datetime('now'))",
+            [],
+        );
         Ok(())
     }
 
@@ -902,7 +906,8 @@ impl Database {
                 used_count INTEGER NOT NULL DEFAULT 0,
                 valid_from TEXT NOT NULL,
                 valid_until TEXT NOT NULL,
-                active INTEGER NOT NULL DEFAULT 1
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
             CREATE TABLE IF NOT EXISTS day_end_reconciliations (
