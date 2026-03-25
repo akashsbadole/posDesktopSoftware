@@ -27,6 +27,7 @@ interface CartState {
   globalDiscount: number;
   paymentMethod: PaymentMethod;
   amountPaid: number;
+  originalOrderId: string | null;
   addItem: (product: Product, quantity?: number) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
@@ -38,6 +39,7 @@ interface CartState {
   setGlobalDiscount: (discount: number) => void;
   setPaymentMethod: (method: PaymentMethod) => void;
   setAmountPaid: (amount: number) => void;
+  setOriginalOrderId: (id: string | null) => void;
   clearCart: () => void;
   getSubtotal: () => number;
   getTaxAmount: () => number;
@@ -57,6 +59,9 @@ export const useCartStore = create<CartState>((set, get) => ({
   globalDiscount: 0,
   paymentMethod: 'cash',
   amountPaid: 0,
+  originalOrderId: null,
+
+  setOriginalOrderId: (id) => set({ originalOrderId: id }),
 
   addItem: (product: Product, quantity = 1) => {
     set((state) => {
@@ -119,6 +124,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       globalDiscount: 0,
       paymentMethod: 'cash',
       amountPaid: 0,
+      originalOrderId: null,
     }),
 
   getSubtotal: () => calcCart(get().items, get().globalDiscount).subtotal,

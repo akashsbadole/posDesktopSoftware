@@ -17,6 +17,7 @@ export default function POSScreen() {
     globalDiscount, 
     paymentMethod, 
     amountPaid,
+    originalOrderId,
     addItem, 
     updateQuantity, 
     updateItemDiscount,
@@ -26,6 +27,7 @@ export default function POSScreen() {
     setGlobalDiscount,
     setPaymentMethod,
     setAmountPaid,
+    setOriginalOrderId,
     clearCart,
     getSubtotal, 
     getTaxAmount, 
@@ -255,7 +257,8 @@ export default function POSScreen() {
     setErrors({});
     setProcessing(true);
 
-    const order = toOrder(uuid(), user?.id || "system", user?.name || "System");
+    const orderId = originalOrderId || uuid();
+    const order = toOrder(orderId, user?.id || "system", user?.name || "System");
     order.payment_method = paymentMethod;
     order.amount_paid = paymentMethod === "cash" ? (amountPaid || 0) : finalTotal;
     order.change_amount = paymentMethod === "cash" ? change : 0;

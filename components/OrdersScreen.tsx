@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Search, RotateCcw, ChevronDown, ChevronUp, RefreshCw, Truck, MapPin, Phone, Edit2, Plus, Minus, X, ChevronLeft, ChevronRight, MessageSquare, Ban } from "lucide-react";
+import { Search, RotateCcw, ChevronDown, ChevronUp, RefreshCw, Truck, MapPin, Phone, Edit2, Plus, Minus, X, ChevronLeft, ChevronRight, MessageSquare, Ban, Banknote } from "lucide-react";
 import { updateDeliveryStatus, dbCancelOrder, dbAddOrderNote, dbGetOrderNotes, Order, OrderItem, OrderNote } from "@/lib/db";
 import { useOrdersStore, useSettingsStore, useProductsStore, useCartStore, useAuthStore } from "@/lib/stores";
 
@@ -10,7 +10,7 @@ export default function OrdersScreen() {
   const { orders, isLoading, fetchOrders, refundOrder, updateDeliveryStatus: updateStatus, updateOrder, filterStatus, setFilterStatus } = useOrdersStore();
   const { settings, fetchSettings } = useSettingsStore();
   const { products, fetchProducts } = useProductsStore();
-  const { addItem, items: cartItems, updateQuantity, removeItem, clearCart, setOrderType, setCustomerInfo } = useCartStore();
+  const { addItem, items: cartItems, updateQuantity, removeItem, clearCart, setOrderType, setCustomerInfo, setOriginalOrderId } = useCartStore();
   const { user } = useAuthStore();
   
   const [search, setSearch] = useState("");
@@ -30,6 +30,28 @@ export default function OrdersScreen() {
   }, []);
 
   const handleRefund = async (id: string) => {
+    const order = orders.find(o => o.id === id);
+    if (order?.status === "processing") {
+      if (!confirm("This order needs payment. Continue to POS?")) return;
+      clearCart();
+      for (const item of order.items) {
+        const product = products.find(p => p.id === item.product_id);
+        if (product) {
+          addItem(product, item.quantity);
+        }
+      }
+      setOrderType(order.order_type as "dine_in" | "takeaway" | "delivery");
+      if (order.customer_name || order.delivery_phone || order.delivery_address) {
+        setCustomerInfo({ 
+          name: order.customer_name || "", 
+          phone: order.delivery_phone || "", 
+          address: order.delivery_address || "" 
+        });
+      }
+      setOriginalOrderId(order.id);
+      window.dispatchEvent(new CustomEvent('navigate', { detail: 'pos' }));
+      return;
+    }
     if (!confirm("Refund this order? Stock will be restored.")) return;
     const userId = user?.id || "system";
     const userName = user?.name || "System";
@@ -135,6 +157,16 @@ export default function OrdersScreen() {
     }
   };
 
+  const getOrderStatusColor = (status: string) => {
+    switch (status) {
+      case "completed": return { bg: "rgba(46,204,113,0.1)", color: "#2ECC71" };
+      case "refunded": return { bg: "rgba(231,76,60,0.1)", color: "#E74C3C" };
+      case "processing": return { bg: "rgba(52,152,219,0.1)", color: "#3498DB" };
+      case "hold": return { bg: "rgba(245,200,66,0.1)", color: "#F5C842" };
+      default: return { bg: "rgba(144,144,168,0.1)", color: "#9090A8" };
+    }
+  };
+
   const filtered = orders.filter((o) => {
     const ms = search === "" || o.id.toLowerCase().includes(search.toLowerCase()) || o.customer_name?.toLowerCase().includes(search.toLowerCase());
     const mf = filterStatus === "all" || o.status === filterStatus;
@@ -224,7 +256,7 @@ export default function OrdersScreen() {
           <input placeholder="Search by ID or customer..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 36 }} />
         </div>
         <div className="flex gap-1">
-          {(["all", "completed", "refunded"] as const).map((s) => (
+          {(["all", "processing", "completed", "refunded"] as const).map((s) => (
             <button key={s} onClick={() => setFilterStatus(s)}
               className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide"
               style={{
@@ -232,7 +264,7 @@ export default function OrdersScreen() {
                 border: `1px solid ${filterStatus === s ? "rgba(245,200,66,0.2)" : "#1E1E26"}`,
                 color: filterStatus === s ? "#F5C842" : "#4A4A5A",
               }}>
-              {s}
+              {s === "processing" ? "KOT" : s}
             </button>
           ))}
         </div>
@@ -255,10 +287,7 @@ export default function OrdersScreen() {
                   <div className="flex items-center gap-3">
                     <span className="font-mono text-sm" style={{ color: "#9090A8" }}>#{order.id.slice(-6).toUpperCase()}</span>
                     <span className="px-2 py-0.5 rounded text-xs font-semibold"
-                      style={{
-                        background: order.status === "completed" ? "rgba(46,204,113,0.1)" : order.status === "refunded" ? "rgba(231,76,60,0.1)" : "rgba(245,200,66,0.1)",
-                        color: order.status === "completed" ? "#2ECC71" : order.status === "refunded" ? "#E74C3C" : "#F5C842"
-                      }}>
+                      style={getOrderStatusColor(order.status)}>
                       {order.status}
                     </span>
                     <span className="px-2 py-0.5 rounded text-xs font-semibold"
@@ -324,13 +353,14 @@ export default function OrdersScreen() {
                     )}
                   </div>
 
-                  {order.status === "completed" && (
+                  {(order.status === "completed" || order.status === "processing") && (
                     <button
                       onClick={() => handleRefund(order.id)}
                       className="text-xs flex items-center gap-1 px-2 py-1 rounded"
-                      style={{ color: "#E74C3C", background: "rgba(231,76,60,0.1)" }}
+                      style={{ color: order.status === "processing" ? "#3498DB" : "#E74C3C", background: order.status === "processing" ? "rgba(52,152,219,0.1)" : "rgba(231,76,60,0.1)" }}
                     >
-                      <RotateCcw size={12} /> Refund
+                      {order.status === "processing" ? <Banknote size={12} /> : <RotateCcw size={12} />} 
+                      {order.status === "processing" ? "Pay Now" : "Refund"}
                     </button>
                   )}
                   {order.status === "completed" && (

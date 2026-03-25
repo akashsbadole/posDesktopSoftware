@@ -124,6 +124,16 @@ export default function Home() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
+    const handleNavigation = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      setScreen(customEvent.detail as Screen);
+    };
+    window.addEventListener('navigate', handleNavigation);
+    return () => window.removeEventListener('navigate', handleNavigation);
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         e.target instanceof HTMLInputElement ||

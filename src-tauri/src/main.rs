@@ -442,11 +442,17 @@ fn save_receipt_to_file(receipt: String, file_name: String) -> Result<String, St
     let settings = db.get_settings().map_err(|e| e.to_string())?;
     
     let app_dir = if settings.receipt_save_path.is_empty() {
-        dirs::document_dir().unwrap_or_else(|| std::path::PathBuf::from("."))
+        dirs::document_dir()
+            .or_else(dirs::desktop_dir)
+            .or_else(dirs::home_dir)
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
     } else {
         std::path::PathBuf::from(&settings.receipt_save_path)
     };
-    std::fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
+    
+    if !app_dir.exists() {
+        return Err(format!("Directory does not exist: {}", app_dir.display()));
+    }
     
     let file_path = app_dir.join(&file_name);
     std::fs::write(&file_path, &receipt).map_err(|e| e.to_string())?;
