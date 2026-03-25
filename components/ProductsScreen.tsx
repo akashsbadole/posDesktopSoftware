@@ -87,19 +87,29 @@ export default function ProductsScreen() {
       setErrors(errors);
       return;
     }
-    const product = { ...editing, id: editing.id || uuid() };
-    if (editing.id) {
-      await updateProduct(product);
-    } else {
-      await addProduct(product);
+    try {
+      const product = { ...editing, id: editing.id || uuid() };
+      if (editing.id) {
+        await updateProduct(product);
+      } else {
+        await addProduct(product);
+      }
+      setEditing(null);
+      setErrors({});
+    } catch (err) {
+      console.error("Failed to save product:", err);
+      alert("Failed to save product. Please try again.");
     }
-    setEditing(null);
-    setErrors({});
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this product?")) return;
-    await deleteProduct(id);
+    try {
+      await deleteProduct(id);
+    } catch (err) {
+      console.error("Failed to delete product:", err);
+      alert("Failed to delete product. Please try again.");
+    }
   };
 
   const handleSaveCombo = async () => {

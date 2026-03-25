@@ -267,32 +267,38 @@ export default function POSScreen() {
     order.discount_amount = totals.discount_amount + couponDiscount + walletDeduction;
     order.total = finalTotal;
 
-    await dbSaveOrder(order);
-
-    if (appliedCoupon) {
-      try { await useCoupon(appliedCoupon.code); } catch (e) { console.error("Failed to mark coupon used:", e); }
-    }
-    if (useWallet && walletCustomerId && walletDeduction > 0) {
-      try { await deductWalletBalance(walletCustomerId, walletDeduction, order.id); } catch (e) { console.error("Failed to deduct wallet:", e); }
-    }
-    
     try {
-      await invoke("open_cash_drawer");
-    } catch (e) {
-      console.log("Cash drawer not available");
+      await dbSaveOrder(order);
+
+      if (appliedCoupon) {
+        try { await useCoupon(appliedCoupon.code); } catch (e) { console.error("Failed to mark coupon used:", e); }
+      }
+      if (useWallet && walletCustomerId && walletDeduction > 0) {
+        try { await deductWalletBalance(walletCustomerId, walletDeduction, order.id); } catch (e) { console.error("Failed to deduct wallet:", e); }
+      }
+
+      try {
+        await invoke("open_cash_drawer");
+      } catch (e) {
+        console.log("Cash drawer not available");
+      }
+
+      const rec = generateReceipt(order, settings);
+      setReceipt(rec);
+      clearCart();
+      setAppliedCoupon(null);
+      setCouponCode("");
+      setCouponError("");
+      setUseWallet(false);
+      setWalletBalance(0);
+      setWalletCustomerId(null);
+      await Promise.all([fetchProducts(), loadHeldOrders()]);
+    } catch (err) {
+      console.error("Checkout failed:", err);
+      alert("Failed to complete order. Please try again.");
+    } finally {
+      setProcessing(false);
     }
-    
-    const rec = generateReceipt(order, settings);
-    setReceipt(rec);
-    clearCart();
-    setAppliedCoupon(null);
-    setCouponCode("");
-    setCouponError("");
-    setUseWallet(false);
-    setWalletBalance(0);
-    setWalletCustomerId(null);
-    await Promise.all([fetchProducts(), loadHeldOrders()]);
-    setProcessing(false);
   };
 
   const handleHoldOrder = async () => {
@@ -316,7 +322,7 @@ export default function POSScreen() {
       await loadHeldOrders();
     } catch (err) {
       console.error("Failed to hold order:", err);
-      alert("Failed to hold order");
+      alert("Failed to hold order. Please try again.");
     }
     setProcessing(false);
   };

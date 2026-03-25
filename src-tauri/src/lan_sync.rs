@@ -67,26 +67,41 @@ pub async fn start_lan_server(port: u16) -> Result<(), String> {
 
     let addr = format!("0.0.0.0:{}", port);
     
-    tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-        eprintln!("[LAN Sync] Server started on {}", addr);
+    let listener_result = tokio::net::TcpListener::bind(&addr).await;
 
-        while SERVER_RUNNING.load(Ordering::SeqCst) {
-            match listener.accept().await {
-                Ok((socket, addr)) => {
-                    eprintln!("[LAN Sync] Client connected: {}", addr);
-                    tokio::spawn(handle_client(socket));
+    match listener_result {
+        Ok(listener) => {
+            tokio::spawn(async move {
+                eprintln!("[LAN Sync] Server started on {}", addr);
+
+                while SERVER_RUNNING.load(Ordering::SeqCst) {
+                    // Use select to handle shutdown more responsively
+                    tokio::select! {
+                        accept_res = listener.accept() => {
+                            match accept_res {
+                                Ok((socket, addr)) => {
+                                    eprintln!("[LAN Sync] Client connected: {}", addr);
+                                    tokio::spawn(handle_client(socket));
+                                }
+                                Err(e) => {
+                                    eprintln!("[LAN Sync] Accept error: {}", e);
+                                }
+                            }
+                        }
+                        _ = tokio::time::sleep(tokio::time::Duration::from_millis(500)) => {
+                            // Periodic check of SERVER_RUNNING via loop condition
+                        }
+                    }
                 }
-                Err(e) => {
-                    eprintln!("[LAN Sync] Accept error: {}", e);
-                }
-            }
+                eprintln!("[LAN Sync] Server loop exited");
+            });
+            Ok(())
         }
-        
-        eprintln!("[LAN Sync] Server stopped");
-    });
-
-    Ok(())
+        Err(e) => {
+            SERVER_RUNNING.store(false, Ordering::SeqCst);
+            Err(format!("Failed to bind to {}: {}", addr, e))
+        }
+    }
 }
 
 pub fn stop_lan_server() -> Result<(), String> {

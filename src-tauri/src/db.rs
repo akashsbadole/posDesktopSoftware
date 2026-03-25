@@ -1206,6 +1206,24 @@ impl Database {
                     "UPDATE products SET stock = MAX(0, stock - ?1) WHERE id = ?2",
                     params![item.quantity, item.product_id],
                 )?;
+
+                // Deduct ingredients based on recipes
+                let mut recipe_stmt = tx.prepare_cached(
+                    "SELECT ingredient_id, quantity FROM recipes WHERE product_id = ?1",
+                )?;
+                let recipes: Vec<(String, f64)> = recipe_stmt
+                    .query_map(params![item.product_id], |row| {
+                        Ok((row.get(0)?, row.get(1)?))
+                    })?
+                    .filter_map(|r| r.ok())
+                    .collect();
+
+                for (ing_id, ing_qty) in recipes {
+                    tx.execute(
+                        "UPDATE ingredients SET stock = MAX(0, stock - ?1) WHERE id = ?2",
+                        params![ing_qty * item.quantity as f64, ing_id],
+                    )?;
+                }
             }
         }
 
