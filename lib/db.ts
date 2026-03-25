@@ -922,6 +922,13 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
         { id: "i9", name: "Onions", stock: 18, unit: "kg", reorder_level: 5 },
         { id: "i10", name: "Cooking Oil", stock: 30, unit: "liters", reorder_level: 5 },
       ]);
+      // Seed recipes
+      if (!lsGet("pos_recipes")) lsSet("pos_recipes", [
+        { id: "rec1", product_id: "p1", ingredient_id: "i4", quantity: 0.02 }, // Coffee product uses 20g beans
+        { id: "rec2", product_id: "p1", ingredient_id: "i5", quantity: 0.1 },  // Coffee product uses 100ml milk
+        { id: "rec3", product_id: "p3", ingredient_id: "i6", quantity: 2 },    // Sandwich uses 2 bread slices
+        { id: "rec4", product_id: "p3", ingredient_id: "i7", quantity: 0.05 }, // Sandwich uses 50g cheese
+      ]);
       // Seed expense categories
       if (!lsGet("pos_expense_categories")) lsSet("pos_expense_categories", [
         { id: "cat1", name: "Rent", icon: "🏠" },
@@ -1060,15 +1067,50 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     case "save_order": {
       const o = (args as any).order as Order;
       const orders = lsGet<Order[]>(LS.orders) || [];
-      orders.unshift(o);
-      lsSet(LS.orders, orders);
-      // deduct stock
       const products = lsGet<Product[]>(LS.products) || [];
-      o.items.forEach((item) => {
-        const p = products.find((x) => x.id === item.product_id);
-        if (p) p.stock = Math.max(0, p.stock - item.quantity);
-      });
+      const ingredients = lsGet<Ingredient[]>("pos_ingredients") || [];
+      const recipes = lsGet<Recipe[]>("pos_recipes") || [];
+
+      const idx = orders.findIndex(x => x.id === o.id);
+      const isNew = idx === -1;
+
+      if (!isNew) {
+        // Restore stock for old order
+        const oldOrder = orders[idx];
+        if (oldOrder.status === 'completed' || oldOrder.status === 'processing') {
+          oldOrder.items.forEach(item => {
+            const p = products.find(x => x.id === item.product_id);
+            if (p) p.stock += item.quantity;
+
+            const itemRecipes = recipes.filter(r => r.product_id === item.product_id);
+            itemRecipes.forEach(r => {
+              const ing = ingredients.find(i => i.id === r.ingredient_id);
+              if (ing) ing.stock += (r.quantity * item.quantity);
+            });
+          });
+        }
+        orders[idx] = o;
+      } else {
+        orders.unshift(o);
+      }
+      lsSet(LS.orders, orders);
+
+      // Deduct stock for active orders
+      if (o.status === 'completed' || o.status === 'processing') {
+        o.items.forEach((item) => {
+          const p = products.find((x) => x.id === item.product_id);
+          if (p) p.stock = Math.max(0, p.stock - item.quantity);
+
+          // deduct ingredients
+          const itemRecipes = recipes.filter(r => r.product_id === item.product_id);
+          itemRecipes.forEach(r => {
+            const ing = ingredients.find(i => i.id === r.ingredient_id);
+            if (ing) ing.stock = Math.max(0, ing.stock - (r.quantity * item.quantity));
+          });
+        });
+      }
       lsSet(LS.products, products);
+      lsSet("pos_ingredients", ingredients);
       return undefined as T;
     }
     case "refund_order": {
@@ -1077,12 +1119,24 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       if (o && o.status !== "refunded") {
         o.status = "refunded";
         lsSet(LS.orders, orders);
+
         const products = lsGet<Product[]>(LS.products) || [];
+        const ingredients = lsGet<Ingredient[]>("pos_ingredients") || [];
+        const recipes = lsGet<Recipe[]>("pos_recipes") || [];
+
         o.items.forEach((item) => {
           const p = products.find((x) => x.id === item.product_id);
           if (p) p.stock += item.quantity;
+
+          // restore ingredients
+          const itemRecipes = recipes.filter(r => r.product_id === item.product_id);
+          itemRecipes.forEach(r => {
+            const ing = ingredients.find(i => i.id === r.ingredient_id);
+            if (ing) ing.stock += (r.quantity * item.quantity);
+          });
         });
         lsSet(LS.products, products);
+        lsSet("pos_ingredients", ingredients);
       }
       return undefined as T;
     }
@@ -1578,11 +1632,23 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     }
     case "check_inventory_alerts": {
       const products = lsGet<Product[]>(LS.products) || [];
-      const alerts: InventoryAlert[] = [];
+      const alerts = lsGet<InventoryAlert[]>("pos_inventory_alerts") || [];
+      const newAlerts: InventoryAlert[] = [];
       products.filter((p) => p.stock <= 10).forEach((p) => {
-        alerts.push({ id: crypto.randomUUID(), product_id: p.id, product_name: p.name, current_stock: p.stock, threshold: p.stock === 0 ? 0 : 10, alert_type: p.stock === 0 ? "out_of_stock" : "low_stock", created_at: new Date().toISOString() });
+        const alert: InventoryAlert = {
+          id: crypto.randomUUID(),
+          product_id: p.id,
+          product_name: p.name,
+          current_stock: p.stock,
+          threshold: p.stock === 0 ? 0 : 10,
+          alert_type: p.stock === 0 ? "out_of_stock" : "low_stock",
+          created_at: new Date().toISOString()
+        };
+        newAlerts.push(alert);
+        alerts.push(alert);
       });
-      return alerts as T;
+      lsSet("pos_inventory_alerts", alerts);
+      return newAlerts as T;
     }
     case "create_inventory_alert": {
       const alerts = lsGet<InventoryAlert[]>("pos_inventory_alerts") || [];
@@ -1611,7 +1677,28 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     case "cancel_order": {
       const orders = lsGet<Order[]>(LS.orders) || [];
       const o = orders.find((x) => x.id === (args as any).id);
-      if (o) { o.status = "cancelled"; lsSet(LS.orders, orders); }
+      if (o && o.status !== "cancelled") {
+        if (o.status === "completed" || o.status === "processing") {
+          const products = lsGet<Product[]>(LS.products) || [];
+          const ingredients = lsGet<Ingredient[]>("pos_ingredients") || [];
+          const recipes = lsGet<Recipe[]>("pos_recipes") || [];
+
+          o.items.forEach(item => {
+            const p = products.find(x => x.id === item.product_id);
+            if (p) p.stock += item.quantity;
+
+            const itemRecipes = recipes.filter(r => r.product_id === item.product_id);
+            itemRecipes.forEach(r => {
+              const ing = ingredients.find(i => i.id === r.ingredient_id);
+              if (ing) ing.stock += (r.quantity * item.quantity);
+            });
+          });
+          lsSet(LS.products, products);
+          lsSet("pos_ingredients", ingredients);
+        }
+        o.status = "cancelled";
+        lsSet(LS.orders, orders);
+      }
       return undefined as T;
     }
     case "get_refund_requests": {
