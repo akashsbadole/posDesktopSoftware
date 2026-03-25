@@ -188,6 +188,8 @@ export interface Settings {
   tax_inclusive: boolean;
   tax_breakdown: string;
   auto_print_kot: boolean;
+  raw_printing_enabled: boolean;
+  printer_name: string;
 }
 
 export interface TaxRate {
@@ -878,6 +880,8 @@ function defaultSettings(): Settings {
     tax_inclusive: false,
     tax_breakdown: "[]",
     auto_print_kot: false,
+    raw_printing_enabled: false,
+    printer_name: "",
   };
 }
 

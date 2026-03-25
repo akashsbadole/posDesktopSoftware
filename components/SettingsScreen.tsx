@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { Check, Store, Database, CloudUpload, CloudDownload, RefreshCw, Info, Moon, Sun, Download, Upload, Save, Palette, Mail, AlertCircle, Key } from "lucide-react";
+import { Check, Store, Database, CloudUpload, CloudDownload, RefreshCw, Info, Moon, Sun, Download, Upload, Save, Palette, Mail, AlertCircle, Key, Printer } from "lucide-react";
 import { syncToNeon, syncFromNeon, sendSmsNotification, sendWhatsAppMessage, startLanServer, stopLanServer, getLanServerStatus, LanServerStatus, changePin, Settings, exportBackup, importBackup } from "@/lib/db";
 import { useSettingsStore, useAuthStore } from "@/lib/stores";
 
@@ -141,6 +141,8 @@ export default function SettingsScreen() {
     footer_text: 'Powered by POS Billing',
     contact_email: '',
     contact_website: '',
+    raw_printing_enabled: false,
+    printer_name: '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -546,6 +548,58 @@ export default function SettingsScreen() {
               onChange={(e) => updateLocal("business_name", e.target.value)} 
               placeholder="Your Business Name"
             />
+          </div>
+        </div>
+
+        {/* Printer Settings */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Printer size={16} style={{ color: "#F5C842" }} />
+            <h2 className="font-semibold">Printer Settings</h2>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Direct ESC/POS Printing</div>
+                <div className="text-xs" style={{ color: "#4A4A5A" }}>Bypass system print dialog (Recommended for Thermal Printers)</div>
+              </div>
+              <button
+                onClick={() => updateLocal("raw_printing_enabled", !localSettings.raw_printing_enabled)}
+                style={{
+                  width: 48,
+                  height: 24,
+                  borderRadius: 12,
+                  background: localSettings.raw_printing_enabled ? "#2ECC71" : "#1E1E26",
+                  border: "none",
+                  cursor: "pointer"
+                }}
+              >
+                <div style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 10,
+                  background: "#fff",
+                  position: "relative",
+                  left: localSettings.raw_printing_enabled ? 26 : 2,
+                  transition: "left 0.2s"
+                }} />
+              </button>
+            </div>
+
+            {localSettings.raw_printing_enabled && (
+              <div className="fade-in">
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Printer Name / Path</label>
+                <input
+                  value={localSettings.printer_name}
+                  onChange={(e) => updateLocal("printer_name", e.target.value)}
+                  placeholder="e.g. POS-80 or /dev/usb/lp0"
+                />
+                <p className="text-[10px] mt-1" style={{ color: "#9090A8" }}>
+                  Enter the exact name of your printer as shown in system settings.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

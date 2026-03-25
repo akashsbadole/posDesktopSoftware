@@ -482,22 +482,107 @@ fn print_receipt(receipt: String) -> Result<(), String> {
     open::that(&file_path).map_err(|e| e.to_string())
 }
 
+fn format_esc_pos(text: &str) -> Vec<u8> {
+    let mut data = Vec::new();
+    // Initialize printer
+    data.extend_from_slice(&[0x1B, 0x40]);
+    // Set line spacing to default
+    data.extend_from_slice(&[0x1B, 0x32]);
+    // Standard font
+    data.extend_from_slice(&[0x1B, 0x4D, 0x00]);
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("===") || trimmed.starts_with("---") {
+            // Horizontal line
+            data.extend_from_slice(line.as_bytes());
+        } else if trimmed.to_uppercase() == trimmed && trimmed.len() > 0 && !trimmed.chars().all(|c| !c.is_alphabetic()) {
+            // Header/Emphasis (All caps)
+            data.extend_from_slice(&[0x1B, 0x45, 0x01]); // Bold on
+            data.extend_from_slice(line.as_bytes());
+            data.extend_from_slice(&[0x1B, 0x45, 0x00]); // Bold off
+        } else {
+            data.extend_from_slice(line.as_bytes());
+        }
+        data.push(b'\n');
+    }
+
+    // Feed and cut
+    data.extend_from_slice(&[0x0A, 0x0A, 0x0A, 0x0A, 0x0A]);
+    data.extend_from_slice(&[0x1D, 0x56, 0x41, 0x03]); // Full cut
+
+    data
+}
+
 #[tauri::command]
 fn print_to_printer(receipt: String, printer_name: Option<String>) -> Result<(), String> {
-    // If no specific printer, open default print dialog
-    if printer_name.is_none() {
-        let temp_dir = std::env::temp_dir();
-        let file_path = temp_dir.join("receipt_print.txt");
-        std::fs::write(&file_path, &receipt).map_err(|e| e.to_string())?;
-        open::that(&file_path).map_err(|e| e.to_string())?;
-        return Ok(());
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    let settings = db.get_settings().map_err(|e| e.to_string())?;
+
+    if settings.raw_printing_enabled {
+        let printer = if let Some(name) = printer_name {
+            name
+        } else {
+            settings.printer_name.clone()
+        };
+
+        if !printer.is_empty() {
+            let raw_data = format_esc_pos(&receipt);
+
+            #[cfg(target_os = "windows")]
+            {
+                // On Windows, try to send directly to printer name
+                use std::process::Command;
+                let temp_dir = std::env::temp_dir();
+                let file_path = temp_dir.join("raw_receipt.bin");
+                std::fs::write(&file_path, &raw_data).map_err(|e| e.to_string())?;
+
+                // Use 'print' command or 'copy /b' to local printer port
+                let _ = Command::new("cmd")
+                    .args(&["/C", "copy", "/B", file_path.to_str().unwrap(), &printer])
+                    .spawn();
+
+                return Ok(());
+            }
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                // On Unix (Linux/macOS), try to send to device path or use lpr
+                use std::process::{Command, Stdio};
+                use std::io::Write;
+
+                if printer.starts_with("/dev/") {
+                    // Direct device access
+                    if let Ok(mut file) = std::fs::OpenOptions::new().write(true).open(&printer) {
+                        let _ = file.write_all(&raw_data);
+                        return Ok(());
+                    }
+                }
+
+                // Fallback to lpr
+                let mut child = Command::new("lpr")
+                    .arg("-P")
+                    .arg(&printer)
+                    .arg("-o")
+                    .arg("raw")
+                    .stdin(Stdio::piped())
+                    .spawn()
+                    .map_err(|e| format!("Failed to spawn lpr: {}", e))?;
+
+                if let Some(mut stdin) = child.stdin.take() {
+                    stdin.write_all(&raw_data).map_err(|e| e.to_string())?;
+                }
+
+                return Ok(());
+            }
+        }
     }
-    
-    // For specific printer, we would need platform-specific code
-    // For now, save to temp file as fallback
+
+    // Default fallback: open in system viewer (standard behavior)
     let temp_dir = std::env::temp_dir();
     let file_path = temp_dir.join("receipt_print.txt");
     std::fs::write(&file_path, &receipt).map_err(|e| e.to_string())?;
+    open::that(&file_path).map_err(|e| e.to_string())?;
     
     Ok(())
 }

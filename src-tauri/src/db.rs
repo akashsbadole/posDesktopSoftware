@@ -158,6 +158,8 @@ pub struct Settings {
     pub tax_breakdown: String,
     // Auto-print KOT
     pub auto_print_kot: bool,
+    pub raw_printing_enabled: bool,
+    pub printer_name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1408,6 +1410,8 @@ impl Database {
             tax_inclusive: get("tax_inclusive", "false") == "true",
             tax_breakdown: get("tax_breakdown", "[]"),
             auto_print_kot: get("auto_print_kot", "false") == "true",
+            raw_printing_enabled: get("raw_printing_enabled", "false") == "true",
+            printer_name: get("printer_name", ""),
         })
     }
 
@@ -1447,6 +1451,8 @@ impl Database {
             ("tax_inclusive", s.tax_inclusive.to_string()),
             ("tax_breakdown", s.tax_breakdown.clone()),
             ("auto_print_kot", s.auto_print_kot.to_string()),
+            ("raw_printing_enabled", s.raw_printing_enabled.to_string()),
+            ("printer_name", s.printer_name.clone()),
         ];
         for (k, v) in pairs {
             self.conn.execute(
