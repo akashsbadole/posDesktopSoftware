@@ -9,7 +9,8 @@ export default function DashboardScreen() {
     weeklyRevenue, 
     topProducts, 
     lowStock, 
-    isLoading, 
+    isLoading,
+    error,
     fetchDashboardData 
   } = useOrdersStore();
   const { settings, fetchSettings } = useSettingsStore();
@@ -35,6 +36,15 @@ export default function DashboardScreen() {
         <h1 className="font-display text-xl font-bold">Dashboard</h1>
         <button onClick={() => fetchDashboardData()} className="btn-ghost py-2 px-3"><RefreshCw size={14} className={isLoading ? "spin" : ""} /></button>
       </div>
+
+      {error && (
+        <div className="p-4 mb-5 rounded-lg border border-red-500/20 bg-red-500/10 text-red-500 text-sm flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span>Failed to load dashboard data: {error}</span>
+          </div>
+          <button onClick={() => fetchDashboardData()} className="underline font-medium hover:text-red-400 transition-colors">Try again</button>
+        </div>
+      )}
 
       <div className="grid grid-cols-4 gap-3 mb-5">
         {stats.map((s) => {

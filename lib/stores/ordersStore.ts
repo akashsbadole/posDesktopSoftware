@@ -110,7 +110,7 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
   },
 
   fetchDashboardData: async () => {
-    set({ isLoading: true });
+    set({ isLoading: true, error: null });
     try {
       const [dashboardData, weeklyRevenue, topProducts, lowStock] = await Promise.all([
         dbGetDailySummary(),
@@ -120,6 +120,7 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
       ]);
       set({ dashboardData, weeklyRevenue, topProducts, lowStock, isLoading: false });
     } catch (err) {
+      console.error("Dashboard fetch error:", err);
       set({ error: (err as Error).message, isLoading: false });
     }
   },
