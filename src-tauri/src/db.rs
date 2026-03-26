@@ -626,10 +626,20 @@ impl Database {
             )",
             [],
         );
-        let _ = self.conn.execute(
-            "ALTER TABLE coupons ADD COLUMN created_at TEXT NOT NULL DEFAULT (datetime('now'))",
+        match self.conn.execute(
+            "ALTER TABLE coupons ADD COLUMN created_at TEXT",
             [],
-        );
+        ) {
+            Ok(_) => {
+                println!("Successfully added created_at column to coupons table");
+                // Set default value for existing rows
+                let _ = self.conn.execute(
+                    "UPDATE coupons SET created_at = datetime('now') WHERE created_at IS NULL",
+                    [],
+                );
+            }
+            Err(e) => println!("Failed to add created_at column to coupons table: {:?}", e),
+        }
         Ok(())
     }
 

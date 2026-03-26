@@ -128,8 +128,8 @@ export default function Home() {
       const customEvent = e as CustomEvent<string>;
       setScreen(customEvent.detail as Screen);
     };
-    window.addEventListener('navigate', handleNavigation);
-    return () => window.removeEventListener('navigate', handleNavigation);
+    window.addEventListener("navigate", handleNavigation);
+    return () => window.removeEventListener("navigate", handleNavigation);
   }, [isAuthenticated]);
 
   useEffect(() => {
@@ -264,7 +264,7 @@ export default function Home() {
               {screen === "kds" && <KDSScreen />}
               {/* {screen === "expenses" && <ExpenseScreen />} */}
               {screen === "staff" && <StaffAttendance />}
-              {/* {screen === "customers" && <CustomerCRM />} */}
+              {screen === "customers" && <CustomerCRM />}
               {screen === "tables" && <TableManager />}
               {screen === "coupons" && <CouponsScreen />}
               {/* {screen === "wallet" && <WalletScreen />} */}
