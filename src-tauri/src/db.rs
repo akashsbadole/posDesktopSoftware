@@ -1466,7 +1466,7 @@ impl Database {
         let row = self.conn.query_row(
             "SELECT COALESCE(SUM(total),0), COUNT(*), COALESCE(AVG(total),0)
              FROM orders
-             WHERE status='completed' AND DATE(created_at)=?1",
+             WHERE status='completed' AND DATE(created_at, 'localtime')=?1",
             params![today],
             |r| {
                 Ok((
@@ -1482,7 +1482,7 @@ impl Database {
             .query_row(
                 "SELECT COALESCE(SUM(oi.quantity),0) FROM order_items oi
              JOIN orders o ON o.id=oi.order_id
-             WHERE o.status='completed' AND DATE(o.created_at)=?1",
+             WHERE o.status='completed' AND DATE(o.created_at, 'localtime')=?1",
                 params![today],
                 |r| r.get(0),
             )
@@ -1506,7 +1506,7 @@ impl Database {
                 .format("%a")
                 .to_string();
             let revenue: f64 = self.conn.query_row(
-                "SELECT COALESCE(SUM(total),0) FROM orders WHERE status='completed' AND DATE(created_at)=?1",
+                "SELECT COALESCE(SUM(total),0) FROM orders WHERE status='completed' AND DATE(created_at, 'localtime')=?1",
                 params![date],
                 |r| r.get(0),
             ).unwrap_or(0.0);
@@ -1553,19 +1553,19 @@ impl Database {
 
     pub fn get_sales_by_payment_method(&self, date: &str) -> Result<(f64, f64, f64)> {
         let cash: f64 = self.conn.query_row(
-            "SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='completed' AND payment_method='cash' AND DATE(created_at)=?1",
+            "SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='completed' AND payment_method='cash' AND DATE(created_at, 'localtime')=?1",
             params![date],
             |r| r.get(0),
         ).unwrap_or(0.0);
 
         let upi: f64 = self.conn.query_row(
-            "SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='completed' AND payment_method='upi' AND DATE(created_at)=?1",
+            "SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='completed' AND payment_method='upi' AND DATE(created_at, 'localtime')=?1",
             params![date],
             |r| r.get(0),
         ).unwrap_or(0.0);
 
         let card: f64 = self.conn.query_row(
-            "SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='completed' AND payment_method='card' AND DATE(created_at)=?1",
+            "SELECT COALESCE(SUM(total), 0) FROM orders WHERE status='completed' AND payment_method='card' AND DATE(created_at, 'localtime')=?1",
             params![date],
             |r| r.get(0),
         ).unwrap_or(0.0);
@@ -1661,7 +1661,7 @@ impl Database {
     pub fn get_sales_report(&self, start_date: &str, end_date: &str) -> Result<SalesReport> {
         let orders: Vec<Order> = {
             let mut stmt = self.conn.prepare(
-                "SELECT id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, created_at FROM orders WHERE status='completed' AND DATE(created_at) BETWEEN ?1 AND ?2 ORDER BY created_at DESC"
+                "SELECT id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, created_at FROM orders WHERE status='completed' AND DATE(created_at, 'localtime') BETWEEN ?1 AND ?2 ORDER BY created_at DESC"
             )?;
             let rows: Vec<Order> = stmt
                 .query_map(params![start_date, end_date], |row| {
@@ -2246,13 +2246,13 @@ impl Database {
         let mut results = Vec::new();
         for hour in 0..24 {
             let revenue: f64 = self.conn.query_row(
-                "SELECT COALESCE(SUM(total),0) FROM orders WHERE status='completed' AND DATE(created_at)=?1 AND CAST(strftime('%H', created_at) AS INTEGER)=?2",
+                "SELECT COALESCE(SUM(total),0) FROM orders WHERE status='completed' AND DATE(created_at, 'localtime')=?1 AND CAST(strftime('%H', created_at, 'localtime') AS INTEGER)=?2",
                 params![date, hour],
                 |r| r.get(0),
             ).unwrap_or(0.0);
 
             let orders: i64 = self.conn.query_row(
-                "SELECT COUNT(*) FROM orders WHERE status='completed' AND DATE(created_at)=?1 AND CAST(strftime('%H', created_at) AS INTEGER)=?2",
+                "SELECT COUNT(*) FROM orders WHERE status='completed' AND DATE(created_at, 'localtime')=?1 AND CAST(strftime('%H', created_at, 'localtime') AS INTEGER)=?2",
                 params![date, hour],
                 |r| r.get(0),
             ).unwrap_or(0);
@@ -2276,7 +2276,7 @@ impl Database {
                     COALESCE(SUM(o.total), 0) as total_revenue
              FROM activity_logs al
              LEFT JOIN orders o ON o.id = al.order_id AND o.status = 'completed'
-             WHERE al.action = 'order_created' AND DATE(al.created_at) BETWEEN ?1 AND ?2
+             WHERE al.action = 'order_created' AND DATE(al.created_at, 'localtime') BETWEEN ?1 AND ?2
              GROUP BY al.user_id, al.user_name
              ORDER BY total_revenue DESC",
         )?;
@@ -2298,7 +2298,7 @@ impl Database {
             "SELECT oi.product_id, oi.product_name, SUM(oi.quantity) as qty, SUM(oi.price * oi.quantity) as revenue
              FROM order_items oi
              JOIN orders o ON o.id = oi.order_id
-             WHERE o.status='completed' AND DATE(o.created_at) BETWEEN ?1 AND ?2
+             WHERE o.status='completed' AND DATE(o.created_at, 'localtime') BETWEEN ?1 AND ?2
              GROUP BY oi.product_id, oi.product_name
              ORDER BY revenue DESC"
         )?;
@@ -3439,7 +3439,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT o.id, o.created_at, o.customer_name, o.total, o.tax_amount
              FROM orders o
-             WHERE o.status='completed' AND DATE(o.created_at) BETWEEN ?1 AND ?2
+             WHERE o.status='completed' AND DATE(o.created_at, 'localtime') BETWEEN ?1 AND ?2
              ORDER BY o.created_at",
         )?;
 
@@ -3483,7 +3483,7 @@ impl Database {
                 COALESCE(SUM(tax_amount), 0) as liability,
                 COALESCE(SUM(tax_amount), 0) as itc
              FROM orders
-             WHERE status='completed' AND DATE(created_at) BETWEEN ?1 AND ?2",
+             WHERE status='completed' AND DATE(created_at, 'localtime') BETWEEN ?1 AND ?2",
                 params![start_date, end_date],
                 |row| {
                     Ok((
@@ -3518,7 +3518,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT id, order_id, action, previous_data, new_data, reason, user_id, user_name, created_at
              FROM activity_logs
-             WHERE DATE(created_at) BETWEEN ?1 AND ?2
+             WHERE DATE(created_at, 'localtime') BETWEEN ?1 AND ?2
              ORDER BY created_at DESC LIMIT ?3"
         )?;
 
@@ -3587,7 +3587,7 @@ impl Database {
             "SELECT id, subtotal, tax_amount, discount_amount, total, payment_method,
                     amount_paid, change_amount, customer_name, status, order_type, delivery_status,
                     delivery_address, delivery_phone, user_id, user_name, synced, created_at
-             FROM orders WHERE status='completed' AND DATE(created_at) BETWEEN ?1 AND ?2",
+             FROM orders WHERE status='completed' AND DATE(created_at, 'localtime') BETWEEN ?1 AND ?2",
         )?;
 
         let orders: Vec<Order> = stmt
