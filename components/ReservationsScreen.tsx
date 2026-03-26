@@ -98,7 +98,7 @@ export default function ReservationsScreen() {
   return (
     <div className="h-full overflow-y-auto p-5">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="font-display text-xl font-bold flex items-center gap-2">
+        <h1 className="font-display text-xl font-bold font-display flex items-center gap-2">
           <Calendar size={24} style={{ color: "#F5C842" }} />
           Reservations
         </h1>
@@ -127,7 +127,7 @@ export default function ReservationsScreen() {
           onClick={(e) => e.target === e.currentTarget && setShowForm(false)}
         >
            <div className="card p-6 w-full max-w-md fade-in">
-             <h2 className="font-semibold text-lg mb-4">New Reservation</h2>
+             <h2 className="font-semibold text-base mb-4">New Reservation</h2>
              <div className="space-y-3">
                <div>
                  <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Table *</label>

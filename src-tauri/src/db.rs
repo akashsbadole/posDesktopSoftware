@@ -158,6 +158,7 @@ pub struct Settings {
     pub tax_breakdown: String,
     // Auto-print KOT
     pub auto_print_kot: bool,
+    pub upi_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1409,6 +1410,7 @@ impl Database {
             tax_inclusive: get("tax_inclusive", "false") == "true",
             tax_breakdown: get("tax_breakdown", "[]"),
             auto_print_kot: get("auto_print_kot", "false") == "true",
+            upi_id: get("upi_id", ""),
         })
     }
 
@@ -1448,6 +1450,7 @@ impl Database {
             ("tax_inclusive", s.tax_inclusive.to_string()),
             ("tax_breakdown", s.tax_breakdown.clone()),
             ("auto_print_kot", s.auto_print_kot.to_string()),
+            ("upi_id", s.upi_id.clone()),
         ];
         for (k, v) in pairs {
             self.conn.execute(

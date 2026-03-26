@@ -76,7 +76,7 @@ export default function GstReportsScreen() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
+        <h1 className="text-lg font-bold font-display flex items-center gap-2">
           <FileText className="w-6 h-6" /> GST Reports
         </h1>
         {activeTab === "gstr1" && (
@@ -142,37 +142,37 @@ export default function GstReportsScreen() {
       ) : (
         <div>
           <div className="card p-6 mb-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Calculator size={20} /> GSTR-3B Summary</h3>
+            <h3 className="text-base font-semibold mb-4 flex items-center gap-2"><Calculator size={20} /> GSTR-3B Summary</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">Total Taxable Value</div>
-                <div className="text-2xl font-bold">₹{taxable.toFixed(2)}</div>
+                <div className="text-lg font-bold font-display">₹{taxable.toFixed(2)}</div>
               </div>
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">CGST</div>
-                <div className="text-2xl font-bold text-blue-400">₹{cgst.toFixed(2)}</div>
+                <div className="text-lg font-bold font-display text-blue-400">₹{cgst.toFixed(2)}</div>
               </div>
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">SGST</div>
-                <div className="text-2xl font-bold text-green-400">₹{sgst.toFixed(2)}</div>
+                <div className="text-lg font-bold font-display text-green-400">₹{sgst.toFixed(2)}</div>
               </div>
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">IGST</div>
-                <div className="text-2xl font-bold text-purple-400">₹{igst.toFixed(2)}</div>
+                <div className="text-lg font-bold font-display text-purple-400">₹{igst.toFixed(2)}</div>
               </div>
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">Total Tax Liability</div>
-                <div className="text-2xl font-bold text-red-400">₹{liability.toFixed(2)}</div>
+                <div className="text-lg font-bold font-display text-red-400">₹{liability.toFixed(2)}</div>
               </div>
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">ITC Claimed</div>
-                <div className="text-2xl font-bold text-yellow-400">₹{itc.toFixed(2)}</div>
+                <div className="text-lg font-bold font-display text-yellow-400">₹{itc.toFixed(2)}</div>
               </div>
             </div>
           </div>
 
           <div className="card p-6">
-            <h3 className="text-lg font-bold mb-4">Tax Computation</h3>
+            <h3 className="text-base font-semibold mb-4">Tax Computation</h3>
             <div className="space-y-3">
               <div className="flex justify-between py-2 border-b border-[#1E1E26]">
                 <span className="text-gray-400">Total Output Tax (CGST + SGST + IGST)</span>
@@ -190,7 +190,7 @@ export default function GstReportsScreen() {
                 <span className="text-gray-400">Less: ITC Available (IGST)</span>
                 <span className="text-green-400">-₹{igst.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between py-2 text-lg font-bold">
+              <div className="flex justify-between py-2 text-base font-semibold">
                 <span>Net Tax Payable</span>
                 <span className="text-red-400">₹{(liability - itc).toFixed(2)}</span>
               </div>
@@ -198,7 +198,7 @@ export default function GstReportsScreen() {
           </div>
 
           <div className="card p-6 mt-6">
-            <h3 className="text-lg font-bold mb-4">Business Details</h3>
+            <h3 className="text-base font-semibold mb-4">Business Details</h3>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div><span className="text-gray-400">Business Name:</span> {settings?.business_name || "Not set"}</div>
               <div><span className="text-gray-400">GSTIN:</span> {settings?.gstin || "Not set"}</div>

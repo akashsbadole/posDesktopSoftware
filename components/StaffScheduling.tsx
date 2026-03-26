@@ -94,7 +94,7 @@ export default function StaffScheduling() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
+        <h1 className="text-lg font-bold font-display flex items-center gap-2">
           <Calendar className="w-6 h-6" /> Staff Scheduling
         </h1>
         <button onClick={() => setShowForm(true)} className="btn-accent flex items-center gap-2">
@@ -104,7 +104,7 @@ export default function StaffScheduling() {
 
       <div className="flex items-center gap-4 mb-6">
         <button onClick={() => changeDate(-1)} className="btn-ghost p-2"><ChevronLeft size={20} /></button>
-        <div className="text-lg font-medium">{new Date(selectedDate).toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
+        <div className="text-base font-medium">{new Date(selectedDate).toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
         <button onClick={() => changeDate(1)} className="btn-ghost p-2"><ChevronRight size={20} /></button>
         <button onClick={() => setSelectedDate(new Date().toISOString().split("T")[0])} className="btn-ghost text-sm">Today</button>
       </div>
@@ -146,7 +146,7 @@ export default function StaffScheduling() {
          >
            <div className="card p-6 w-96">
              <div className="flex items-center justify-between mb-4">
-               <h2 className="text-lg font-bold">{editingShift ? "Edit Shift" : "Add Shift"}</h2>
+               <h2 className="text-base font-semibold">{editingShift ? "Edit Shift" : "Add Shift"}</h2>
                <button onClick={() => { setShowForm(false); setEditingShift(null); }} className="btn-ghost p-1"><X size={20} /></button>
              </div>
              <div className="space-y-4">

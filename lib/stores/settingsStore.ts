@@ -48,6 +48,7 @@ const defaultSettings: Settings = {
   tax_inclusive: false,
   tax_breakdown: '[]',
   auto_print_kot: false,
+  upi_id: '',
 };
 
 export const useSettingsStore = create<SettingsState>()(

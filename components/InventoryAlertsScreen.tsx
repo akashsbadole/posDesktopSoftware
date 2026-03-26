@@ -61,7 +61,7 @@ export default function InventoryAlertsScreen() {
   return (
     <div className="h-full overflow-y-auto p-5">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="font-display text-xl font-bold flex items-center gap-2">
+        <h1 className="font-display text-xl font-bold font-display flex items-center gap-2">
           <Bell size={24} style={{ color: "#F5C842" }} />
           Inventory Alerts
         </h1>
@@ -79,11 +79,11 @@ export default function InventoryAlertsScreen() {
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="card p-4" style={{ borderLeft: "4px solid #E74C3C" }}>
           <div className="text-xs mb-1" style={{ color: "#9090A8" }}>Out of Stock</div>
-          <div className="text-2xl font-bold" style={{ color: "#E74C3C" }}>{outOfStock.length}</div>
+          <div className="text-lg font-bold font-display" style={{ color: "#E74C3C" }}>{outOfStock.length}</div>
         </div>
         <div className="card p-4" style={{ borderLeft: "4px solid #F39C12" }}>
           <div className="text-xs mb-1" style={{ color: "#9090A8" }}>Low Stock</div>
-          <div className="text-2xl font-bold" style={{ color: "#F39C12" }}>{lowStock.length}</div>
+          <div className="text-lg font-bold font-display" style={{ color: "#F39C12" }}>{lowStock.length}</div>
         </div>
       </div>
 

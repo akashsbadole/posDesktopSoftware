@@ -809,7 +809,7 @@ export default function ContactTraining() {
 
   return (
     <div className="h-full overflow-y-auto p-5">
-      <h1 className="font-display text-xl font-bold mb-6 flex items-center gap-2">
+      <h1 className="font-display text-xl font-bold font-display mb-6 flex items-center gap-2">
         <GraduationCap size={24} style={{ color: "#F5C842" }} />
         Menu Training Guide
       </h1>
@@ -916,7 +916,7 @@ export default function ContactTraining() {
             <Sparkles size={24} color="#0D0D0F" fill="#0D0D0F" />
           </div>
           <div>
-            <h2 className="text-lg font-bold">Appixen</h2>
+            <h2 className="text-base font-semibold">Appixen</h2>
             <p className="text-xs" style={{ color: "#9090A8" }}>
               Software Solutions & Training
             </p>

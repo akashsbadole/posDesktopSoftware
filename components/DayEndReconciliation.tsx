@@ -103,7 +103,7 @@ export default function DayEndReconciliationScreen() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
+        <h1 className="text-lg font-bold font-display flex items-center gap-2">
           <Calculator className="w-6 h-6" /> Day-End Reconciliation
         </h1>
         <input
@@ -124,19 +124,19 @@ export default function DayEndReconciliationScreen() {
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Total Revenue</div>
-          <div className="text-2xl font-bold">₹{summary?.revenue?.toFixed(2) || "0.00"}</div>
+          <div className="text-lg font-bold font-display">₹{summary?.revenue?.toFixed(2) || "0.00"}</div>
         </div>
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Transactions</div>
-          <div className="text-2xl font-bold">{summary?.transactions || 0}</div>
+          <div className="text-lg font-bold font-display">{summary?.transactions || 0}</div>
         </div>
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Avg Order</div>
-          <div className="text-2xl font-bold">₹{summary?.avg_order?.toFixed(2) || "0.00"}</div>
+          <div className="text-lg font-bold font-display">₹{summary?.avg_order?.toFixed(2) || "0.00"}</div>
         </div>
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Total Expenses</div>
-          <div className="text-2xl font-bold text-red-400">₹{expenses.reduce((s, e) => s + e.amount, 0).toFixed(2)}</div>
+          <div className="text-lg font-bold font-display text-red-400">₹{expenses.reduce((s, e) => s + e.amount, 0).toFixed(2)}</div>
         </div>
       </div>
 
@@ -206,7 +206,7 @@ export default function DayEndReconciliationScreen() {
               <span className="text-gray-400">Actual Cash</span>
               <span>₹{formData.actual_cash.toFixed(2)}</span>
             </div>
-            <div className={`flex justify-between py-3 text-lg font-bold ${isBalanced ? "text-green-400" : "text-red-400"}`}>
+            <div className={`flex justify-between py-3 text-base font-semibold ${isBalanced ? "text-green-400" : "text-red-400"}`}>
               <span className="flex items-center gap-2">
                 {isBalanced ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
                 Difference
@@ -230,15 +230,15 @@ export default function DayEndReconciliationScreen() {
         <div className="grid grid-cols-3 gap-4">
           <div className="p-4 bg-[#1E1E26] rounded-lg">
             <div className="text-gray-400 text-sm">Avg Order Value</div>
-            <div className="text-xl font-bold">₹{(summary?.avg_order || 0).toFixed(2)}</div>
+            <div className="text-lg font-bold font-display">₹{(summary?.avg_order || 0).toFixed(2)}</div>
           </div>
           <div className="p-4 bg-[#1E1E26] rounded-lg">
             <div className="text-gray-400 text-sm">Items Sold</div>
-            <div className="text-xl font-bold">{summary?.items_sold || 0}</div>
+            <div className="text-lg font-bold font-display">{summary?.items_sold || 0}</div>
           </div>
           <div className="p-4 bg-[#1E1E26] rounded-lg">
             <div className="text-gray-400 text-sm">Expense Count</div>
-            <div className="text-xl font-bold">{expenses.length}</div>
+            <div className="text-lg font-bold font-display">{expenses.length}</div>
           </div>
         </div>
       </div>

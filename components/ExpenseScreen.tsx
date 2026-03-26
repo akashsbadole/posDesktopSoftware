@@ -112,7 +112,7 @@ export default function ExpenseScreen() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
+        <h1 className="text-lg font-bold font-display flex items-center gap-2">
           <TrendingDown className="w-6 h-6 text-red-400" /> Expense Tracking
         </h1>
         <div className="flex gap-2">
@@ -131,15 +131,15 @@ export default function ExpenseScreen() {
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Total Expenses</div>
-          <div className="text-2xl font-bold text-red-400">₹{totalExpenses.toFixed(2)}</div>
+          <div className="text-lg font-bold font-display text-red-400">₹{totalExpenses.toFixed(2)}</div>
         </div>
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Transactions</div>
-          <div className="text-2xl font-bold">{expenses.length}</div>
+          <div className="text-lg font-bold font-display">{expenses.length}</div>
         </div>
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Avg per Transaction</div>
-          <div className="text-2xl font-bold">₹{expenses.length > 0 ? (totalExpenses / expenses.length).toFixed(2) : "0.00"}</div>
+          <div className="text-lg font-bold font-display">₹{expenses.length > 0 ? (totalExpenses / expenses.length).toFixed(2) : "0.00"}</div>
         </div>
       </div>
 
@@ -169,7 +169,7 @@ export default function ExpenseScreen() {
           {expenses.map((expense) => (
             <div key={expense.id} className="card p-4 flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="text-2xl">{categoryIcon(expense.category)}</div>
+                <div className="text-xl">{categoryIcon(expense.category)}</div>
                 <div>
                   <div className="font-medium">{expense.category}</div>
                   <div className="text-sm text-gray-400">{expense.description || "No description"}</div>
@@ -191,7 +191,7 @@ export default function ExpenseScreen() {
            onClick={(e) => e.target === e.currentTarget && setShowForm(false)}
          >
            <div className="card p-6 w-96">
-             <h2 className="text-lg font-bold mb-4">Add Expense</h2>
+             <h2 className="text-base font-semibold mb-4">Add Expense</h2>
              <div className="space-y-4">
                <div>
                  <label className="block text-sm text-gray-400 mb-1">Category</label>
@@ -230,7 +230,7 @@ export default function ExpenseScreen() {
            onClick={(e) => e.target === e.currentTarget && setShowCatForm(false)}
          >
            <div className="card p-6 w-96 fade-in">
-             <h2 className="text-lg font-bold mb-4">Manage Categories</h2>
+             <h2 className="text-base font-semibold mb-4">Manage Categories</h2>
              <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
                {categories.map((cat) => (
                 <div key={cat.id} className="flex items-center gap-2 p-2 rounded-lg" style={{ background: "#1E1E26" }}>

@@ -33,7 +33,7 @@ export default function DashboardScreen() {
   return (
     <div className="h-full overflow-y-auto p-5">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="font-display text-xl font-bold">Dashboard</h1>
+        <h1 className="font-display text-xl font-bold font-display">Dashboard</h1>
         <button onClick={() => fetchDashboardData()} className="btn-ghost py-2 px-3"><RefreshCw size={14} className={isLoading ? "spin" : ""} /></button>
       </div>
 
@@ -57,7 +57,7 @@ export default function DashboardScreen() {
                   <Icon size={16} style={{ color: s.color }} />
                 </div>
               </div>
-              <div className="text-2xl font-display font-bold" style={{ color: s.color }}>{s.value}</div>
+              <div className="text-xl font-display font-bold" style={{ color: s.color }}>{s.value}</div>
             </div>
           );
         })}

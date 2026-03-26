@@ -96,7 +96,7 @@ export default function KeyboardShortcutsModal({ isOpen, onClose, showPOS = fals
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Keyboard size={20} style={{ color: "#F5C842" }} />
-            <h2 id="keyboard-title" className="font-display text-lg" style={{ color: "#F5C842" }}>
+            <h2 id="keyboard-title" className="font-display text-base" style={{ color: "#F5C842" }}>
               Keyboard Shortcuts
             </h2>
           </div>

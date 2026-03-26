@@ -39,7 +39,7 @@ export default function ActivityLogsScreen() {
   return (
     <div className="h-full overflow-y-auto p-5">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="font-display text-xl font-bold flex items-center gap-2">
+        <h1 className="font-display text-xl font-bold font-display flex items-center gap-2">
           <FileText size={20} style={{ color: "#F5C842" }} />
           Activity Logs
         </h1>

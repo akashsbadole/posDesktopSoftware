@@ -110,7 +110,7 @@ export default function ReportsScreen() {
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700 }}>Reports & Data</h1>
+        <h1 className="font-display text-xl font-bold">Reports & Data</h1>
         <button onClick={() => setShowEnhanced(true)} className="btn-accent py-2 px-4 text-sm">
           Enhanced Reports
         </button>

@@ -87,7 +87,7 @@ export default function CrashRecovery({ onComplete }: CrashRecoveryProps) {
          <div className="flex items-center gap-3 mb-4">
            <AlertTriangle size={28} style={{ color: "#F5C842" }} />
            <div>
-             <h2 id="recovery-title" className="font-display text-lg" style={{ color: "#F5C842" }}>
+             <h2 id="recovery-title" className="font-display text-base" style={{ color: "#F5C842" }}>
                Pending Orders Found
              </h2>
              <p className="text-sm" style={{ color: "#9090A8" }}>

@@ -188,6 +188,7 @@ export interface Settings {
   tax_inclusive: boolean;
   tax_breakdown: string;
   auto_print_kot: boolean;
+  upi_id: string;
 }
 
 export interface TaxRate {
@@ -811,6 +812,9 @@ export function generateReceipt(order: Order, settings: Settings): string {
     `================================`,
     `TOTAL:   ${(c + order.total.toFixed(2)).padStart(21)}`,
     `Payment: ${order.payment_method.toUpperCase()}`,
+    settings.country === "IN" && settings.upi_id && order.payment_method === "upi"
+      ? `UPI ID:   ${settings.upi_id.padStart(21)}`
+      : "",
     order.payment_method === "cash"
       ? `Paid:    ${(c + order.amount_paid.toFixed(2)).padStart(21)}`
       : "",
@@ -878,6 +882,7 @@ function defaultSettings(): Settings {
     tax_inclusive: false,
     tax_breakdown: "[]",
     auto_print_kot: false,
+    upi_id: "",
   };
 }
 

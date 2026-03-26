@@ -453,6 +453,7 @@ export default function SettingsScreen() {
       footer_text: "Powered by POS Billing",
       contact_email: "",
       contact_website: "",
+      upi_id: "",
     },
   );
 
@@ -516,7 +517,7 @@ export default function SettingsScreen() {
   };
 
   const updateLocal = (key: string, value: any) => {
-    setLocalSettings({ ...localSettings, [key]: value });
+    setLocalSettings((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleSyncUp = async () => {
@@ -700,7 +701,7 @@ export default function SettingsScreen() {
 
   return (
     <div className="h-full overflow-y-auto p-5">
-      <h1 className="font-display text-xl font-bold mb-6">Settings</h1>
+      <h1 className="font-display text-xl font-bold font-display mb-6">Settings</h1>
       <div className="space-y-4">
         {/* Store Info */}
         <div className="card p-5">
@@ -1020,6 +1021,18 @@ export default function SettingsScreen() {
               placeholder="Your Business Name"
             />
           </div>
+          {localSettings.country === "IN" && (
+            <div className="mt-3">
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                UPI ID (for receipts)
+              </label>
+              <input
+                value={localSettings.upi_id || ""}
+                onChange={(e) => updateLocal("upi_id", e.target.value)}
+                placeholder="merchant@upi"
+              />
+            </div>
+          )}
         </div>
 
         {/* Neon Sync */}

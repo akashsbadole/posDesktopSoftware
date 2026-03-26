@@ -189,7 +189,7 @@ export default function ProductsScreen() {
     <div className="h-full flex overflow-hidden">
       <div className="flex-1 flex flex-col p-5 overflow-hidden">
         <div className="flex items-center justify-between mb-5">
-          <h1 className="font-display text-xl font-bold">Products</h1>
+          <h1 className="font-display text-xl font-bold font-display">Products</h1>
           <div className="flex gap-2">
             <div className="flex rounded-lg overflow-hidden" style={{ background: "#1E1E26" }}>
               <button
@@ -299,7 +299,7 @@ export default function ProductsScreen() {
               {combos.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full" style={{ color: "#4A4A5A" }}>
                   <Tag size={48} className="mb-4 opacity-50" />
-                  <p className="text-lg mb-2">No Combos Yet</p>
+                  <p className="text-base mb-2">No Combos Yet</p>
                   <p className="text-sm">Create combo deals to boost sales</p>
                   <button onClick={() => { setEditingCombo({ ...EMPTY_COMBO }); setComboItems([]); }} className="btn-accent mt-4">
                     <Plus size={15} className="inline mr-2" /> Create Combo
@@ -342,7 +342,7 @@ export default function ProductsScreen() {
                           <div className="text-xs line-through" style={{ color: "#4A4A5A" }}>
                             {curr}{((combo.items.reduce((s, i) => s + i.price * i.quantity, 0) + combo.discount_amount)).toFixed(2)}
                           </div>
-                          <div className="font-bold text-lg" style={{ color: "#2ECC71" }}>{curr}{combo.combo_price.toFixed(2)}</div>
+                          <div className="font-bold text-base" style={{ color: "#2ECC71" }}>{curr}{combo.combo_price.toFixed(2)}</div>
                           {combo.discount_percent > 0 && (
                             <span className="text-xs px-1 rounded" style={{ background: "#2ECC71", color: "#0D0D0F" }}>
                               {combo.discount_percent.toFixed(0)}% OFF
