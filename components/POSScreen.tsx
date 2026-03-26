@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useRef, useCallback, useState } from "react";
-import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet, Package } from "lucide-react";
+import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet, Package, QrCode } from "lucide-react";
 import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet, Combo, dbHoldOrder, openCashDrawer, printReceipt, openWhatsAppShare, openEmailShare, saveReceiptToFile } from "@/lib/db";
+import { QRCodeSVG } from "qrcode.react";
 import { useCartStore, useProductsStore, useSettingsStore, useAuthStore, useCombosStore } from "@/lib/stores";
 import { useGridNavigation } from "@/lib/keyboard";
 import { v4 as uuid } from "uuid";
@@ -55,6 +56,7 @@ export default function POSScreen() {
   const { user } = useAuthStore();
 
   const [receipt, setReceipt] = useState<string | null>(null);
+  const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [processing, setProcessing] = useState(false);
   const [focusedProductIndex, setFocusedProductIndex] = useState<number>(-1);
   const [isGridFocused, setIsGridFocused] = useState(false);
@@ -287,6 +289,7 @@ export default function POSScreen() {
 
       const rec = generateReceipt(order, settings);
       setReceipt(rec);
+      setLastOrder(order);
       clearCart();
       setAppliedCoupon(null);
       setCouponCode("");
@@ -488,20 +491,39 @@ export default function POSScreen() {
   const itemCount = getItemCount();
 
   if (receipt) {
+    const upiUrl = (settings.country === 'IN' && settings.upi_id && lastOrder?.payment_method === 'upi')
+      ? `upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${lastOrder.total}&cu=INR`
+      : null;
+
     return (
       <div className="h-full flex items-center justify-center bg-bg" role="region" aria-label="Order complete">
-        <div className="card p-6 w-96 fade-in" role="dialog" aria-modal="true" aria-labelledby="receipt-title">
+        <div className="card p-6 w-[450px] fade-in" role="dialog" aria-modal="true" aria-labelledby="receipt-title">
           <div className="flex items-center justify-between mb-4">
             <h2 id="receipt-title" className="font-display text-lg" style={{ color: "#F5C842" }}>Order Complete!</h2>
-            <button onClick={() => setReceipt(null)} className="btn-ghost py-1 px-3" aria-label="Close and start new order"><X size={16} aria-hidden="true" /></button>
+            <button onClick={() => { setReceipt(null); setLastOrder(null); }} className="btn-ghost py-1 px-3" aria-label="Close and start new order"><X size={16} aria-hidden="true" /></button>
           </div>
-          <pre className="text-xs font-mono p-4 rounded-lg overflow-auto"
-            style={{ background: "#0A0A0C", color: "#9090A8", maxHeight: 340, whiteSpace: "pre", lineHeight: 1.5 }}
-            aria-label="Receipt content" role="region">
-            {receipt}
-          </pre>
+
+          <div className="flex gap-4">
+            <pre className="flex-1 text-xs font-mono p-4 rounded-lg overflow-auto"
+              style={{ background: "#0A0A0C", color: "#9090A8", maxHeight: 400, whiteSpace: "pre", lineHeight: 1.5 }}
+              aria-label="Receipt content" role="region">
+              {receipt}
+            </pre>
+
+            {upiUrl && (
+              <div className="w-40 flex flex-col items-center gap-3 p-3 rounded-lg border border-border bg-[#141418]">
+                <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-wider">Scan to Pay UPI</div>
+                <div className="p-2 bg-white rounded-lg">
+                  <QRCodeSVG value={upiUrl} size={120} />
+                </div>
+                <div className="text-xs font-bold text-[#F5C842]">{curr}{lastOrder?.total.toFixed(2)}</div>
+                <div className="text-[9px] text-gray-500 text-center truncate w-full">{settings.upi_id}</div>
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-2 mt-4" role="group" aria-label="Receipt actions">
-            <button className="btn-accent flex-1 flex items-center justify-center gap-2 py-3" onClick={() => setReceipt(null)}>
+            <button className="btn-accent flex-1 flex items-center justify-center gap-2 py-3" onClick={() => { setReceipt(null); setLastOrder(null); }}>
               <Plus size={16} aria-hidden="true" /> New Order
             </button>
             <button className="btn-ghost py-3 px-3 flex items-center gap-1.5" onClick={handlePrint} aria-label="Print receipt">
@@ -963,6 +985,20 @@ export default function POSScreen() {
                 );
               })}
             </div>
+
+            {paymentMethod === "upi" && settings.country === "IN" && settings.upi_id && (
+              <div className="card p-4 flex flex-col items-center gap-2 mt-2 bg-[#141418]">
+                <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">Scan to Pay</div>
+                <div className="p-2 bg-white rounded-lg">
+                  <QRCodeSVG
+                    value={`upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${finalTotal}&cu=INR`}
+                    size={160}
+                  />
+                </div>
+                <div className="text-sm font-bold text-[#F5C842]">{curr}{finalTotal.toFixed(2)}</div>
+                <div className="text-[10px] text-gray-500">{settings.upi_id}</div>
+              </div>
+            )}
 
              {paymentMethod === "cash" && (
                <div>
