@@ -1,18 +1,50 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Check, X, Clock, RefreshCw, ChefHat, ArrowLeft, Utensils } from "lucide-react";
 import { KdsOrder, getKdsOrders, markKdsItemDone, openKdsWindow } from "@/lib/db";
+
+const playNotificationSound = () => {
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+  oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+  oscillator.type = 'square';
+  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+  oscillator.start(audioContext.currentTime);
+  oscillator.stop(audioContext.currentTime + 0.2);
+};
+
+const getOrderTypeColor = (type: string) => {
+  switch (type) {
+    case 'dine_in': return '#4CAF50'; // green
+    case 'takeaway': return '#FF9800'; // orange
+    case 'delivery': return '#2196F3'; // blue
+    default: return '#9E9E9E'; // grey
+  }
+};
 
 export default function KDSScreen() {
   const [orders, setOrders] = useState<KdsOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [previousOrders, setPreviousOrders] = useState<KdsOrder[]>([]);
+  const hasLoadedInitially = useRef(false);
 
   const fetchOrders = async () => {
     try {
       const data = await getKdsOrders();
       setOrders(data);
+      if (hasLoadedInitially.current) {
+        const newOrders = data.filter(order => !previousOrders.some(prev => prev.id === order.id));
+        if (newOrders.length > 0) {
+          playNotificationSound();
+        }
+      }
+      setPreviousOrders(data);
+      hasLoadedInitially.current = true;
     } catch (err) {
       console.error("Failed to fetch KDS orders:", err);
     } finally {
@@ -149,7 +181,7 @@ export default function KDSScreen() {
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <div className="font-bold text-base" style={{ color: allDone ? "#2ECC71" : "#F5C842" }}>
+                      <div className="font-bold text-base" style={{ color: getOrderTypeColor(order.order_type) }}>
                         {order.order_type.toUpperCase()}
                       </div>
                       <div className="text-xs" style={{ color: "#4A4A5A" }}>

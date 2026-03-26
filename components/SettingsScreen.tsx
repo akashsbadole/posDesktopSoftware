@@ -398,6 +398,8 @@ export default function SettingsScreen() {
     text: string;
     ok: boolean;
   } | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [sendingSms, setSendingSms] = useState(false);
   const [smsMsg, setSmsMsg] = useState<{ text: string; ok: boolean } | null>(
     null,
@@ -420,7 +422,8 @@ export default function SettingsScreen() {
   );
   const [changingPin, setChangingPin] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [localSettings, setLocalSettings] = useState<Settings>(
+    const restoreFileInputRef = useRef<HTMLInputElement>(null);
+    const [localSettings, setLocalSettings] = useState<Settings>(
     settings || {
       store_name: "My POS Store",
       currency: "USD",
@@ -588,9 +591,28 @@ export default function SettingsScreen() {
     }
     setBackingUp(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const handleSendTestSms = async () => {
+    };
+  
+    const handleRestoreBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setRestoring(true);
+      setRestoreMsg(null);
+      try {
+        const text = await file.text();
+        const result = await importBackup(text);
+        setRestoreMsg({
+          text: `✓ Restored ${result.products_imported} products and ${result.orders_imported} orders`,
+          ok: true,
+        });
+      } catch (err) {
+        setRestoreMsg({ text: `Error: ${err}`, ok: false });
+      }
+      setRestoring(false);
+      if (restoreFileInputRef.current) restoreFileInputRef.current.value = "";
+    };
+  
+    const handleSendTestSms = async () => {
     if (!testPhone || !testMessage) {
       setSmsMsg({ text: "Please enter phone number and message", ok: false });
       return;
@@ -1196,6 +1218,54 @@ export default function SettingsScreen() {
               }}
             >
               {backupMsg.text}
+            </div>
+          )}
+        </div>
+
+        {/* Backup Restoration */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <CloudDownload size={16} style={{ color: "#2ECC71" }} />
+            <h2 className="font-semibold">Backup Restoration</h2>
+          </div>
+          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
+            Restore your data from a JSON backup file.
+          </p>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => restoreFileInputRef.current?.click()}
+              disabled={restoring}
+              className="btn-success flex items-center gap-2 text-sm flex-1 justify-center"
+            >
+              {restoring ? (
+                <RefreshCw size={14} className="spin" />
+              ) : (
+                <Upload size={14} />
+              )}
+              Restore Backup
+            </button>
+            <input
+              ref={restoreFileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleRestoreBackup}
+              style={{ display: "none" }}
+            />
+          </div>
+
+          {restoreMsg && (
+            <div
+              className="mt-3 rounded-lg p-3 text-sm fade-in"
+              style={{
+                background: restoreMsg.ok
+                  ? "rgba(46,204,113,0.08)"
+                  : "rgba(231,76,60,0.08)",
+                border: `1px solid ${restoreMsg.ok ? "rgba(46,204,113,0.2)" : "rgba(231,76,60,0.2)"}`,
+                color: restoreMsg.ok ? "#2ECC71" : "#E74C3C",
+              }}
+            >
+              {restoreMsg.text}
             </div>
           )}
         </div>

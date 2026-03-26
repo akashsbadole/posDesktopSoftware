@@ -1113,18 +1113,58 @@ impl Database {
     // ─── Orders ───────────────────────────────────────────────────────────────
 
     pub fn get_orders(&self) -> Result<Vec<Order>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, subtotal, tax_amount, discount_amount, total, payment_method,
-                    amount_paid, change_amount, customer_name, status, order_type, delivery_status,
-                    delivery_address, delivery_phone, user_id, user_name, synced, created_at
-             FROM orders ORDER BY created_at DESC LIMIT 500",
-        )?;
+        use std::collections::HashMap;
 
-        let mut orders: Vec<Order> = stmt
+        #[derive(Debug)]
+        struct OrderRow {
+            order_id: String,
+            subtotal: f64,
+            tax_amount: f64,
+            discount_amount: f64,
+            total: f64,
+            payment_method: String,
+            amount_paid: f64,
+            change_amount: f64,
+            customer_name: String,
+            status: String,
+            order_type: String,
+            delivery_status: String,
+            delivery_address: String,
+            delivery_phone: String,
+            user_id: Option<String>,
+            user_name: Option<String>,
+            synced: Option<bool>,
+            created_at: String,
+            item_product_id: Option<String>,
+            item_product_name: Option<String>,
+            item_price: Option<f64>,
+            item_quantity: Option<i64>,
+            item_discount: Option<f64>,
+            item_tax: Option<f64>,
+        }
+
+        let query = r#"
+        WITH limited_orders AS (
+            SELECT id, subtotal, tax_amount, discount_amount, total, payment_method,
+                   amount_paid, change_amount, customer_name, status, order_type, delivery_status,
+                   delivery_address, delivery_phone, user_id, user_name, synced, created_at
+            FROM orders ORDER BY created_at DESC LIMIT 500
+        )
+        SELECT lo.id as order_id, lo.subtotal, lo.tax_amount, lo.discount_amount, lo.total, lo.payment_method,
+               lo.amount_paid, lo.change_amount, lo.customer_name, lo.status, lo.order_type, lo.delivery_status,
+               lo.delivery_address, lo.delivery_phone, lo.user_id, lo.user_name, lo.synced, lo.created_at,
+               li.product_id, li.product_name, li.price as item_price, li.quantity, li.discount as item_discount, li.tax as item_tax
+        FROM limited_orders lo
+        LEFT JOIN order_items li ON lo.id = li.order_id
+        ORDER BY lo.created_at DESC
+        "#;
+
+        let mut stmt = self.conn.prepare(query)?;
+
+        let rows: Vec<OrderRow> = stmt
             .query_map([], |row| {
-                Ok(Order {
-                    id: row.get(0)?,
-                    items: vec![],
+                Ok(OrderRow {
+                    order_id: row.get(0)?,
                     subtotal: row.get(1)?,
                     tax_amount: row.get(2)?,
                     discount_amount: row.get(3)?,
@@ -1138,32 +1178,59 @@ impl Database {
                     delivery_status: row.get(11)?,
                     delivery_address: row.get(12)?,
                     delivery_phone: row.get(13)?,
-                    user_id: Some(row.get::<_, String>(14)?),
-                    user_name: Some(row.get::<_, String>(15)?),
-                    synced: Some(row.get::<_, i64>(16)? == 1),
+                    user_id: row.get(14)?,
+                    user_name: row.get(15)?,
+                    synced: row.get::<_, Option<i64>>(16)?.map(|v| v == 1),
                     created_at: row.get(17)?,
+                    item_product_id: row.get(18)?,
+                    item_product_name: row.get(19)?,
+                    item_price: row.get(20)?,
+                    item_quantity: row.get(21)?,
+                    item_discount: row.get(22)?,
+                    item_tax: row.get(23)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
 
-        // Load items for each order
-        for order in &mut orders {
-            let mut stmt = self.conn.prepare(
-                "SELECT product_id, product_name, price, quantity, discount, tax FROM order_items WHERE order_id=?1"
-            )?;
-            order.items = stmt
-                .query_map(params![order.id], |row| {
-                    Ok(OrderItem {
-                        product_id: row.get(0)?,
-                        product_name: row.get(1)?,
-                        price: row.get(2)?,
-                        quantity: row.get(3)?,
-                        discount: row.get(4)?,
-                        tax: row.get(5)?,
-                    })
-                })?
-                .collect::<Result<Vec<_>>>()?;
+        let mut orders_map: HashMap<String, Order> = HashMap::new();
+
+        for row in rows {
+            let order = orders_map.entry(row.order_id.clone()).or_insert(Order {
+                id: row.order_id.clone(),
+                items: vec![],
+                subtotal: row.subtotal,
+                tax_amount: row.tax_amount,
+                discount_amount: row.discount_amount,
+                total: row.total,
+                payment_method: row.payment_method,
+                amount_paid: row.amount_paid,
+                change_amount: row.change_amount,
+                customer_name: row.customer_name,
+                status: row.status,
+                order_type: row.order_type,
+                delivery_status: row.delivery_status,
+                delivery_address: row.delivery_address,
+                delivery_phone: row.delivery_phone,
+                user_id: row.user_id,
+                user_name: row.user_name,
+                synced: row.synced,
+                created_at: row.created_at,
+            });
+
+            if let Some(product_id) = row.item_product_id {
+                order.items.push(OrderItem {
+                    product_id,
+                    product_name: row.item_product_name.unwrap(),
+                    price: row.item_price.unwrap(),
+                    quantity: row.item_quantity.unwrap(),
+                    discount: row.item_discount.unwrap(),
+                    tax: row.item_tax.unwrap(),
+                });
+            }
         }
+
+        let mut orders: Vec<Order> = orders_map.into_iter().map(|(_, v)| v).collect();
+        orders.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
         Ok(orders)
     }
@@ -1309,17 +1376,21 @@ impl Database {
             items
         };
 
+        let tx = self.conn.unchecked_transaction()?;
+    
         for (product_id, qty) in items {
-            self.conn.execute(
+            tx.execute(
                 "UPDATE products SET stock = stock + ?1 WHERE id = ?2",
                 params![qty, product_id],
             )?;
         }
-
-        self.conn.execute(
+    
+        tx.execute(
             "UPDATE orders SET status='refunded' WHERE id=?1 AND status='completed'",
             params![id],
         )?;
+    
+        tx.commit()?;
 
         // Log activity
         self.log_activity(
