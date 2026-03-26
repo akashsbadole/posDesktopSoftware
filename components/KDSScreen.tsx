@@ -102,7 +102,7 @@ export default function KDSScreen() {
             <Utensils size={18} />
             Pop Out
           </button>
-          <h1 className="font-display text-xl font-bold flex items-center gap-2">
+          <h1 className="font-display text-xl font-bold font-display flex items-center gap-2">
             <ChefHat size={24} style={{ color: "#F5C842" }} />
             Kitchen Display
           </h1>
@@ -130,7 +130,7 @@ export default function KDSScreen() {
         {orders.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full" style={{ color: "#4A4A5A" }}>
             <ChefHat size={64} className="mb-4 opacity-50" />
-            <p className="text-lg">No orders in kitchen</p>
+            <p className="text-base">No orders in kitchen</p>
             <p className="text-sm">New orders will appear here automatically</p>
           </div>
         ) : (
@@ -149,7 +149,7 @@ export default function KDSScreen() {
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <div className="font-bold text-lg" style={{ color: allDone ? "#2ECC71" : "#F5C842" }}>
+                      <div className="font-bold text-base" style={{ color: allDone ? "#2ECC71" : "#F5C842" }}>
                         {order.order_type.toUpperCase()}
                       </div>
                       <div className="text-xs" style={{ color: "#4A4A5A" }}>

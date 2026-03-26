@@ -63,7 +63,7 @@ export default function StaffAttendance({ onClose, isOpen = true }: StaffAttenda
      >
        <div className="card p-6 w-[500px] max-h-[80vh] overflow-y-auto fade-in" role="dialog" aria-modal="true" aria-labelledby="attendance-title">
          <div className="flex items-center justify-between mb-4">
-           <h2 id="attendance-title" className="font-display text-lg" style={{ color: "#F5C842" }}>Staff Attendance</h2>
+           <h2 id="attendance-title" className="font-display text-base" style={{ color: "#F5C842" }}>Staff Attendance</h2>
               <button onClick={handleClose} className="btn-ghost py-1 px-3" aria-label="Close"><X size={16} /></button>
          </div>
 

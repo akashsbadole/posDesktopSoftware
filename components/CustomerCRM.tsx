@@ -97,7 +97,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
     >
       <div className="card p-6 w-[800px] max-h-[85vh] overflow-hidden fade-in flex flex-col" role="dialog" aria-modal="true" aria-labelledby="crm-title">
         <div className="flex items-center justify-between mb-4">
-          <h2 id="crm-title" className="font-display text-lg" style={{ color: "#F5C842" }}>Customer Loyalty</h2>
+          <h2 id="crm-title" className="font-display text-base" style={{ color: "#F5C842" }}>Customer Loyalty</h2>
           <button onClick={handleClose} className="btn-ghost py-1 px-3" aria-label="Close"><X size={16} /></button>
         </div>
 
@@ -154,7 +154,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
             {selectedCustomer ? (
               <>
                 <div className="mb-4">
-                  <h3 className="font-medium text-lg">{selectedCustomer.name}</h3>
+                  <h3 className="font-medium text-base">{selectedCustomer.name}</h3>
                   <div className="flex gap-4 mt-2 text-sm" style={{ color: "#4A4A5A" }}>
                     <span className="flex items-center gap-1"><Phone size={12} /> {selectedCustomer.phone}</span>
                     {selectedCustomer.email && (
@@ -165,15 +165,15 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
 
                 <div className="grid grid-cols-3 gap-3 mb-4">
                   <div className="p-3 rounded-lg text-center" style={{ background: "#1E1E26" }}>
-                    <div className="text-xl font-bold" style={{ color: "#F5C842" }}>{selectedCustomer.loyalty_points}</div>
+                    <div className="text-lg font-bold font-display" style={{ color: "#F5C842" }}>{selectedCustomer.loyalty_points}</div>
                     <div className="text-xs" style={{ color: "#4A4A5A" }}>Points</div>
                   </div>
                   <div className="p-3 rounded-lg text-center" style={{ background: "#1E1E26" }}>
-                    <div className="text-xl font-bold" style={{ color: "#2ECC71" }}>{selectedCustomer.visits}</div>
+                    <div className="text-lg font-bold font-display" style={{ color: "#2ECC71" }}>{selectedCustomer.visits}</div>
                     <div className="text-xs" style={{ color: "#4A4A5A" }}>Visits</div>
                   </div>
                   <div className="p-3 rounded-lg text-center" style={{ background: "#1E1E26" }}>
-                    <div className="text-xl font-bold">₹{selectedCustomer.total_spent.toFixed(0)}</div>
+                    <div className="text-lg font-bold font-display">₹{selectedCustomer.total_spent.toFixed(0)}</div>
                     <div className="text-xs" style={{ color: "#4A4A5A" }}>Total Spent</div>
                   </div>
                 </div>

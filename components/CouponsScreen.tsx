@@ -104,7 +104,7 @@ export default function CouponsScreen() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
+        <h1 className="text-lg font-bold font-display flex items-center gap-2">
           <Tag className="w-6 h-6 text-yellow-400" /> Discount Coupons
         </h1>
         <button onClick={() => setShowForm(true)} className="btn-accent flex items-center gap-2">
@@ -137,7 +137,7 @@ export default function CouponsScreen() {
                     {expired ? "Expired" : coupon.active ? "Active" : "Inactive"}
                   </span>
                 </div>
-                <div className="text-2xl font-bold mb-3">
+                <div className="text-lg font-bold font-display mb-3">
                   {coupon.discount_type === "percentage" ? (
                     <span className="text-green-400">{coupon.discount_value}% OFF</span>
                   ) : (
@@ -176,7 +176,7 @@ export default function CouponsScreen() {
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="card p-6 w-[450px]">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold">{editingCoupon ? "Edit Coupon" : "Create Coupon"}</h2>
+              <h2 className="text-base font-semibold">{editingCoupon ? "Edit Coupon" : "Create Coupon"}</h2>
               <button onClick={() => { setShowForm(false); setEditingCoupon(null); }} className="btn-ghost p-1"><X size={20} /></button>
             </div>
             <div className="space-y-4">

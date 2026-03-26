@@ -96,7 +96,7 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
      >
        <div className="card w-[700px] max-h-[80vh] overflow-hidden flex flex-col fade-in" role="dialog" aria-modal="true" aria-labelledby="table-manager-title">
          <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--border)" }}>
-           <h2 id="table-manager-title" className="font-display text-lg font-bold flex items-center gap-2">
+           <h2 id="table-manager-title" className="font-display text-base font-semibold flex items-center gap-2">
              <Users size={20} style={{ color: "#F5C842" }} /> Table Manager
            </h2>
               <button onClick={handleClose} className="btn-ghost py-1 px-3"><X size={18} /></button>

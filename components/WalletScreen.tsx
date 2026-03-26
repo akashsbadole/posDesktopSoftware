@@ -69,7 +69,7 @@ export default function WalletScreen() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold flex items-center gap-2 mb-6">
+      <h1 className="text-lg font-bold font-display flex items-center gap-2 mb-6">
         <Wallet className="w-6 h-6 text-yellow-400" /> Customer Wallet
       </h1>
 
@@ -112,11 +112,11 @@ export default function WalletScreen() {
               <div className="card p-6 mb-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-full bg-yellow-400 flex items-center justify-center text-2xl font-bold text-black">
+                    <div className="w-16 h-16 rounded-full bg-yellow-400 flex items-center justify-center text-lg font-bold font-display text-black">
                       {selectedCustomer.name[0]}
                     </div>
                     <div>
-                      <h2 className="text-xl font-bold">{selectedCustomer.name}</h2>
+                      <h2 className="text-lg font-bold font-display">{selectedCustomer.name}</h2>
                       <p className="text-gray-400">{selectedCustomer.phone}</p>
                     </div>
                   </div>
@@ -127,15 +127,15 @@ export default function WalletScreen() {
                 <div className="grid grid-cols-3 gap-4">
                   <div className="p-4 bg-[#1E1E26] rounded-lg text-center">
                     <div className="text-gray-400 text-sm">Current Balance</div>
-                    <div className="text-2xl font-bold text-yellow-400">₹{wallet?.balance.toFixed(2) || "0.00"}</div>
+                    <div className="text-lg font-bold font-display text-yellow-400">₹{wallet?.balance.toFixed(2) || "0.00"}</div>
                   </div>
                   <div className="p-4 bg-[#1E1E26] rounded-lg text-center">
                     <div className="text-gray-400 text-sm">Total Loaded</div>
-                    <div className="text-2xl font-bold text-green-400">₹{wallet?.total_loaded.toFixed(2) || "0.00"}</div>
+                    <div className="text-lg font-bold font-display text-green-400">₹{wallet?.total_loaded.toFixed(2) || "0.00"}</div>
                   </div>
                   <div className="p-4 bg-[#1E1E26] rounded-lg text-center">
                     <div className="text-gray-400 text-sm">Total Spent</div>
-                    <div className="text-2xl font-bold text-red-400">₹{wallet?.total_spent.toFixed(2) || "0.00"}</div>
+                    <div className="text-lg font-bold font-display text-red-400">₹{wallet?.total_spent.toFixed(2) || "0.00"}</div>
                   </div>
                 </div>
               </div>
@@ -181,7 +181,7 @@ export default function WalletScreen() {
            onClick={(e) => e.target === e.currentTarget && setShowLoadForm(false)}
          >
            <div className="card p-6 w-96">
-             <h2 className="text-lg font-bold mb-4">Load Money to Wallet</h2>
+             <h2 className="text-base font-semibold mb-4">Load Money to Wallet</h2>
              <div className="space-y-4">
                <div>
                  <label className="block text-sm text-gray-400 mb-1">Amount</label>
@@ -189,7 +189,7 @@ export default function WalletScreen() {
                    type="number"
                    value={amount}
                    onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-                   className="w-full text-2xl font-bold text-center"
+                   className="w-full text-lg font-bold font-display text-center"
                    placeholder="0.00"
                    autoFocus
                  />

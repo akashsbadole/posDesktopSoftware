@@ -41,6 +41,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -75,7 +76,7 @@ textarea {
   border-radius: 8px;
   padding: 8px 12px;
   font-family: 'DM Sans', sans-serif;
-  font-size: 14px;
+  font-size: 0.875rem;
   transition: border-color 0.15s;
   width: 100%;
 }
@@ -193,6 +194,7 @@ button {
   border: none;
   border-radius: 10px;
   padding: 10px 20px;
+  font-size: 0.875rem;
 }
 
 .btn-accent:hover {
@@ -216,6 +218,7 @@ button {
   color: #9090A8;
   border-radius: 10px;
   padding: 10px 20px;
+  font-size: 0.875rem;
 }
 
 .btn-ghost:hover {
@@ -230,6 +233,7 @@ button {
   border: 1px solid rgba(231, 76, 60, 0.3);
   border-radius: 10px;
   padding: 10px 20px;
+  font-size: 0.875rem;
 }
 
 .btn-danger:hover {
@@ -242,6 +246,7 @@ button {
   border: 1px solid rgba(46, 204, 113, 0.3);
   border-radius: 10px;
   padding: 10px 20px;
+  font-size: 0.875rem;
 }
 
 .btn-success:hover {

@@ -191,7 +191,7 @@ export default function OrdersScreen() {
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
             <button onClick={handleCancelEdit} className="btn-ghost py-2 px-3">← Back</button>
-            <h1 className="font-display text-xl font-bold">Edit Order #{editingOrder.id.slice(-6).toUpperCase()}</h1>
+            <h1 className="font-display text-xl font-bold font-display">Edit Order #{editingOrder.id.slice(-6).toUpperCase()}</h1>
           </div>
           <button onClick={handleSaveEdit} className="btn-accent py-2 px-4">Save Changes</button>
         </div>
@@ -231,7 +231,7 @@ export default function OrdersScreen() {
             <div className="flex justify-between"><span style={{ color: "#9090A8" }}>Subtotal</span><span>{curr}{editSubtotal.toFixed(2)}</span></div>
             <div className="flex justify-between"><span style={{ color: "#9090A8" }}>Discount</span><span style={{ color: "#2ECC71" }}>-{curr}{editDiscount.toFixed(2)}</span></div>
             <div className="flex justify-between"><span style={{ color: "#9090A8" }}>Tax</span><span>+{curr}{editTax.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold text-lg pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+            <div className="flex justify-between font-bold text-base pt-2 border-t" style={{ borderColor: "var(--border)" }}>
               <span>Total</span><span style={{ color: "#F5C842" }}>{curr}{editTotal.toFixed(2)}</span>
             </div>
           </div>
@@ -243,7 +243,7 @@ export default function OrdersScreen() {
   return (
     <div className="h-full flex flex-col p-5">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="font-display text-xl font-bold">Orders</h1>
+        <h1 className="font-display text-xl font-bold font-display">Orders</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm" style={{ color: "#4A4A5A" }}>{filtered.length} orders</span>
           <button onClick={() => fetchOrders()} className="btn-ghost py-2 px-3"><RefreshCw size={14} className={isLoading ? "spin" : ""} /></button>
@@ -447,7 +447,7 @@ export default function OrdersScreen() {
         >
            <div className="card p-6 w-full max-w-md fade-in">
              <div className="flex items-center justify-between mb-4">
-               <h2 className="font-semibold text-lg">Cancel Order #{showCancelModal.slice(-6).toUpperCase()}</h2>
+               <h2 className="font-semibold text-base">Cancel Order #{showCancelModal.slice(-6).toUpperCase()}</h2>
                <button 
                  onClick={() => { setShowCancelModal(null); setCancelReason(""); }} 
                  className="btn-ghost py-1 px-3"

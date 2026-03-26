@@ -38,7 +38,7 @@ export default class ErrorBoundary extends Component<Props, State> {
             <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: "rgba(231,76,60,0.1)" }}>
               <AlertTriangle size={32} style={{ color: "#E74C3C" }} />
             </div>
-            <h1 className="text-xl font-semibold mb-2" style={{ color: "#E74C3C" }}>
+            <h1 className="text-lg font-semibold mb-2" style={{ color: "#E74C3C" }}>
               Something went wrong
             </h1>
             <p className="text-sm mb-6" style={{ color: "#9090A8" }}>

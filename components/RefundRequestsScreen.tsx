@@ -68,7 +68,7 @@ export default function RefundRequestsScreen() {
   return (
     <div className="h-full overflow-y-auto p-5">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="font-display text-xl font-bold flex items-center gap-2">
+        <h1 className="font-display text-xl font-bold font-display flex items-center gap-2">
           <Shield size={24} style={{ color: "#F5C842" }} />
           Refund Requests
         </h1>
@@ -124,7 +124,7 @@ export default function RefundRequestsScreen() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <div className="text-xs" style={{ color: "#9090A8" }}>Amount</div>
-                    <div className="text-lg font-bold" style={{ color: "#F5C842" }}>₹{req.amount.toFixed(2)}</div>
+                    <div className="text-base font-semibold" style={{ color: "#F5C842" }}>₹{req.amount.toFixed(2)}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-xs" style={{ color: "#9090A8" }}>Reason</div>

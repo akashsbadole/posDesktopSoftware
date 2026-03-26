@@ -499,7 +499,7 @@ export default function POSScreen() {
       <div className="h-full flex items-center justify-center bg-bg" role="region" aria-label="Order complete">
         <div className="card p-6 w-[450px] fade-in" role="dialog" aria-modal="true" aria-labelledby="receipt-title">
           <div className="flex items-center justify-between mb-4">
-            <h2 id="receipt-title" className="font-display text-lg" style={{ color: "#F5C842" }}>Order Complete!</h2>
+            <h2 id="receipt-title" className="font-display text-base" style={{ color: "#F5C842" }}>Order Complete!</h2>
             <button onClick={() => { setReceipt(null); setLastOrder(null); }} className="btn-ghost py-1 px-3" aria-label="Close and start new order"><X size={16} aria-hidden="true" /></button>
           </div>
 
@@ -619,7 +619,7 @@ export default function POSScreen() {
               activeCombos.length === 0 ? (
                 <div className="col-span-full flex flex-col items-center justify-center py-12" style={{ color: "#4A4A5A" }}>
                   <Tag size={48} className="mb-4 opacity-50" />
-                  <p className="text-lg mb-2">No Active Combos</p>
+                  <p className="text-base mb-2">No Active Combos</p>
                   <p className="text-sm">Create combo deals in Products menu</p>
                 </div>
               ) : (
@@ -697,7 +697,7 @@ export default function POSScreen() {
                     {p.image_url ? (
                       <img src={p.image_url} alt={p.name} className="w-full h-16 rounded-lg mb-2 object-cover" style={{ background: "#1E1E26" }} />
                     ) : (
-                      <div className="w-full h-16 rounded-lg mb-2 flex items-center justify-center text-lg font-bold"
+                      <div className="w-full h-16 rounded-lg mb-2 flex items-center justify-center text-base font-semibold"
                         style={{ background: "rgba(245,200,66,0.08)", color: "#F5C842" }} aria-hidden="true">{p.name[0]}</div>
                     )}
                     <div className="text-sm font-medium leading-tight mb-1">{p.name}</div>
@@ -719,7 +719,7 @@ export default function POSScreen() {
       {/* Cart */}
       <div className="flex flex-col border-l border-border" style={{ width: 360 }} role="region" aria-label="Shopping cart">
         <div className="p-4 border-b border-border flex items-center justify-between">
-          <span className="font-display font-bold text-lg" id="cart-title">Cart</span>
+          <span className="font-display font-bold text-base" id="cart-title">Cart</span>
           <div className="flex gap-2 items-center">
             {cart.length > 0 && (
               <span className="px-2 py-0.5 rounded-full text-xs font-bold"
@@ -790,8 +790,7 @@ export default function POSScreen() {
                   setCustomerInfo({ ...customerInfo, address: e.target.value, name: customerInfo?.name || "", phone: customerInfo?.phone || "" } as any);
                   setErrors(prev => ({ ...prev, address: "" }));
                 }}
-                style={{ fontSize: 13, padding: "7px 12px" }} 
-                className={errors.address ? "error" : ""}
+                className={`text-sm ${errors.address ? "error" : ""}`} style={{ padding: "7px 12px" }}
               />
               {errors.address && <div className="text-xs px-1" style={{ color: "#E74C3C" }}>{errors.address}</div>}
               <label htmlFor="delivery-phone" className="sr-only">Phone number</label>
@@ -804,8 +803,7 @@ export default function POSScreen() {
                   setErrors(prev => ({ ...prev, phone: "" }));
                 }}
                 onBlur={(e) => lookupCustomerWallet(e.target.value)}
-                style={{ fontSize: 13, padding: "7px 12px" }} 
-                className={errors.phone ? "error" : ""}
+                className={`text-sm ${errors.phone ? "error" : ""}`} style={{ padding: "7px 12px" }}
               />
               {errors.phone && <div className="text-xs px-1" style={{ color: "#E74C3C" }}>{errors.phone}</div>}
             </div>
@@ -1013,9 +1011,8 @@ export default function POSScreen() {
                        setAmountPaid(parseFloat(e.target.value) || 0);
                        setErrors(prev => ({ ...prev, amount: "" }));
                      }} 
-                     style={{ fontSize: 14, flex: 1 }} 
+                     className={`text-sm ${errors.amount ? "error" : ""}`} style={{ flex: 1 }}
                      aria-describedby="change-display"
-                     className={errors.amount ? "error" : ""}
                    />
                    <button 
                      onClick={() => setAmountPaid(totals.total)}
@@ -1092,7 +1089,7 @@ export default function POSScreen() {
         >
            <div className="card p-6 w-[500px] max-h-[80vh] overflow-y-auto fade-in" role="dialog" aria-modal="true" aria-labelledby="held-orders-title">
              <div className="flex items-center justify-between mb-4">
-               <h2 id="held-orders-title" className="font-display text-lg flex items-center gap-2" style={{ color: "#F5C842" }}>
+               <h2 id="held-orders-title" className="font-display text-base flex items-center gap-2" style={{ color: "#F5C842" }}>
                  <Clock size={20} /> Held Orders
                </h2>
                <button onClick={() => setShowHeldOrders(false)} className="btn-ghost py-1 px-3" aria-label="Close">

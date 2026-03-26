@@ -701,7 +701,7 @@ export default function SettingsScreen() {
 
   return (
     <div className="h-full overflow-y-auto p-5">
-      <h1 className="font-display text-xl font-bold mb-6">Settings</h1>
+      <h1 className="font-display text-xl font-bold font-display mb-6">Settings</h1>
       <div className="space-y-4">
         {/* Store Info */}
         <div className="card p-5">
