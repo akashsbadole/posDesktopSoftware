@@ -21,6 +21,8 @@ const INDUSTRY_CATEGORIES: Record<string, string[]> = {
   retail: ["Clothing", "Electronics", "Home & Garden", "Toys"],
   pharmacy: ["Medicines", "Supplements", "Personal Care", "Medical Supplies"],
   gift: ["Souvenirs", "Cards", "Jewelry", "Decor"],
+  salon: ["Haircut", "Hair Color", "Facial", "Massage", "Manicure"],
+  repair: ["Parts", "Service", "Labor", "Accessories"],
 };
 const ITEMS_PER_PAGE = 30;
 

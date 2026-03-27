@@ -146,12 +146,31 @@ export default function Sidebar({
     });
 
   const isFoodIndustry = settings.industry === "food";
-  const nav = allNavItems.filter((item) => {
-    if (item.adminOnly && !isAdmin) return false;
-    if (!isFoodIndustry && ["tables", "reservations", "kds"].includes(item.id))
-      return false;
-    return true;
-  });
+  const isSalonIndustry = settings.industry === "salon";
+  const isRepairIndustry = settings.industry === "repair";
+
+  const nav = allNavItems
+    .map((item) => {
+      if (item.id === "tables") {
+        if (isSalonIndustry) return { ...item, label: "Stations" };
+        if (isRepairIndustry) return { ...item, label: "Workbenches" };
+      }
+      if (item.id === "kds") {
+        if (isRepairIndustry) return { ...item, label: "Workshop" };
+      }
+      return item;
+    })
+    .filter((item) => {
+      if (item.adminOnly && !isAdmin) return false;
+      const restaurantModules = ["tables", "reservations", "kds"];
+      if (!isFoodIndustry && !isSalonIndustry && !isRepairIndustry) {
+        if (restaurantModules.includes(item.id)) return false;
+      }
+      // Salon needs Tables (as Stations) and Bookings
+      if (isSalonIndustry && item.id === "kds") return false;
+      // Repair needs Tables (as Workbenches), Bookings, and KDS (as Workshop)
+      return true;
+    });
 
   const handleLogout = () => {
     logout();

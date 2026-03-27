@@ -434,7 +434,10 @@ export default function POSScreen() {
   };
 
   const curr = settings?.currency_symbol ?? "₹";
-  const isFoodIndustry = settings.industry === "food";
+  const industry = settings.industry;
+  const isFoodIndustry = industry === "food";
+  const isSalonIndustry = industry === "salon";
+  const isRepairIndustry = industry === "repair";
 
   const handlePrint = async () => {
     if (!receipt) return;
@@ -804,7 +807,7 @@ export default function POSScreen() {
               aria-pressed={orderType === "takeaway"}
               className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "takeaway" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
             >
-              {isFoodIndustry ? "Takeaway" : "In-store"}
+              {isFoodIndustry ? "Takeaway" : isSalonIndustry ? "Reception" : isRepairIndustry ? "Counter" : "In-store"}
             </button>
             <button
               onClick={() => setOrderType("delivery")}
@@ -1072,7 +1075,7 @@ export default function POSScreen() {
             <div className="flex gap-2">
               {cart.length > 0 && (
                 <>
-                  {isFoodIndustry && (
+                  {(isFoodIndustry || isRepairIndustry) && (
                     <button
                       className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
                       style={{
@@ -1082,10 +1085,10 @@ export default function POSScreen() {
                       }}
                       onClick={handlePrintKOT}
                       disabled={processing}
-                      aria-label="Print Kitchen Order Ticket"
+                      aria-label={isFoodIndustry ? "Print Kitchen Order Ticket" : "Print Workshop Ticket"}
                     >
                       <Printer size={14} />
-                      KOT
+                      {isFoodIndustry ? "KOT" : "Workshop"}
                     </button>
                   )}
                   <button

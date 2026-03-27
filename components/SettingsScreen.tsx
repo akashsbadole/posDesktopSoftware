@@ -749,6 +749,8 @@ export default function SettingsScreen() {
                 <option value="retail">Retail</option>
                 <option value="pharmacy">Pharmacy</option>
                 <option value="gift">Gift Shop</option>
+                <option value="salon">Salon & Spa</option>
+                <option value="repair">Repair Shop</option>
               </select>
             </div>
             <div>
