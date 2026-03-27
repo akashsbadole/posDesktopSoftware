@@ -5,8 +5,23 @@ import { dbSaveProduct, dbDeleteProduct, Product, dbGetCombos, dbSaveCombo, dbDe
 import { useProductsStore, useSettingsStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
 
-const EMPTY_PRODUCT: Product = { id: "", name: "", price: 0, category: "Food", stock: 0, barcode: "", tax: 18, image_url: "", is_combo: false };
-const CATEGORIES = ["Beverages", "Food", "Snacks", "Bakery", "Electronics", "Other"];
+const EMPTY_PRODUCT: Product = {
+  id: "",
+  name: "",
+  price: 0,
+  category: "General",
+  stock: 0,
+  barcode: "",
+  tax: 18,
+  image_url: "",
+  is_combo: false,
+};
+const INDUSTRY_CATEGORIES: Record<string, string[]> = {
+  food: ["Beverages", "Food", "Snacks", "Bakery"],
+  retail: ["Clothing", "Electronics", "Home & Garden", "Toys"],
+  pharmacy: ["Medicines", "Supplements", "Personal Care", "Medical Supplies"],
+  gift: ["Souvenirs", "Cards", "Jewelry", "Decor"],
+};
 const ITEMS_PER_PAGE = 30;
 
 const validateProduct = (product: Product): Record<string, string> => {
@@ -43,8 +58,21 @@ const EMPTY_COMBO: Combo = {
 };
 
 export default function ProductsScreen() {
-  const { products, isLoading, fetchProducts, addProduct, updateProduct, deleteProduct } = useProductsStore();
+  const {
+    products,
+    isLoading,
+    fetchProducts,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+  } = useProductsStore();
   const { settings, fetchSettings } = useSettingsStore();
+
+  const categories = [
+    "General",
+    ...(INDUSTRY_CATEGORIES[settings.industry] || INDUSTRY_CATEGORIES["food"]),
+    "Other",
+  ];
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Product | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -402,9 +430,23 @@ export default function ProductsScreen() {
             </div>
 
             <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Category</label>
-              <select value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              <label
+                className="text-xs mb-1 block"
+                style={{ color: "#4A4A5A" }}
+              >
+                Category
+              </label>
+              <select
+                value={editing.category}
+                onChange={(e) =>
+                  setEditing({ ...editing, category: e.target.value })
+                }
+              >
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
               </select>
             </div>
             

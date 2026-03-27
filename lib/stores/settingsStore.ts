@@ -49,6 +49,7 @@ const defaultSettings: Settings = {
   tax_breakdown: '[]',
   auto_print_kot: false,
   upi_id: '',
+  industry: 'food',
 };
 
 export const useSettingsStore = create<SettingsState>()(

@@ -457,6 +457,7 @@ export default function SettingsScreen() {
       contact_email: "",
       contact_website: "",
       upi_id: "",
+      industry: "food",
     },
   );
 
@@ -732,6 +733,24 @@ export default function SettingsScreen() {
             <h2 className="font-semibold">Store Information</h2>
           </div>
           <div className="space-y-3">
+            <div>
+              <label
+                className="text-xs mb-1 block"
+                style={{ color: "#4A4A5A" }}
+              >
+                Industry Type
+              </label>
+              <select
+                value={localSettings.industry}
+                onChange={(e) => updateLocal("industry", e.target.value)}
+                style={{ padding: "10px" }}
+              >
+                <option value="food">Food & Restaurant</option>
+                <option value="retail">Retail</option>
+                <option value="pharmacy">Pharmacy</option>
+                <option value="gift">Gift Shop</option>
+              </select>
+            </div>
             <div>
               <label
                 className="text-xs mb-1 block"

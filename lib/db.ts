@@ -189,6 +189,7 @@ export interface Settings {
   tax_breakdown: string;
   auto_print_kot: boolean;
   upi_id: string;
+  industry: string;
 }
 
 export interface TaxRate {
@@ -883,6 +884,7 @@ function defaultSettings(): Settings {
     tax_breakdown: "[]",
     auto_print_kot: false,
     upi_id: "",
+    industry: "food",
   };
 }
 

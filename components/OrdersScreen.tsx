@@ -9,6 +9,7 @@ const ITEMS_PER_PAGE = 20;
 export default function OrdersScreen() {
   const { orders, isLoading, fetchOrders, refundOrder, updateDeliveryStatus: updateStatus, updateOrder, filterStatus, setFilterStatus } = useOrdersStore();
   const { settings, fetchSettings } = useSettingsStore();
+  const isFoodIndustry = settings.industry === "food";
   const { products, fetchProducts } = useProductsStore();
   const { addItem, items: cartItems, updateQuantity, removeItem, clearCart, setOrderType, setCustomerInfo, setOriginalOrderId } = useCartStore();
   const { user } = useAuthStore();
@@ -264,7 +265,7 @@ export default function OrdersScreen() {
                 border: `1px solid ${filterStatus === s ? "rgba(245,200,66,0.2)" : "#1E1E26"}`,
                 color: filterStatus === s ? "#F5C842" : "#4A4A5A",
               }}>
-              {s === "processing" ? "KOT" : s}
+              {s === "processing" ? (isFoodIndustry ? "KOT" : "Processing") : s}
             </button>
           ))}
         </div>

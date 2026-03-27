@@ -64,6 +64,7 @@ export default function POSScreen() {
   const [showHeldOrders, setShowHeldOrders] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const productGridRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState("");
@@ -85,8 +86,17 @@ export default function POSScreen() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return;
+
+      if (e.key === "/" || e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+
       if (e.key === "c" || e.key === "C") {
         if (cart.length > 0) {
           clearCart();
@@ -121,10 +131,16 @@ export default function POSScreen() {
 
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && searchQuery.trim()) {
-      const exactMatch = products.find((p) => p.barcode === searchQuery.trim());
+      const exactMatch = products.find(
+        (p) =>
+          p.barcode === searchQuery.trim() ||
+          p.id === searchQuery.trim() ||
+          p.name.toLowerCase() === searchQuery.trim().toLowerCase(),
+      );
       if (exactMatch) {
         addItem(exactMatch);
         setSearchQuery("");
+        return;
       }
     }
     if (e.key === "Escape") {
@@ -418,6 +434,7 @@ export default function POSScreen() {
   };
 
   const curr = settings?.currency_symbol ?? "₹";
+  const isFoodIndustry = settings.industry === "food";
 
   const handlePrint = async () => {
     if (!receipt) return;
@@ -554,18 +571,35 @@ export default function POSScreen() {
       <div className="flex-1 flex flex-col overflow-hidden p-4">
         <div className="flex gap-3 mb-4" role="search" aria-label="Product search">
           <div className="relative flex-1">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#4A4A5A" }} aria-hidden="true" />
-            <label htmlFor="product-search" className="sr-only">Search or scan barcode</label>
-            <input 
-              id="product-search"
-              placeholder="Search or scan barcode..." 
-              value={searchQuery} 
-              onChange={(e) => setSearchQuery(e.target.value)} 
-              onKeyDown={handleSearchKeyDown} 
-              style={{ paddingLeft: 36 }} 
-              aria-describedby="search-hint"
+            <Search
+              size={15}
+              className="absolute left-3 top-1/2 -translate-y-1/2"
+              style={{ color: "#4A4A5A" }}
+              aria-hidden="true"
             />
-            <span id="search-hint" className="sr-only">Press Enter to search by barcode, Escape to clear</span>
+            <label htmlFor="product-search" className="sr-only">
+              Search or scan barcode
+            </label>
+            <input
+              id="product-search"
+              ref={searchInputRef}
+              placeholder="Search or scan barcode..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              style={{ paddingLeft: 36, paddingRight: 36 }}
+              aria-describedby="search-hint"
+              autoFocus
+            />
+            <QrCode
+              size={15}
+              className="absolute right-3 top-1/2 -translate-y-1/2"
+              style={{ color: "#4A4A5A" }}
+              aria-hidden="true"
+            />
+            <span id="search-hint" className="sr-only">
+              Press Enter to search by barcode, Escape to clear
+            </span>
           </div>
           <div className="flex gap-1" role="group" aria-label="Filter by category">
             {allCategories.map((c) => {
@@ -756,19 +790,21 @@ export default function POSScreen() {
 
         <div className="px-4 pt-3">
           <div className="flex gap-2 mb-3" role="group" aria-label="Order type">
-            <button
-              onClick={() => setOrderType("dine_in")}
-              aria-pressed={orderType === "dine_in"}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "dine_in" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
-            >
-              Dine In
-            </button>
+            {isFoodIndustry && (
+              <button
+                onClick={() => setOrderType("dine_in")}
+                aria-pressed={orderType === "dine_in"}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "dine_in" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
+              >
+                Dine In
+              </button>
+            )}
             <button
               onClick={() => setOrderType("takeaway")}
               aria-pressed={orderType === "takeaway"}
               className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "takeaway" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
             >
-              Takeaway
+              {isFoodIndustry ? "Takeaway" : "In-store"}
             </button>
             <button
               onClick={() => setOrderType("delivery")}
@@ -778,7 +814,7 @@ export default function POSScreen() {
               Delivery
             </button>
           </div>
-          
+
           {orderType === "delivery" && (
             <div className="space-y-2 mb-3">
               <label htmlFor="delivery-address" className="sr-only">Delivery address</label>
@@ -1036,26 +1072,28 @@ export default function POSScreen() {
             <div className="flex gap-2">
               {cart.length > 0 && (
                 <>
-                  <button 
+                  {isFoodIndustry && (
+                    <button
+                      className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
+                      style={{
+                        background: "transparent",
+                        border: "1px solid #2E2E3E",
+                        color: "#9090A8",
+                      }}
+                      onClick={handlePrintKOT}
+                      disabled={processing}
+                      aria-label="Print Kitchen Order Ticket"
+                    >
+                      <Printer size={14} />
+                      KOT
+                    </button>
+                  )}
+                  <button
                     className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
-                    style={{ 
-                      background: "transparent", 
-                      border: "1px solid #2E2E3E", 
-                      color: "#9090A8" 
-                    }}
-                    onClick={handlePrintKOT}
-                    disabled={processing}
-                    aria-label="Print Kitchen Order Ticket"
-                  >
-                    <Printer size={14} />
-                    KOT
-                  </button>
-                  <button 
-                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
-                    style={{ 
-                      background: "transparent", 
-                      border: "1px solid #2E2E3E", 
-                      color: "#9090A8" 
+                    style={{
+                      background: "transparent",
+                      border: "1px solid #2E2E3E",
+                      color: "#9090A8",
                     }}
                     onClick={handleHoldOrder}
                     disabled={processing}

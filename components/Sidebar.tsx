@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { Screen } from "@/app/page";
 import { User } from "@/lib/db";
-import { useAuthStore } from "@/lib/stores";
+import { useAuthStore, useSettingsStore } from "@/lib/stores";
 
 const allNavItems = [
   { id: "pos" as Screen, label: "POS", icon: ShoppingCart, adminOnly: false },
@@ -123,6 +123,7 @@ export default function Sidebar({
   onLock?: () => void;
 }) {
   const { logout } = useAuthStore();
+  const { settings } = useSettingsStore();
   const isAdmin = user?.role === "admin";
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
@@ -144,7 +145,13 @@ export default function Sidebar({
       second: "2-digit",
     });
 
-  const nav = allNavItems.filter((item) => !item.adminOnly || isAdmin);
+  const isFoodIndustry = settings.industry === "food";
+  const nav = allNavItems.filter((item) => {
+    if (item.adminOnly && !isAdmin) return false;
+    if (!isFoodIndustry && ["tables", "reservations", "kds"].includes(item.id))
+      return false;
+    return true;
+  });
 
   const handleLogout = () => {
     logout();
