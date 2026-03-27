@@ -12,6 +12,7 @@ interface HeaderBarProps {
 
 export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen }: HeaderBarProps) {
   const { logout } = useAuthStore();
+  const { settings } = useSettingsStore();
 
   const handleLogout = () => {
     logout();
@@ -117,15 +118,18 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
   );
 }
 
-function getScreenLabel(screen: string): string {
+function getScreenLabel(screen: string, industry?: string): string {
+  const isSalon = industry === 'salon';
+  const isRepair = industry === 'repair';
+
   const labels: Record<string, string> = {
     pos: "Point of Sale",
     dashboard: "Dashboard",
     orders: "Orders",
     products: "Products",
-    tables: "Table Management",
+    tables: isSalon ? "Station Management" : isRepair ? "Workbench Management" : "Table Management",
     reservations: "Reservations",
-    kds: "Kitchen Display",
+    kds: isSalon ? "Service Queue" : isRepair ? "Workshop Display" : "Kitchen Display",
     customers: "Customer CRM",
     wallet: "Customer Wallet",
     coupons: "Coupons & Offers",

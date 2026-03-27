@@ -12,9 +12,10 @@ export const GLOBAL_SHORTCUTS: KeyboardShortcut[] = [
   { key: "F2", description: "Go to Dashboard", category: "navigation" },
   { key: "F3", description: "Go to Orders", category: "navigation" },
   { key: "F4", description: "Go to Products", category: "navigation" },
-  { key: "F5", description: "Go to Reports", category: "navigation" },
-  { key: "F6", description: "Go to Logs", category: "navigation" },
-  { key: "F7", description: "Go to Settings", category: "navigation" },
+  { key: "F5", description: "Go to Kitchen/KDS", category: "navigation" },
+  { key: "F6", description: "Go to Reports", category: "navigation" },
+  { key: "F7", description: "Go to Logs", category: "navigation" },
+  { key: "F8", description: "Go to Settings", category: "navigation" },
   { key: "?", description: "Show keyboard shortcuts", category: "general" },
   { key: "Esc", description: "Close modal / Clear search", category: "general" },
 ];

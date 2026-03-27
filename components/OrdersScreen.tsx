@@ -9,7 +9,11 @@ const ITEMS_PER_PAGE = 20;
 export default function OrdersScreen() {
   const { orders, isLoading, fetchOrders, refundOrder, updateDeliveryStatus: updateStatus, updateOrder, filterStatus, setFilterStatus } = useOrdersStore();
   const { settings, fetchSettings } = useSettingsStore();
-  const isFoodIndustry = settings.industry === "food";
+  const industry = settings.industry;
+  const isFoodIndustry = industry === "food";
+  const isSalonIndustry = industry === "salon";
+  const isRepairIndustry = industry === "repair";
+
   const { products, fetchProducts } = useProductsStore();
   const { addItem, items: cartItems, updateQuantity, removeItem, clearCart, setOrderType, setCustomerInfo, setOriginalOrderId } = useCartStore();
   const { user } = useAuthStore();
@@ -293,7 +297,9 @@ export default function OrdersScreen() {
                     </span>
                     <span className="px-2 py-0.5 rounded text-xs font-semibold"
                       style={{ background: "rgba(144,144,168,0.1)", color: "#9090A8" }}>
-                      {order.order_type}
+                      {order.order_type === 'dine_in' ? (isFoodIndustry ? 'Dine In' : 'Priority') :
+                       order.order_type === 'takeaway' ? (isFoodIndustry ? 'Takeaway' : isSalonIndustry ? 'Reception' : isRepairIndustry ? 'Counter' : 'In-store') :
+                       'Delivery'}
                     </span>
                   </div>
                   <span className="font-semibold" style={{ color: "#F5C842" }}>{curr}{order.total.toFixed(2)}</span>

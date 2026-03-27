@@ -24,6 +24,9 @@ import {
   Calculator,
   GraduationCap,
   Lock,
+  Armchair,
+  Hammer,
+  Scissors,
 } from "lucide-react";
 import { Screen } from "@/app/page";
 import { User } from "@/lib/db";
@@ -145,30 +148,34 @@ export default function Sidebar({
       second: "2-digit",
     });
 
-  const isFoodIndustry = settings.industry === "food";
-  const isSalonIndustry = settings.industry === "salon";
-  const isRepairIndustry = settings.industry === "repair";
+  const industry = settings.industry;
+  const isFood = industry === "food";
+  const isSalon = industry === "salon";
+  const isRepair = industry === "repair";
+  const isRetail = industry === "retail" || industry === "pharmacy" || industry === "gift";
 
   const nav = allNavItems
     .map((item) => {
       if (item.id === "tables") {
-        if (isSalonIndustry) return { ...item, label: "Stations" };
-        if (isRepairIndustry) return { ...item, label: "Workbenches" };
+        if (isSalon) return { ...item, label: "Stations", icon: Armchair };
+        if (isRepair) return { ...item, label: "Workbenches", icon: Hammer };
       }
       if (item.id === "kds") {
-        if (isRepairIndustry) return { ...item, label: "Workshop" };
+        if (isRepair) return { ...item, label: "Workshop", icon: Hammer };
+        if (isSalon) return { ...item, label: "Queue", icon: Scissors };
       }
       return item;
     })
     .filter((item) => {
       if (item.adminOnly && !isAdmin) return false;
+
       const restaurantModules = ["tables", "reservations", "kds"];
-      if (!isFoodIndustry && !isSalonIndustry && !isRepairIndustry) {
+
+      if (isRetail) {
+        // Retail/Pharmacy/Gift don't need tables or KDS
         if (restaurantModules.includes(item.id)) return false;
       }
-      // Salon needs Tables (as Stations) and Bookings
-      if (isSalonIndustry && item.id === "kds") return false;
-      // Repair needs Tables (as Workbenches), Bookings, and KDS (as Workshop)
+
       return true;
     });
 

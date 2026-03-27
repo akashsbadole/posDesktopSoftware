@@ -61,6 +61,7 @@ pub struct Product {
     pub barcode: String,
     pub tax: f64,
     pub image_url: Option<String>,
+    pub metadata: Option<String>, // JSON for variants, expiry, serials, etc.
     pub created_at: Option<String>,
 }
 
@@ -93,6 +94,7 @@ pub struct OrderItem {
     pub quantity: i64,
     pub discount: f64,
     pub tax: f64,
+    pub metadata: Option<String>, // JSON for selected variants/options
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -112,6 +114,8 @@ pub struct Order {
     pub delivery_status: String,
     pub delivery_address: String,
     pub delivery_phone: String,
+    pub source_type: Option<String>, // TABLE, STATION, TICKET, COUNTER
+    pub source_id: Option<String>,
     pub created_at: String,
     pub synced: Option<bool>,
     pub user_id: Option<String>,
@@ -615,6 +619,22 @@ impl Database {
             "ALTER TABLE order_items ADD COLUMN done INTEGER NOT NULL DEFAULT 0",
             [],
         );
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN metadata TEXT",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE order_items ADD COLUMN metadata TEXT",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE orders ADD COLUMN source_type TEXT",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE orders ADD COLUMN source_id TEXT",
+            [],
+        );
         // Ensure tax_rates table exists for existing databases
         let _ = self.conn.execute(
             "CREATE TABLE IF NOT EXISTS tax_rates (
@@ -656,6 +676,7 @@ impl Database {
                 barcode     TEXT NOT NULL DEFAULT '',
                 tax         REAL NOT NULL DEFAULT 18,
                 image_url   TEXT NOT NULL DEFAULT '',
+                metadata    TEXT,
                 created_at  TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -676,6 +697,8 @@ impl Database {
                 delivery_phone  TEXT NOT NULL DEFAULT '',
                 user_id         TEXT NOT NULL DEFAULT '',
                 user_name       TEXT NOT NULL DEFAULT '',
+                source_type     TEXT,
+                source_id       TEXT,
                 synced          INTEGER NOT NULL DEFAULT 0,
                 created_at      TEXT NOT NULL DEFAULT (datetime('now'))
             );
@@ -689,7 +712,8 @@ impl Database {
                 quantity     INTEGER NOT NULL,
                 discount     REAL NOT NULL DEFAULT 0,
                 tax          REAL NOT NULL DEFAULT 18,
-                done         INTEGER NOT NULL DEFAULT 0
+                done         INTEGER NOT NULL DEFAULT 0,
+                metadata     TEXT
             );
 
             CREATE TABLE IF NOT EXISTS settings (
@@ -991,7 +1015,7 @@ impl Database {
 
     pub fn get_products(&self) -> Result<Vec<Product>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, price, category, stock, barcode, tax, image_url, created_at FROM products ORDER BY name"
+            "SELECT id, name, price, category, stock, barcode, tax, image_url, metadata, created_at FROM products ORDER BY name"
         )?;
         let products = stmt
             .query_map([], |row| {
@@ -1004,7 +1028,8 @@ impl Database {
                     barcode: row.get(5)?,
                     tax: row.get(6)?,
                     image_url: row.get(7)?,
-                    created_at: row.get(8)?,
+                    metadata: row.get(8)?,
+                    created_at: row.get(9)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -1014,12 +1039,13 @@ impl Database {
     pub fn upsert_product(&self, p: &Product) -> Result<()> {
         let image_url = p.image_url.clone().unwrap_or_default();
         self.conn.execute(
-            "INSERT INTO products (id, name, price, category, stock, barcode, tax, image_url)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "INSERT INTO products (id, name, price, category, stock, barcode, tax, image_url, metadata)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT(id) DO UPDATE SET
                name=excluded.name, price=excluded.price, category=excluded.category,
-               stock=excluded.stock, barcode=excluded.barcode, tax=excluded.tax, image_url=excluded.image_url",
-            params![p.id, p.name, p.price, p.category, p.stock, p.barcode, p.tax, image_url],
+               stock=excluded.stock, barcode=excluded.barcode, tax=excluded.tax,
+               image_url=excluded.image_url, metadata=excluded.metadata",
+            params![p.id, p.name, p.price, p.category, p.stock, p.barcode, p.tax, image_url, p.metadata],
         )?;
         Ok(())
     }
@@ -1152,19 +1178,22 @@ impl Database {
             item_quantity: Option<i64>,
             item_discount: Option<f64>,
             item_tax: Option<f64>,
+            item_metadata: Option<String>,
+            source_type: Option<String>,
+            source_id: Option<String>,
         }
 
         let query = r#"
         WITH limited_orders AS (
             SELECT id, subtotal, tax_amount, discount_amount, total, payment_method,
                    amount_paid, change_amount, customer_name, status, order_type, delivery_status,
-                   delivery_address, delivery_phone, user_id, user_name, synced, created_at
+                   delivery_address, delivery_phone, user_id, user_name, source_type, source_id, synced, created_at
             FROM orders ORDER BY created_at DESC LIMIT 500
         )
         SELECT lo.id as order_id, lo.subtotal, lo.tax_amount, lo.discount_amount, lo.total, lo.payment_method,
                lo.amount_paid, lo.change_amount, lo.customer_name, lo.status, lo.order_type, lo.delivery_status,
-               lo.delivery_address, lo.delivery_phone, lo.user_id, lo.user_name, lo.synced, lo.created_at,
-               li.product_id, li.product_name, li.price as item_price, li.quantity, li.discount as item_discount, li.tax as item_tax
+               lo.delivery_address, lo.delivery_phone, lo.user_id, lo.user_name, lo.source_type, lo.source_id, lo.synced, lo.created_at,
+               li.product_id, li.product_name, li.price as item_price, li.quantity, li.discount as item_discount, li.tax as item_tax, li.metadata as item_metadata
         FROM limited_orders lo
         LEFT JOIN order_items li ON lo.id = li.order_id
         ORDER BY lo.created_at DESC
@@ -1199,6 +1228,9 @@ impl Database {
                     item_quantity: row.get(21)?,
                     item_discount: row.get(22)?,
                     item_tax: row.get(23)?,
+                    item_metadata: row.get(24)?,
+                    source_type: row.get(16)?,
+                    source_id: row.get(17)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -1222,6 +1254,8 @@ impl Database {
                 delivery_status: row.delivery_status,
                 delivery_address: row.delivery_address,
                 delivery_phone: row.delivery_phone,
+                source_type: row.source_type,
+                source_id: row.source_id,
                 user_id: row.user_id,
                 user_name: row.user_name,
                 synced: row.synced,
@@ -1236,6 +1270,7 @@ impl Database {
                     quantity: row.item_quantity.unwrap(),
                     discount: row.item_discount.unwrap(),
                     tax: row.item_tax.unwrap(),
+                    metadata: row.item_metadata,
                 });
             }
         }
@@ -1296,21 +1331,22 @@ impl Database {
 
         tx.execute(
             "INSERT OR REPLACE INTO orders
-             (id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, created_at)
-              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,0,?17)",
+             (id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, source_type, source_id, synced, created_at)
+              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,0,?19)",
             params![
                 o.id, o.subtotal, o.tax_amount, o.discount_amount, o.total,
                 o.payment_method, o.amount_paid, o.change_amount,
                 o.customer_name, o.status, o.order_type, o.delivery_status,
-                o.delivery_address, o.delivery_phone, user_id, user_name, o.created_at
+                o.delivery_address, o.delivery_phone, user_id, user_name,
+                o.source_type, o.source_id, o.created_at
             ],
         )?;
 
         for item in &o.items {
             tx.execute(
-                "INSERT INTO order_items (order_id, product_id, product_name, price, quantity, discount, tax)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7)",
-                params![o.id, item.product_id, item.product_name, item.price, item.quantity, item.discount, item.tax],
+                "INSERT INTO order_items (order_id, product_id, product_name, price, quantity, discount, tax, metadata)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+                params![o.id, item.product_id, item.product_name, item.price, item.quantity, item.discount, item.tax, item.metadata],
             )?;
             // Deduct stock only for new orders
             if is_new {

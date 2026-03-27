@@ -20,6 +20,7 @@ export interface Product {
   is_combo?: boolean;
   combo_items?: ComboItem[];
   combo_discount?: number;
+  metadata?: any;
 }
 
 export interface ComboItem {
@@ -49,6 +50,7 @@ export interface OrderItem {
   discount: number;
   tax: number;
   done?: boolean;
+  metadata?: any;
 }
 
 export interface Order {
@@ -70,6 +72,8 @@ export interface Order {
   created_at: string;
   synced?: boolean;
   table_id?: string;
+  source_type?: string;
+  source_id?: string;
   notes?: string;
   user_id?: string;
   user_name?: string;
@@ -798,6 +802,7 @@ export function generateReceipt(order: Order, settings: Settings): string {
     `Order: #${order.id.slice(-6).toUpperCase()}`,
     `Date:  ${new Date(order.created_at).toLocaleString()}`,
     order.customer_name ? `Customer: ${order.customer_name}` : "",
+    order.source_type && order.source_id ? `${order.source_type}: ${order.source_id}` : "",
     `--------------------------------`,
     ...order.items.map((i) => {
       const left = `${i.product_name} x${i.quantity}`;
@@ -1097,7 +1102,13 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
 
       o.items.forEach((item) => {
         const p = products.find((x) => x.id === item.product_id);
-        if (p) p.stock = Math.max(0, p.stock - item.quantity);
+        if (p) {
+          p.stock = Math.max(0, p.stock - item.quantity);
+          // Auto-restore serial if it's a serial-tracked item in metadata
+          if (item.metadata?.serial && p.metadata?.serials) {
+            p.metadata.serials = p.metadata.serials.filter((s: string) => s !== item.metadata.serial);
+          }
+        }
 
         // Deduct ingredients
         const productRecipes = recipes.filter(r => r.product_id === item.product_id);
@@ -1121,7 +1132,16 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
         const products = lsGet<Product[]>(LS.products) || [];
         o.items.forEach((item) => {
           const p = products.find((x) => x.id === item.product_id);
-          if (p) p.stock += item.quantity;
+          if (p) {
+            p.stock += item.quantity;
+            // Restore serial if applicable
+            if (item.metadata?.serial && p.metadata) {
+              if (!p.metadata.serials) p.metadata.serials = [];
+              if (!p.metadata.serials.includes(item.metadata.serial)) {
+                p.metadata.serials.push(item.metadata.serial);
+              }
+            }
+          }
         });
         lsSet(LS.products, products);
       }

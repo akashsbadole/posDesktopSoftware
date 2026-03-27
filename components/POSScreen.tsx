@@ -71,6 +71,10 @@ export default function POSScreen() {
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [useWallet, setUseWallet] = useState(false);
   const [walletCustomerId, setWalletCustomerId] = useState<string | null>(null);
+  const [selectedProductForOptions, setSelectedProductForOptions] = useState<typeof products[0] | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
+  const [enteredSerial, setEnteredSerial] = useState("");
+  const [enteredExpiry, setEnteredExpiry] = useState("");
 
   useEffect(() => { 
     fetchProducts(); 
@@ -179,7 +183,35 @@ export default function POSScreen() {
 
   const handleAddToCart = (product: typeof products[0]) => {
     if (product.stock === 0) return;
+
+    const hasVariants = product.metadata?.variants && product.metadata.variants.length > 0;
+    const requiresSerial = product.metadata?.track_serial;
+    const requiresExpiry = product.metadata?.requires_expiry;
+
+    if (hasVariants || requiresSerial || requiresExpiry) {
+      setSelectedProductForOptions(product);
+      setSelectedVariant(product.metadata?.variants?.[0] || null);
+      setEnteredSerial("");
+      setEnteredExpiry("");
+      return;
+    }
+
     addItem(product);
+  };
+
+  const handleConfirmOptions = () => {
+    if (!selectedProductForOptions) return;
+
+    const metadata: any = {};
+    if (selectedVariant) metadata.variant = selectedVariant;
+    if (enteredSerial) metadata.serial = enteredSerial;
+    if (enteredExpiry) metadata.expiry = enteredExpiry;
+
+    addItem(selectedProductForOptions, 1, Object.keys(metadata).length > 0 ? metadata : null);
+    setSelectedProductForOptions(null);
+    setSelectedVariant(null);
+    setEnteredSerial("");
+    setEnteredExpiry("");
   };
 
   const handleAddComboToCart = (combo: Combo) => {
@@ -277,6 +309,19 @@ export default function POSScreen() {
 
     const orderId = originalOrderId || uuid();
     const order = toOrder(orderId, user?.id || "system", user?.name || "System");
+
+    // Map industry-specific sources to source_type and source_id
+    if (isFoodIndustry && tableName) {
+      order.source_type = "Table";
+      order.source_id = tableName;
+    } else if (isSalonIndustry && tableName) {
+      order.source_type = "Station";
+      order.source_id = tableName;
+    } else if (isRepairIndustry && tableName) {
+      order.source_type = "Workbench";
+      order.source_id = tableName;
+    }
+
     order.payment_method = paymentMethod;
     order.amount_paid = paymentMethod === "cash" ? (amountPaid || 0) : finalTotal;
     order.change_amount = paymentMethod === "cash" ? change : 0;
@@ -876,6 +921,12 @@ export default function POSScreen() {
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm truncate">{item.product.name}</div>
+                  {item.metadata?.variant && (
+                    <div className="text-[10px] text-[#F5C842] font-bold uppercase tracking-wider">{item.metadata.variant}</div>
+                  )}
+                  {item.metadata?.serial && (
+                    <div className="text-[10px] text-gray-500 font-mono">S/N: {item.metadata.serial}</div>
+                  )}
                   <div className="text-xs mt-0.5" style={{ color: "#4A4A5A" }}>
                     {curr}{item.product.price} × {item.quantity} = {curr}{(item.product.price * item.quantity).toFixed(2)}
                   </div>
@@ -1120,6 +1171,92 @@ export default function POSScreen() {
           </div>
         )}
       </div>
+
+      {/* Product Options Modal */}
+      {selectedProductForOptions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="card p-6 w-[400px] shadow-2xl border-border fade-in">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="font-display text-base font-bold text-[#F5C842]">Item Options</h2>
+              <button onClick={() => setSelectedProductForOptions(null)} className="btn-ghost p-2 rounded-full">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex gap-4 mb-6">
+              <div className="w-16 h-16 rounded-lg bg-yellow-400/10 flex items-center justify-center shrink-0">
+                <Package size={32} className="text-[#F5C842]" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold">{selectedProductForOptions.name}</h3>
+                <p className="text-sm text-gray-500">{selectedProductForOptions.category}</p>
+              </div>
+            </div>
+
+            {selectedProductForOptions.metadata?.variants && (
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Select Variant</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {selectedProductForOptions.metadata.variants.map((v: string) => (
+                    <button
+                      key={v}
+                      onClick={() => setSelectedVariant(v)}
+                      className={`py-3 px-4 rounded-xl text-sm font-medium border-2 transition-all ${
+                        selectedVariant === v
+                          ? "border-[#F5C842] bg-[#F5C842]/10 text-[#F5C842]"
+                          : "border-[#1E1E26] bg-[#141418] text-gray-400 hover:border-gray-700"
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedProductForOptions.metadata?.track_serial && (
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Serial Number / IMEI</label>
+                <input
+                  autoFocus={!selectedProductForOptions.metadata?.variants}
+                  value={enteredSerial}
+                  onChange={(e) => setEnteredSerial(e.target.value)}
+                  placeholder="Scan or enter serial..."
+                  className="w-full bg-[#141418] border-2 border-[#1E1E26] focus:border-[#F5C842] rounded-xl py-3 px-4 text-white outline-none"
+                  onKeyDown={(e) => e.key === "Enter" && handleConfirmOptions()}
+                />
+              </div>
+            )}
+
+            {selectedProductForOptions.metadata?.requires_expiry && (
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Expiry Date</label>
+                <input
+                  type="date"
+                  value={enteredExpiry}
+                  onChange={(e) => setEnteredExpiry(e.target.value)}
+                  className="w-full bg-[#141418] border-2 border-[#1E1E26] focus:border-[#F5C842] rounded-xl py-3 px-4 text-white outline-none"
+                  onKeyDown={(e) => e.key === "Enter" && handleConfirmOptions()}
+                />
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button onClick={() => setSelectedProductForOptions(null)} className="btn-ghost flex-1 py-3 font-bold">Cancel</button>
+              <button
+                onClick={handleConfirmOptions}
+                className="btn-accent flex-1 py-3 font-bold"
+                disabled={
+                  (selectedProductForOptions.metadata?.track_serial && !enteredSerial.trim()) ||
+                  (selectedProductForOptions.metadata?.requires_expiry && !enteredExpiry)
+                }
+              >
+                Add to Cart
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Held Orders Modal */}
        {showHeldOrders && (

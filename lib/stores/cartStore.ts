@@ -9,6 +9,7 @@ export interface CartItem {
   product: Product;
   quantity: number;
   discount: number;
+  metadata?: any;
 }
 
 interface CustomerInfo {
@@ -22,18 +23,21 @@ interface CartState {
   orderType: OrderType;
   tableId: string | null;
   tableName: string | null;
+  sourceType: string | null;
+  sourceId: string | null;
   customerInfo: CustomerInfo | null;
   notes: string;
   globalDiscount: number;
   paymentMethod: PaymentMethod;
   amountPaid: number;
   originalOrderId: string | null;
-  addItem: (product: Product, quantity?: number) => void;
+  addItem: (product: Product, quantity?: number, metadata?: any) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   updateItemDiscount: (productId: string, discount: number) => void;
   setOrderType: (type: OrderType) => void;
   setTable: (id: string | null, name: string | null) => void;
+  setSource: (type: string | null, id: string | null) => void;
   setCustomerInfo: (info: CustomerInfo | null) => void;
   setNotes: (notes: string) => void;
   setGlobalDiscount: (discount: number) => void;
@@ -54,6 +58,8 @@ export const useCartStore = create<CartState>((set, get) => ({
   orderType: 'dine_in',
   tableId: null,
   tableName: null,
+  sourceType: null,
+  sourceId: null,
   customerInfo: null,
   notes: '',
   globalDiscount: 0,
@@ -63,19 +69,23 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   setOriginalOrderId: (id) => set({ originalOrderId: id }),
 
-  addItem: (product: Product, quantity = 1) => {
+  addItem: (product: Product, quantity = 1, metadata = null) => {
     set((state) => {
-      const existing = state.items.find((i) => i.product.id === product.id);
+      // If product has metadata (like serial or variant), treat as unique item
+      const existing = state.items.find((i) =>
+        i.product.id === product.id &&
+        JSON.stringify(i.metadata) === JSON.stringify(metadata)
+      );
       if (existing) {
         return {
           items: state.items.map((i) =>
-            i.product.id === product.id
+            (i.product.id === product.id && JSON.stringify(i.metadata) === JSON.stringify(metadata))
               ? { ...i, quantity: i.quantity + quantity }
               : i
           ),
         };
       }
-      return { items: [...state.items, { product, quantity, discount: 0 }] };
+      return { items: [...state.items, { product, quantity, discount: 0, metadata }] };
     });
   },
 
@@ -106,7 +116,8 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   setOrderType: (orderType) => set({ orderType }),
-  setTable: (tableId, tableName) => set({ tableId, tableName }),
+  setTable: (tableId, tableName) => set({ tableId, tableName, sourceType: 'Table', sourceId: tableName }),
+  setSource: (sourceType, sourceId) => set({ sourceType, sourceId }),
   setCustomerInfo: (customerInfo) => set({ customerInfo }),
   setNotes: (notes) => set({ notes }),
   setGlobalDiscount: (globalDiscount) => set({ globalDiscount: Math.max(0, Math.min(100, globalDiscount)) }),
@@ -119,6 +130,8 @@ export const useCartStore = create<CartState>((set, get) => ({
       orderType: 'dine_in',
       tableId: null,
       tableName: null,
+      sourceType: null,
+      sourceId: null,
       customerInfo: null,
       notes: '',
       globalDiscount: 0,
@@ -145,6 +158,7 @@ export const useCartStore = create<CartState>((set, get) => ({
         quantity: i.quantity,
         discount: i.discount,
         tax: i.product.tax,
+        metadata: i.metadata,
       })),
       subtotal: totals.subtotal,
       tax_amount: totals.tax_amount,
@@ -162,6 +176,8 @@ export const useCartStore = create<CartState>((set, get) => ({
       created_at: new Date().toISOString(),
       synced: false,
       table_id: state.tableId || undefined,
+      source_type: state.sourceType || undefined,
+      source_id: state.sourceId || undefined,
       notes: state.notes || undefined,
       user_id: userId,
       user_name: userName,

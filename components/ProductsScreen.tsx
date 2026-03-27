@@ -476,6 +476,48 @@ export default function ProductsScreen() {
               </div>
             </div>
 
+            {/* Industry Specific Fields */}
+            <div className="pt-4 border-t border-border space-y-4">
+              <h3 className="text-xs font-bold text-[#F5C842] uppercase tracking-wider">Industry Specific</h3>
+
+              <div className="flex items-center justify-between p-3 rounded-lg bg-[#141418] border border-[#1E1E26]">
+                <div>
+                  <div className="text-sm font-medium">Track Serial/IMEI</div>
+                  <div className="text-[10px]" style={{ color: "#4A4A5A" }}>Prompt for serial number at POS</div>
+                </div>
+                <button
+                  onClick={() => setEditing({ ...editing, metadata: { ...editing.metadata, track_serial: !editing.metadata?.track_serial } })}
+                  className={`w-10 h-5 rounded-full transition-all relative ${editing.metadata?.track_serial ? "bg-[#F5C842]" : "bg-[#1E1E26]"}`}
+                >
+                  <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${editing.metadata?.track_serial ? "left-6" : "left-1"}`} />
+                </button>
+              </div>
+
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Variants (comma separated)</label>
+                <input
+                  value={editing.metadata?.variants?.join(", ") || ""}
+                  onChange={(e) => setEditing({ ...editing, metadata: { ...editing.metadata, variants: e.target.value.split(",").map(v => v.trim()).filter(v => v !== "") } })}
+                  placeholder="e.g. Red, Blue, XL, Small"
+                />
+              </div>
+
+              {settings.industry === 'pharmacy' && (
+                <div className="flex items-center justify-between p-3 rounded-lg bg-[#141418] border border-[#1E1E26]">
+                  <div>
+                    <div className="text-sm font-medium">Require Expiry</div>
+                    <div className="text-[10px]" style={{ color: "#4A4A5A" }}>Track batch & expiry dates</div>
+                  </div>
+                  <button
+                    onClick={() => setEditing({ ...editing, metadata: { ...editing.metadata, requires_expiry: !editing.metadata?.requires_expiry } })}
+                    className={`w-10 h-5 rounded-full transition-all relative ${editing.metadata?.requires_expiry ? "bg-[#F5C842]" : "bg-[#1E1E26]"}`}
+                  >
+                    <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${editing.metadata?.requires_expiry ? "left-6" : "left-1"}`} />
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-2 pt-4">
               <button className="btn-accent flex-1 flex items-center justify-center gap-2 py-2.5 text-sm" onClick={handleSave}>
                 <Check size={15} /> Save

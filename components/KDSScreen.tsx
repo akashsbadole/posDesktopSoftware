@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Check, X, Clock, RefreshCw, ChefHat, ArrowLeft, Utensils } from "lucide-react";
+import { Check, X, Clock, RefreshCw, ChefHat, ArrowLeft, Utensils, Hammer, Scissors } from "lucide-react";
 import { KdsOrder, getKdsOrders, markKdsItemDone, openKdsWindow } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 
 const playNotificationSound = () => {
   const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -27,6 +28,7 @@ const getOrderTypeColor = (type: string) => {
 };
 
 export default function KDSScreen() {
+  const { settings } = useSettingsStore();
   const [orders, setOrders] = useState<KdsOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
@@ -111,8 +113,31 @@ export default function KDSScreen() {
     return `${Math.floor(mins / 60)}h ${mins % 60}m`;
   };
 
+  const industry = settings.industry;
+  const isRepair = industry === 'repair';
+  const isSalon = industry === 'salon';
+  const isFood = industry === 'food' || (!isRepair && !isSalon);
+
   const pendingOrders = orders.filter(o => o.items.some(i => !i.done));
   const completedOrders = orders.filter(o => o.items.every(i => i.done));
+
+  const getTitle = () => {
+    if (isRepair) return "Workshop Display";
+    if (isSalon) return "Service Queue";
+    return "Kitchen Display";
+  };
+
+  const getIcon = () => {
+    if (isRepair) return <Hammer size={24} style={{ color: "#F5C842" }} />;
+    if (isSalon) return <Scissors size={24} style={{ color: "#F5C842" }} />;
+    return <ChefHat size={24} style={{ color: "#F5C842" }} />;
+  };
+
+  const getEmptyMessage = () => {
+    if (isRepair) return "No repairs in workshop";
+    if (isSalon) return "No customers in queue";
+    return "No orders in kitchen";
+  };
 
   if (loading) {
     return (
@@ -135,8 +160,8 @@ export default function KDSScreen() {
             Pop Out
           </button>
           <h1 className="font-display text-xl font-bold font-display flex items-center gap-2">
-            <ChefHat size={24} style={{ color: "#F5C842" }} />
-            Kitchen Display
+            {getIcon()}
+            {getTitle()}
           </h1>
         </div>
         <div className="flex items-center gap-4">
@@ -161,9 +186,9 @@ export default function KDSScreen() {
       <div className="flex-1 overflow-y-auto p-4">
         {orders.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full" style={{ color: "#4A4A5A" }}>
-            <ChefHat size={64} className="mb-4 opacity-50" />
-            <p className="text-base">No orders in kitchen</p>
-            <p className="text-sm">New orders will appear here automatically</p>
+            <div className="opacity-50 mb-4">{getIcon()}</div>
+            <p className="text-base">{getEmptyMessage()}</p>
+            <p className="text-sm">New {isRepair ? "repairs" : isSalon ? "services" : "orders"} will appear here automatically</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -182,7 +207,7 @@ export default function KDSScreen() {
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <div className="font-bold text-base" style={{ color: getOrderTypeColor(order.order_type) }}>
-                        {order.order_type.toUpperCase()}
+                        {isFood ? order.order_type.toUpperCase() : (order.order_type === 'dine_in' ? 'PRIORITY' : 'STANDARD')}
                       </div>
                       <div className="text-xs" style={{ color: "#4A4A5A" }}>
                         {order.customer_name || "Walk-in"} • {formatTime(order.created_at)}
