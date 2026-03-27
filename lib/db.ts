@@ -49,6 +49,9 @@ export interface OrderItem {
   discount: number;
   tax: number;
   done?: boolean;
+  status?: "pending" | "preparing" | "done" | "cancelled";
+  started_at?: string;
+  done_at?: string;
 }
 
 export interface Order {
@@ -189,6 +192,11 @@ export interface Settings {
   tax_breakdown: string;
   auto_print_kot: boolean;
   upi_id: string;
+  // Receipt customization
+  show_logo_on_receipt: boolean;
+  receipt_header_text: string;
+  merchant_id: string;
+  show_tax_breakdown: boolean;
 }
 
 export interface TaxRate {
@@ -269,6 +277,9 @@ export interface KdsItem {
   product_name: string;
   quantity: number;
   done: boolean;
+  status: "pending" | "preparing" | "done" | "cancelled";
+  started_at?: string;
+  done_at?: string;
 }
 
 export interface LanServerStatus {
@@ -787,47 +798,96 @@ function r(n: number) {
 
 // ─── Receipt ──────────────────────────────────────────────────────────────────
 export function generateReceipt(order: Order, settings: Settings): string {
-  const c = settings.currency;
-  const lines = [
-    `================================`,
-    `       ${settings.store_name}`,
-    `  ${settings.address}`,
-    `  ${settings.phone}`,
-    `================================`,
-    `Order: #${order.id.slice(-6).toUpperCase()}`,
-    `Date:  ${new Date(order.created_at).toLocaleString()}`,
-    order.customer_name ? `Customer: ${order.customer_name}` : "",
-    `--------------------------------`,
-    ...order.items.map((i) => {
-      const left = `${i.product_name} x${i.quantity}`;
-      const right = `${c}${(i.price * i.quantity).toFixed(2)}`;
-      return `${left.padEnd(22)}${right.padStart(8)}`;
-    }),
-    `--------------------------------`,
-    `Subtotal:${(c + order.subtotal.toFixed(2)).padStart(21)}`,
-    `Tax:     ${(c + order.tax_amount.toFixed(2)).padStart(21)}`,
-    order.discount_amount > 0
-      ? `Discount:${("-" + c + order.discount_amount.toFixed(2)).padStart(21)}`
-      : "",
-    `================================`,
-    `TOTAL:   ${(c + order.total.toFixed(2)).padStart(21)}`,
-    `Payment: ${order.payment_method.toUpperCase()}`,
-    settings.country === "IN" && settings.upi_id && order.payment_method === "upi"
-      ? `UPI ID:   ${settings.upi_id.padStart(21)}`
-      : "",
-    order.payment_method === "cash"
-      ? `Paid:    ${(c + order.amount_paid.toFixed(2)).padStart(21)}`
-      : "",
-    order.payment_method === "cash"
-      ? `Change:  ${(c + order.change_amount.toFixed(2)).padStart(21)}`
-      : "",
-    `================================`,
-    `   Thank you! Visit again soon`,
-    `================================`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  return lines;
+  const c = settings.currency_symbol;
+  const isIndia = settings.country === "IN";
+  const lines: string[] = [];
+  
+  // Header
+  if (settings.show_logo_on_receipt && settings.logo_url) {
+    lines.push(`[LOGO: ${settings.logo_url}]`);
+  }
+  lines.push(`================================`);
+  lines.push(`       ${settings.store_name}`);
+  if (settings.address) lines.push(`  ${settings.address}`);
+  if (settings.phone) lines.push(`  ${settings.phone}`);
+  if (settings.receipt_header_text) lines.push(`  ${settings.receipt_header_text}`);
+  if (isIndia && settings.tax_id) lines.push(`  GSTIN: ${settings.tax_id}`);
+  lines.push(`================================`);
+  
+  // Order Info
+  lines.push(`Order #: ${order.id.slice(-6).toUpperCase()}`);
+  lines.push(`Date:    ${new Date(order.created_at).toLocaleString()}`);
+  if (order.customer_name) lines.push(`Customer: ${order.customer_name}`);
+  if (order.delivery_phone) lines.push(`Phone:    ${order.delivery_phone}`);
+  if (order.table_id) lines.push(`Table:    ${order.table_id}`);
+  lines.push(`Type:     ${order.order_type || "dine_in"}`);
+  lines.push(`--------------------------------`);
+  
+  // Items
+  lines.push(`ITEMS`);
+  lines.push(`--------------------------------`);
+  order.items.forEach((i) => {
+    const itemTotal = i.price * i.quantity;
+    const left = `${i.product_name} x${i.quantity}`;
+    const right = `${c}${itemTotal.toFixed(2)}`;
+    lines.push(`${left.padEnd(22)}${right.padStart(8)}`);
+    if (i.discount > 0) {
+      lines.push(`  Discount: -${c}${(itemTotal * i.discount / 100).toFixed(2)}`);
+    }
+  });
+  lines.push(`--------------------------------`);
+  
+  // Totals
+  lines.push(`Subtotal: ${(c + order.subtotal.toFixed(2)).padStart(18)}`);
+  
+  // Tax breakdown
+  if (settings.show_tax_breakdown && order.tax_amount > 0) {
+    const taxName = settings.tax_name || "Tax";
+    const taxRate = settings.tax_rate || 0;
+    lines.push(`${taxName} (${taxRate}%): ${(c + order.tax_amount.toFixed(2)).padStart(13)}`);
+  }
+  
+  if (order.discount_amount > 0) {
+    lines.push(`Discount: -${(c + order.discount_amount.toFixed(2)).padStart(16)}`);
+  }
+  
+  lines.push(`================================`);
+  lines.push(`TOTAL:    ${(c + order.total.toFixed(2)).padStart(18)}`);
+  lines.push(`================================`);
+  
+  // Payment Details
+  lines.push(`PAYMENT`);
+  lines.push(`--------------------------------`);
+  lines.push(`Method:   ${order.payment_method?.toUpperCase() || "CASH"}`);
+  
+  if (isIndia) {
+    if (order.payment_method === "upi" && settings.upi_id) {
+      lines.push(`UPI ID:   ${settings.upi_id}`);
+    }
+    if (settings.merchant_id) {
+      lines.push(`Merchant: ${settings.merchant_id}`);
+    }
+  }
+  
+  if (order.payment_method === "cash") {
+    lines.push(`Paid:     ${(c + (order.amount_paid || 0).toFixed(2)).padStart(18)}`);
+    lines.push(`Change:   ${(c + (order.change_amount || 0).toFixed(2)).padStart(18)}`);
+  }
+  
+  if (order.amount_paid && order.total && order.amount_paid > order.total) {
+    lines.push(`Balance:  ${(c + (order.amount_paid - order.total).toFixed(2)).padStart(18)}`);
+  }
+  
+  // Footer
+  lines.push(`================================`);
+  if (settings.footer_text) {
+    lines.push(`   ${settings.footer_text}`);
+  } else {
+    lines.push(`   Thank you! Visit again`);
+  }
+  lines.push(`================================`);
+  
+  return lines.filter(Boolean).join("\n");
 }
 
 // ─── Browser Fallback (localStorage) ─────────────────────────────────────────
@@ -883,6 +943,10 @@ function defaultSettings(): Settings {
     tax_breakdown: "[]",
     auto_print_kot: false,
     upi_id: "",
+    show_logo_on_receipt: true,
+    receipt_header_text: "",
+    merchant_id: "",
+    show_tax_breakdown: true,
   };
 }
 
@@ -1566,7 +1630,14 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       return orders.filter((o) => o.created_at > twoHoursAgo).slice(0, 50).map((o) => ({
         id: o.id,
-        items: o.items.map((i) => ({ product_name: i.product_name, quantity: i.quantity, done: !!i.done })),
+        items: o.items.map((i) => ({ 
+          product_name: i.product_name, 
+          quantity: i.quantity, 
+          done: i.status === "done",
+          status: i.status || "pending",
+          started_at: i.started_at,
+          done_at: i.done_at
+        })),
         order_type: o.order_type,
         customer_name: o.customer_name,
         created_at: o.created_at
@@ -1579,6 +1650,49 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       const order = orders.find(o => o.id === orderId);
       if (order && order.items[itemIndex]) {
         order.items[itemIndex].done = true;
+        order.items[itemIndex].status = "done";
+        order.items[itemIndex].done_at = new Date().toISOString();
+        lsSet(LS.orders, orders);
+      }
+      return undefined as T;
+    }
+    case "start_preparing_item": {
+      const orderId = (args as any).orderId;
+      const itemIndex = (args as any).itemIndex;
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const order = orders.find(o => o.id === orderId);
+      if (order && order.items[itemIndex]) {
+        order.items[itemIndex].status = "preparing";
+        order.items[itemIndex].started_at = new Date().toISOString();
+        lsSet(LS.orders, orders);
+      }
+      return undefined as T;
+    }
+    case "cancel_kds_item": {
+      const orderId = (args as any).orderId;
+      const itemIndex = (args as any).itemIndex;
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const order = orders.find(o => o.id === orderId);
+      if (order && order.items[itemIndex]) {
+        order.items[itemIndex].status = "cancelled";
+        order.items[itemIndex].done = true;
+        lsSet(LS.orders, orders);
+      }
+      return undefined as T;
+    }
+    case "recall_kds_order": {
+      const orderId = (args as any).orderId;
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const order = orders.find(o => o.id === orderId);
+      if (order) {
+        order.items.forEach((item) => {
+          if (item.status === "done" || item.status === "cancelled") {
+            item.status = "pending";
+            item.done = false;
+            item.started_at = undefined;
+            item.done_at = undefined;
+          }
+        });
         lsSet(LS.orders, orders);
       }
       return undefined as T;
@@ -1905,6 +2019,18 @@ export async function getKdsOrders(): Promise<KdsOrder[]> {
 
 export async function markKdsItemDone(orderId: string, itemIndex: number): Promise<void> {
   return sql("mark_kds_item_done", { orderId, itemIndex });
+}
+
+export async function startPreparingItem(orderId: string, itemIndex: number): Promise<void> {
+  return sql("start_preparing_item", { orderId, itemIndex });
+}
+
+export async function cancelKdsItem(orderId: string, itemIndex: number): Promise<void> {
+  return sql("cancel_kds_item", { orderId, itemIndex });
+}
+
+export async function recallKdsOrder(orderId: string): Promise<void> {
+  return sql("recall_kds_order", { orderId });
 }
 
 // ─── Ingredient Functions ───────────────────────────────────────────────────

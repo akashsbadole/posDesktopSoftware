@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Check, X, Clock, RefreshCw, ChefHat, ArrowLeft, Utensils } from "lucide-react";
-import { KdsOrder, getKdsOrders, markKdsItemDone, openKdsWindow } from "@/lib/db";
+import { Check, X, Clock, RefreshCw, ChefHat, ArrowLeft, Utensils, Play, Ban, Flame, Volume2, VolumeX, RotateCcw } from "lucide-react";
+import { KdsOrder, getKdsOrders, markKdsItemDone, openKdsWindow, startPreparingItem, cancelKdsItem, recallKdsOrder } from "@/lib/db";
 
 const playNotificationSound = () => {
   const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -31,18 +31,20 @@ export default function KDSScreen() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
   const [previousOrders, setPreviousOrders] = useState<KdsOrder[]>([]);
+  const [filter, setFilter] = useState<"all" | "pending" | "preparing" | "done">("all");
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const hasLoadedInitially = useRef(false);
 
   const fetchOrders = async () => {
     try {
       const data = await getKdsOrders();
-      setOrders(data);
       if (hasLoadedInitially.current) {
         const newOrders = data.filter(order => !previousOrders.some(prev => prev.id === order.id));
-        if (newOrders.length > 0) {
+        if (newOrders.length > 0 && soundEnabled) {
           playNotificationSound();
         }
       }
+      setOrders(data);
       setPreviousOrders(data);
       hasLoadedInitially.current = true;
     } catch (err) {
@@ -58,6 +60,18 @@ export default function KDSScreen() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleStartPreparing = async (orderId: string, itemIndex: number) => {
+    setProcessing(`${orderId}-${itemIndex}-prepare`);
+    try {
+      await startPreparingItem(orderId, itemIndex);
+      await fetchOrders();
+    } catch (err) {
+      console.error("Failed to start preparing:", err);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
   const handleItemDone = async (orderId: string, itemIndex: number) => {
     setProcessing(`${orderId}-${itemIndex}`);
     try {
@@ -65,6 +79,19 @@ export default function KDSScreen() {
       await fetchOrders();
     } catch (err) {
       console.error("Failed to mark item done:", err);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleCancelItem = async (orderId: string, itemIndex: number) => {
+    if (!confirm("Cancel this item? This cannot be undone.")) return;
+    setProcessing(`${orderId}-${itemIndex}-cancel`);
+    try {
+      await cancelKdsItem(orderId, itemIndex);
+      await fetchOrders();
+    } catch (err) {
+      console.error("Failed to cancel item:", err);
     } finally {
       setProcessing(null);
     }
@@ -84,6 +111,19 @@ export default function KDSScreen() {
       await fetchOrders();
     } catch (err) {
       console.error("Failed to complete order:", err);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleRecallOrder = async (orderId: string) => {
+    if (!confirm("Recall this order back to pending?")) return;
+    setProcessing(orderId + "-recall");
+    try {
+      await recallKdsOrder(orderId);
+      await fetchOrders();
+    } catch (err) {
+      console.error("Failed to recall order:", err);
     } finally {
       setProcessing(null);
     }
@@ -111,8 +151,17 @@ export default function KDSScreen() {
     return `${Math.floor(mins / 60)}h ${mins % 60}m`;
   };
 
-  const pendingOrders = orders.filter(o => o.items.some(i => !i.done));
-  const completedOrders = orders.filter(o => o.items.every(i => i.done));
+  const pendingOrders = orders.filter(o => o.items.some(i => i.status !== "done" && i.status !== "cancelled"));
+  const preparingOrders = orders.filter(o => o.items.some(i => i.status === "preparing"));
+  const completedOrders = orders.filter(o => o.items.every(i => i.status === "done" || i.status === "cancelled"));
+
+  const filteredOrders = filter === "all" 
+    ? orders 
+    : filter === "pending" 
+      ? pendingOrders 
+      : filter === "preparing"
+        ? preparingOrders
+        : completedOrders;
 
   if (loading) {
     return (
@@ -124,37 +173,67 @@ export default function KDSScreen() {
 
   return (
     <div className="h-full overflow-hidden flex flex-col" style={{ background: "#0D0D0F" }}>
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={handleOpenKdsWindow}
-            className="btn-ghost py-2 px-3 flex items-center gap-2"
-            title="Open in separate window"
-          >
-            <Utensils size={18} />
-            Pop Out
-          </button>
-          <h1 className="font-display text-xl font-bold font-display flex items-center gap-2">
-            <ChefHat size={24} style={{ color: "#F5C842" }} />
-            Kitchen Display
-          </h1>
-        </div>
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={fetchOrders} 
-            className="btn-ghost py-2 px-3"
-            title="Refresh"
-          >
-            <RefreshCw size={18} className={loading ? "spin" : ""} />
-          </button>
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full text-sm font-medium" style={{ background: "rgba(231,76,60,0.15)", color: "#E74C3C" }}>
-              {pendingOrders.length} Pending
-            </span>
-            <span className="px-3 py-1 rounded-full text-sm font-medium" style={{ background: "rgba(46,204,113,0.15)", color: "#2ECC71" }}>
-              {completedOrders.length} Done
-            </span>
+      <div className="p-4 border-b border-border">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handleOpenKdsWindow}
+              className="btn-ghost py-2 px-3 flex items-center gap-2"
+              title="Open in separate window"
+            >
+              <Utensils size={18} />
+              Pop Out
+            </button>
+            <h1 className="font-display text-xl font-bold font-display flex items-center gap-2">
+              <ChefHat size={24} style={{ color: "#F5C842" }} />
+              Kitchen Display
+            </h1>
           </div>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={fetchOrders} 
+              className="btn-ghost py-2 px-3"
+              title="Refresh"
+            >
+              <RefreshCw size={18} className={loading ? "spin" : ""} />
+            </button>
+            <button 
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className="btn-ghost py-2 px-3"
+              title={soundEnabled ? "Mute" : "Unmute"}
+            >
+              {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+            </button>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full text-sm font-medium" style={{ background: "rgba(245,200,66,0.15)", color: "#F5C842" }}>
+                {pendingOrders.length} Pending
+              </span>
+              <span className="px-3 py-1 rounded-full text-sm font-medium" style={{ background: "rgba(52,152,219,0.15)", color: "#3498DB" }}>
+                {preparingOrders.length} Preparing
+              </span>
+              <span className="px-3 py-1 rounded-full text-sm font-medium" style={{ background: "rgba(46,204,113,0.15)", color: "#2ECC71" }}>
+                {completedOrders.length} Done
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Filter Tabs */}
+        <div className="flex gap-1 p-1 rounded-lg" style={{ background: "#1E1E26", width: "fit-content" }}>
+          {(["all", "pending", "preparing", "done"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className="px-4 py-2 rounded-md text-sm font-medium transition-all"
+              style={{
+                background: filter === f ? "rgba(245,200,66,0.15)" : "transparent",
+                color: filter === f ? "#F5C842" : "#9090A8",
+              }}
+            >
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+              {f !== "all" && ` (${f === "pending" ? pendingOrders.length : f === "preparing" ? preparingOrders.length : completedOrders.length})`}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -167,16 +246,17 @@ export default function KDSScreen() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {orders.map((order) => {
-              const allDone = order.items.every(i => i.done);
-              const pendingItems = order.items.filter(i => !i.done).length;
+            {filteredOrders.map((order) => {
+              const allDone = order.items.every(i => i.status === "done" || i.status === "cancelled");
+              const pendingItems = order.items.filter(i => i.status !== "done" && i.status !== "cancelled").length;
+              const preparingItems = order.items.filter(i => i.status === "preparing").length;
               
               return (
                 <div 
                   key={order.id}
                   className={`card p-4 transition-all ${allDone ? "opacity-60" : ""}`}
                   style={{ 
-                    borderLeft: allDone ? "4px solid #2ECC71" : pendingItems > 2 ? "4px solid #E74C3C" : "4px solid #F5C842"
+                    borderLeft: allDone ? "4px solid #2ECC71" : preparingItems > 0 ? "4px solid #3498DB" : pendingItems > 2 ? "4px solid #E74C3C" : "4px solid #F5C842"
                   }}
                 >
                   <div className="flex items-center justify-between mb-3">
@@ -193,56 +273,116 @@ export default function KDSScreen() {
                         <Clock size={12} className="inline mr-1" />
                         {getTimeSince(order.created_at)}
                       </div>
-                      <div className="text-xs" style={{ color: allDone ? "#2ECC71" : pendingItems > 2 ? "#E74C3C" : "#F5C842" }}>
-                        {pendingItems} pending
+                      <div className="text-xs" style={{ color: allDone ? "#2ECC71" : preparingItems > 0 ? "#3498DB" : pendingItems > 2 ? "#E74C3C" : "#F5C842" }}>
+                        {pendingItems > 0 ? `${pendingItems} pending` : preparingItems > 0 ? `${preparingItems} preparing` : "Ready"}
                       </div>
                     </div>
                   </div>
 
                   <div className="space-y-2 mb-4">
-                    {order.items.map((item, idx) => (
-                      <div 
-                        key={idx}
-                        className={`flex items-center justify-between p-2 rounded-lg ${item.done ? "line-through" : ""}`}
-                        style={{ 
-                          background: item.done ? "rgba(46,204,113,0.1)" : "rgba(245,200,66,0.05)",
-                          textDecoration: item.done ? "line-through" : "none"
-                        }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold" style={{ color: item.done ? "#2ECC71" : "#F5C842" }}>
-                            {item.quantity}x
-                          </span>
-                          <span style={{ color: item.done ? "#2ECC71" : "#E8E8F0" }}>
-                            {item.product_name}
-                          </span>
-                        </div>
-                        {!item.done && (
-                          <button
-                            onClick={() => handleItemDone(order.id, idx)}
-                            disabled={processing === `${order.id}-${idx}`}
-                            className="p-1.5 rounded-lg"
-                            style={{ 
-                              background: "rgba(46,204,113,0.15)", 
-                              color: "#2ECC71" 
-                            }}
-                            title="Mark done"
-                          >
-                            {processing === `${order.id}-${idx}` ? (
-                              <RefreshCw size={14} className="spin" />
-                            ) : (
-                              <Check size={14} />
+                    {order.items.map((item, idx) => {
+                      const itemStatus = item.status || "pending";
+                      const isPending = itemStatus === "pending";
+                      const isPreparing = itemStatus === "preparing";
+                      const isDone = itemStatus === "done";
+                      const isCancelled = itemStatus === "cancelled";
+                      
+                      return (
+                        <div 
+                          key={idx}
+                          className={`flex items-center justify-between p-2 rounded-lg ${isDone || isCancelled ? "line-through opacity-60" : ""}`}
+                          style={{ 
+                            background: isDone ? "rgba(46,204,113,0.1)" : isCancelled ? "rgba(231,76,60,0.1)" : isPreparing ? "rgba(52,152,219,0.1)" : "rgba(245,200,66,0.05)",
+                            textDecoration: isDone || isCancelled ? "line-through" : "none"
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold" style={{ color: isDone ? "#2ECC71" : isCancelled ? "#E74C3C" : isPreparing ? "#3498DB" : "#F5C842" }}>
+                              {item.quantity}x
+                            </span>
+                            <span style={{ color: isDone ? "#2ECC71" : isCancelled ? "#E74C3C" : isPreparing ? "#3498DB" : "#E8E8F0" }}>
+                              {item.product_name}
+                            </span>
+                            {isPreparing && (
+                              <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "rgba(52,152,219,0.2)", color: "#3498DB" }}>
+                                <Flame size={10} className="inline" /> Prep
+                              </span>
                             )}
-                          </button>
-                        )}
-                        {item.done && (
-                          <Check size={14} style={{ color: "#2ECC71" }} />
-                        )}
-                      </div>
-                    ))}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {isPending && (
+                              <>
+                                <button
+                                  onClick={() => handleStartPreparing(order.id, idx)}
+                                  disabled={processing === `${order.id}-${idx}-prepare`}
+                                  className="p-1.5 rounded-lg"
+                                  style={{ background: "rgba(52,152,219,0.15)", color: "#3498DB" }}
+                                  title="Start preparing"
+                                >
+                                  {processing === `${order.id}-${idx}-prepare` ? (
+                                    <RefreshCw size={14} className="spin" />
+                                  ) : (
+                                    <Play size={14} />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => handleItemDone(order.id, idx)}
+                                  disabled={processing === `${order.id}-${idx}`}
+                                  className="p-1.5 rounded-lg"
+                                  style={{ background: "rgba(46,204,113,0.15)", color: "#2ECC71" }}
+                                  title="Mark done"
+                                >
+                                  {processing === `${order.id}-${idx}` ? (
+                                    <RefreshCw size={14} className="spin" />
+                                  ) : (
+                                    <Check size={14} />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => handleCancelItem(order.id, idx)}
+                                  disabled={processing === `${order.id}-${idx}-cancel`}
+                                  className="p-1.5 rounded-lg"
+                                  style={{ background: "rgba(231,76,60,0.15)", color: "#E74C3C" }}
+                                  title="Cancel item"
+                                >
+                                  {processing === `${order.id}-${idx}-cancel` ? (
+                                    <RefreshCw size={14} className="spin" />
+                                  ) : (
+                                    <Ban size={14} />
+                                  )}
+                                </button>
+                              </>
+                            )}
+                            {isPreparing && (
+                              <>
+                                <button
+                                  onClick={() => handleItemDone(order.id, idx)}
+                                  disabled={processing === `${order.id}-${idx}`}
+                                  className="p-1.5 rounded-lg"
+                                  style={{ background: "rgba(46,204,113,0.15)", color: "#2ECC71" }}
+                                  title="Mark done"
+                                >
+                                  {processing === `${order.id}-${idx}` ? (
+                                    <RefreshCw size={14} className="spin" />
+                                  ) : (
+                                    <Check size={14} />
+                                  )}
+                                </button>
+                              </>
+                            )}
+                            {isDone && (
+                              <Check size={14} style={{ color: "#2ECC71" }} />
+                            )}
+                            {isCancelled && (
+                              <X size={14} style={{ color: "#E74C3C" }} />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  {!allDone && (
+                  {!allDone ? (
                     <button
                       onClick={() => handleOrderDone(order.id)}
                       disabled={processing === order.id}
@@ -258,6 +398,23 @@ export default function KDSScreen() {
                         <Check size={14} />
                       )}
                       Complete Order
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleRecallOrder(order.id)}
+                      disabled={processing === order.id + "-recall"}
+                      className="w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
+                      style={{ 
+                        background: "rgba(52,152,219,0.15)", 
+                        color: "#3498DB" 
+                      }}
+                    >
+                      {processing === order.id + "-recall" ? (
+                        <RefreshCw size={14} className="spin" />
+                      ) : (
+                        <RotateCcw size={14} />
+                      )}
+                      Recall Order
                     </button>
                   )}
                 </div>

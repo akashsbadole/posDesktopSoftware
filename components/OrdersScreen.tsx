@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Search, RotateCcw, ChevronDown, ChevronUp, RefreshCw, Truck, MapPin, Phone, Edit2, Plus, Minus, X, ChevronLeft, ChevronRight, MessageSquare, Ban, Banknote } from "lucide-react";
-import { updateDeliveryStatus, dbCancelOrder, dbAddOrderNote, dbGetOrderNotes, Order, OrderItem, OrderNote } from "@/lib/db";
+import { updateDeliveryStatus, dbCancelOrder, dbAddOrderNote, dbGetOrderNotes, dbCreateRefundRequest, Order, OrderItem, OrderNote } from "@/lib/db";
 import { useOrdersStore, useSettingsStore, useProductsStore, useCartStore, useAuthStore } from "@/lib/stores";
 
 const ITEMS_PER_PAGE = 20;
@@ -29,6 +29,9 @@ export default function OrdersScreen() {
     fetchProducts();
   }, []);
 
+  const [refundReason, setRefundReason] = useState("");
+  const [showRefundModal, setShowRefundModal] = useState<string | null>(null);
+
   const handleRefund = async (id: string) => {
     const order = orders.find(o => o.id === id);
     if (order?.status === "processing") {
@@ -52,10 +55,18 @@ export default function OrdersScreen() {
       window.dispatchEvent(new CustomEvent('navigate', { detail: 'pos' }));
       return;
     }
-    if (!confirm("Refund this order? Stock will be restored.")) return;
-    const userId = user?.id || "system";
-    const userName = user?.name || "System";
-    await refundOrder(id, userId, userName);
+    setShowRefundModal(id);
+  };
+
+  const handleConfirmRefund = async (id: string) => {
+    const order = orders.find(o => o.id === id);
+    if (!order) return;
+    if (!refundReason.trim()) return;
+    const reason = refundReason.trim();
+    setShowRefundModal(null);
+    setRefundReason("");
+    await dbCreateRefundRequest(id, order.total, reason);
+    alert("Refund request created. Please approve from Refund Requests screen.");
   };
 
   const handleDeliveryStatus = async (id: string, status: string) => {
@@ -161,6 +172,7 @@ export default function OrdersScreen() {
     switch (status) {
       case "completed": return { bg: "rgba(46,204,113,0.1)", color: "#2ECC71" };
       case "refunded": return { bg: "rgba(231,76,60,0.1)", color: "#E74C3C" };
+      case "cancelled": return { bg: "rgba(231,76,60,0.1)", color: "#E74C3C" };
       case "processing": return { bg: "rgba(52,152,219,0.1)", color: "#3498DB" };
       case "hold": return { bg: "rgba(245,200,66,0.1)", color: "#F5C842" };
       default: return { bg: "rgba(144,144,168,0.1)", color: "#9090A8" };
@@ -256,7 +268,7 @@ export default function OrdersScreen() {
           <input placeholder="Search by ID or customer..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 36 }} />
         </div>
         <div className="flex gap-1">
-          {(["all", "processing", "completed", "refunded"] as const).map((s) => (
+          {(["all", "processing", "completed", "refunded", "cancelled"] as const).map((s) => (
             <button key={s} onClick={() => setFilterStatus(s)}
               className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide"
               style={{
@@ -473,7 +485,44 @@ export default function OrdersScreen() {
              </div>
            </div>
          </div>
-       )}
-    </div>
-  );
-}
+        )}
+
+       {/* Refund Request Modal */}
+       {showRefundModal && (
+         <div 
+           className="fixed inset-0 z-50 flex items-center justify-center" 
+           style={{ background: "rgba(0,0,0,0.6)" }}
+           onClick={(e) => e.target === e.currentTarget && setShowRefundModal(null)}
+         >
+            <div className="card p-6 w-full max-w-md fade-in">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-base">Request Refund</h2>
+                <button 
+                  onClick={() => { setShowRefundModal(null); setRefundReason(""); }} 
+                  className="btn-ghost py-1 px-3"
+                  aria-label="Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="mb-4">
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Reason for refund *</label>
+                <textarea
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  placeholder="Enter reason..."
+                  rows={3}
+                />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { setShowRefundModal(null); setRefundReason(""); }} className="btn-ghost flex-1">Close</button>
+                <button onClick={() => handleConfirmRefund(showRefundModal)} className="btn-danger flex-1" disabled={!refundReason.trim()}>
+                  Submit Request
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+     </div>
+   );
+ }

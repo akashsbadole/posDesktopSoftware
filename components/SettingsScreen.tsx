@@ -17,6 +17,7 @@ import {
   Mail,
   AlertCircle,
   Key,
+  Receipt,
 } from "lucide-react";
 import {
   syncToNeon,
@@ -1055,6 +1056,111 @@ export default function SettingsScreen() {
               />
             </div>
           )}
+          {localSettings.country === "IN" && (
+            <div className="mt-3">
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                Merchant ID (for UPI payments)
+              </label>
+              <input
+                value={localSettings.merchant_id || ""}
+                onChange={(e) => updateLocal("merchant_id", e.target.value)}
+                placeholder="Merchant ID"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Receipt Customization */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Receipt size={16} style={{ color: "#F5C842" }} />
+            <h2 className="font-semibold">Receipt Customization</h2>
+          </div>
+          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
+            Customize your receipt content and appearance.
+          </p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs" style={{ color: "#4A4A5A" }}>
+                Show Logo on Receipt
+              </label>
+              <button
+                onClick={() => updateLocal("show_logo_on_receipt", !localSettings.show_logo_on_receipt)}
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  background: localSettings.show_logo_on_receipt ? "#2ECC71" : "#1E1E26",
+                  border: "none",
+                  position: "relative",
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    background: "#fff",
+                    position: "absolute",
+                    top: 2,
+                    left: localSettings.show_logo_on_receipt ? 22 : 2,
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                Header Text (optional)
+              </label>
+              <input
+                value={localSettings.receipt_header_text || ""}
+                onChange={(e) => updateLocal("receipt_header_text", e.target.value)}
+                placeholder="e.g., Welcome to our store!"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <label className="text-xs" style={{ color: "#4A4A5A" }}>
+                Show Tax Breakdown
+              </label>
+              <button
+                onClick={() => updateLocal("show_tax_breakdown", !localSettings.show_tax_breakdown)}
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  background: localSettings.show_tax_breakdown ? "#2ECC71" : "#1E1E26",
+                  border: "none",
+                  position: "relative",
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    background: "#fff",
+                    position: "absolute",
+                    top: 2,
+                    left: localSettings.show_tax_breakdown ? 22 : 2,
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                Footer Text
+              </label>
+              <input
+                value={localSettings.footer_text || ""}
+                onChange={(e) => updateLocal("footer_text", e.target.value)}
+                placeholder="Thank you! Visit again"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Neon Sync */}

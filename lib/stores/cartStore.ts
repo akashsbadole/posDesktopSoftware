@@ -145,6 +145,8 @@ export const useCartStore = create<CartState>((set, get) => ({
         quantity: i.quantity,
         discount: i.discount,
         tax: i.product.tax,
+        status: "pending" as const,
+        done: false,
       })),
       subtotal: totals.subtotal,
       tax_amount: totals.tax_amount,

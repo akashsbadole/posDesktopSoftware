@@ -49,6 +49,10 @@ const defaultSettings: Settings = {
   tax_breakdown: '[]',
   auto_print_kot: false,
   upi_id: '',
+  show_logo_on_receipt: true,
+  receipt_header_text: '',
+  merchant_id: '',
+  show_tax_breakdown: true,
 };
 
 export const useSettingsStore = create<SettingsState>()(
