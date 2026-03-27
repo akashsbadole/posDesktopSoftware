@@ -62,6 +62,10 @@ pub struct Product {
     pub tax: f64,
     pub image_url: Option<String>,
     pub created_at: Option<String>,
+    pub batch_number: Option<String>,
+    pub expiry_date: Option<String>,
+    pub manufacturer: Option<String>,
+    pub rack_location: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -159,6 +163,7 @@ pub struct Settings {
     // Auto-print KOT
     pub auto_print_kot: bool,
     pub upi_id: String,
+    pub business_type: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -630,6 +635,22 @@ impl Database {
             "ALTER TABLE coupons ADD COLUMN created_at TEXT NOT NULL DEFAULT (datetime('now'))",
             [],
         );
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN batch_number TEXT",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN expiry_date TEXT",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN manufacturer TEXT",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN rack_location TEXT",
+            [],
+        );
         Ok(())
     }
 
@@ -645,7 +666,11 @@ impl Database {
                 barcode     TEXT NOT NULL DEFAULT '',
                 tax         REAL NOT NULL DEFAULT 18,
                 image_url   TEXT NOT NULL DEFAULT '',
-                created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                batch_number TEXT,
+                expiry_date TEXT,
+                manufacturer TEXT,
+                rack_location TEXT
             );
 
             CREATE TABLE IF NOT EXISTS orders (
@@ -980,7 +1005,7 @@ impl Database {
 
     pub fn get_products(&self) -> Result<Vec<Product>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, price, category, stock, barcode, tax, image_url, created_at FROM products ORDER BY name"
+            "SELECT id, name, price, category, stock, barcode, tax, image_url, created_at, batch_number, expiry_date, manufacturer, rack_location FROM products ORDER BY name"
         )?;
         let products = stmt
             .query_map([], |row| {
@@ -994,6 +1019,10 @@ impl Database {
                     tax: row.get(6)?,
                     image_url: row.get(7)?,
                     created_at: row.get(8)?,
+                    batch_number: row.get(9)?,
+                    expiry_date: row.get(10)?,
+                    manufacturer: row.get(11)?,
+                    rack_location: row.get(12)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -1003,12 +1032,27 @@ impl Database {
     pub fn upsert_product(&self, p: &Product) -> Result<()> {
         let image_url = p.image_url.clone().unwrap_or_default();
         self.conn.execute(
-            "INSERT INTO products (id, name, price, category, stock, barcode, tax, image_url)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "INSERT INTO products (id, name, price, category, stock, barcode, tax, image_url, batch_number, expiry_date, manufacturer, rack_location)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
              ON CONFLICT(id) DO UPDATE SET
                name=excluded.name, price=excluded.price, category=excluded.category,
-               stock=excluded.stock, barcode=excluded.barcode, tax=excluded.tax, image_url=excluded.image_url",
-            params![p.id, p.name, p.price, p.category, p.stock, p.barcode, p.tax, image_url],
+               stock=excluded.stock, barcode=excluded.barcode, tax=excluded.tax, image_url=excluded.image_url,
+               batch_number=excluded.batch_number, expiry_date=excluded.expiry_date,
+               manufacturer=excluded.manufacturer, rack_location=excluded.rack_location",
+            params![
+                p.id,
+                p.name,
+                p.price,
+                p.category,
+                p.stock,
+                p.barcode,
+                p.tax,
+                image_url,
+                p.batch_number,
+                p.expiry_date,
+                p.manufacturer,
+                p.rack_location,
+            ],
         )?;
         Ok(())
     }
@@ -1411,6 +1455,7 @@ impl Database {
             tax_breakdown: get("tax_breakdown", "[]"),
             auto_print_kot: get("auto_print_kot", "false") == "true",
             upi_id: get("upi_id", ""),
+            business_type: get("business_type", "restaurant"),
         })
     }
 
@@ -1451,6 +1496,7 @@ impl Database {
             ("tax_breakdown", s.tax_breakdown.clone()),
             ("auto_print_kot", s.auto_print_kot.to_string()),
             ("upi_id", s.upi_id.clone()),
+            ("business_type", s.business_type.clone()),
         ];
         for (k, v) in pairs {
             self.conn.execute(
@@ -3680,8 +3726,7 @@ mod tests {
             category: "Beverages".to_string(),
             stock: 50,
             barcode: "123456789".to_string(),
-            tax: 5.0,
-            created_at: None,
+            tax: 5.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
         };
 
         // Insert product
@@ -3725,8 +3770,7 @@ mod tests {
             category: "Beverages".to_string(),
             stock: 100,
             barcode: "987654321".to_string(),
-            tax: 5.0,
-            created_at: None,
+            tax: 5.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
         };
         db.upsert_product(&product).unwrap();
 
@@ -3748,8 +3792,7 @@ mod tests {
                 price: 50.0,
                 quantity: 2,
                 discount: 0.0,
-                tax: 5.0,
-            }],
+                tax: 5.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
             subtotal: 100.0,
             tax_amount: 5.0,
             discount_amount: 0.0,
@@ -3795,8 +3838,7 @@ mod tests {
             category: "Food".to_string(),
             stock: 20,
             barcode: "111222333".to_string(),
-            tax: 12.0,
-            created_at: None,
+            tax: 12.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
         };
         db.upsert_product(&product).unwrap();
 
@@ -3818,8 +3860,7 @@ mod tests {
                 price: 200.0,
                 quantity: 1,
                 discount: 0.0,
-                tax: 12.0,
-            }],
+                tax: 12.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
             subtotal: 200.0,
             tax_amount: 24.0,
             discount_amount: 0.0,
@@ -3902,6 +3943,11 @@ mod tests {
             footer_text: "Powered by POS Billing".to_string(),
             contact_email: "".to_string(),
             contact_website: "".to_string(),
+            tax_inclusive: false,
+            tax_breakdown: "[]".to_string(),
+            auto_print_kot: false,
+            upi_id: "".to_string(),
+            business_type: "restaurant".to_string(),
         };
 
         db.save_settings(&new_settings).unwrap();
@@ -3953,8 +3999,7 @@ mod tests {
             category: "Beverages".to_string(),
             stock: 100,
             barcode: "001".to_string(),
-            tax: 10.0,
-            created_at: None,
+            tax: 10.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
         };
         let product2 = Product {
             id: "p2".to_string(),
@@ -3963,8 +4008,7 @@ mod tests {
             category: "Beverages".to_string(),
             stock: 100,
             barcode: "002".to_string(),
-            tax: 10.0,
-            created_at: None,
+            tax: 10.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
         };
         db.upsert_product(&product1).unwrap();
         db.upsert_product(&product2).unwrap();
@@ -3981,8 +4025,7 @@ mod tests {
                 price: 100.0,
                 quantity: 2,
                 discount: 0.0,
-                tax: 10.0,
-            }],
+                tax: 10.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
             subtotal: 200.0,
             tax_amount: 20.0,
             discount_amount: 0.0,
@@ -4008,8 +4051,7 @@ mod tests {
                 price: 50.0,
                 quantity: 3,
                 discount: 0.0,
-                tax: 10.0,
-            }],
+                tax: 10.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
             subtotal: 150.0,
             tax_amount: 15.0,
             discount_amount: 0.0,
@@ -4057,8 +4099,7 @@ mod tests {
             category: "Test".to_string(),
             stock: 5,
             barcode: "low1".to_string(),
-            tax: 10.0,
-            created_at: None,
+            tax: 10.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
         };
         let out_of_stock = Product {
             id: "out-1".to_string(),
@@ -4067,8 +4108,7 @@ mod tests {
             category: "Test".to_string(),
             stock: 0,
             barcode: "out1".to_string(),
-            tax: 10.0,
-            created_at: None,
+            tax: 10.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
         };
         let normal = Product {
             id: "normal-1".to_string(),
@@ -4077,8 +4117,7 @@ mod tests {
             category: "Test".to_string(),
             stock: 50,
             barcode: "normal1".to_string(),
-            tax: 10.0,
-            created_at: None,
+            tax: 10.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
         };
 
         db.upsert_product(&low_stock).unwrap();
@@ -4108,8 +4147,7 @@ mod tests {
             category: "Test".to_string(),
             stock: 10,
             barcode: "csv1".to_string(),
-            tax: 10.0,
-            created_at: None,
+            tax: 10.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
         };
         let product2 = Product {
             id: "csv-2".to_string(),
@@ -4118,8 +4156,7 @@ mod tests {
             category: "Test".to_string(),
             stock: 20,
             barcode: "csv2".to_string(),
-            tax: 5.0,
-            created_at: None,
+            tax: 5.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
         };
 
         db.upsert_product(&product1).unwrap();
@@ -4160,8 +4197,7 @@ mod tests {
             category: "Food".to_string(),
             stock: 10,
             barcode: "del001".to_string(),
-            tax: 12.0,
-            created_at: None,
+            tax: 12.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
         };
         db.upsert_product(&product).unwrap();
 
@@ -4174,8 +4210,7 @@ mod tests {
                 price: 300.0,
                 quantity: 1,
                 discount: 0.0,
-                tax: 12.0,
-            }],
+                tax: 12.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
             subtotal: 300.0,
             tax_amount: 36.0,
             discount_amount: 0.0,
@@ -4230,8 +4265,7 @@ mod tests {
             category: "Test".to_string(),
             stock: 100,
             barcode: "backup001".to_string(),
-            tax: 18.0,
-            created_at: None,
+            tax: 18.0, image_url: None, created_at: None, batch_number: None, expiry_date: None, manufacturer: None, rack_location: None,
         };
         db.upsert_product(&product).unwrap();
 
@@ -4267,6 +4301,11 @@ mod tests {
             footer_text: "Powered by POS Billing".to_string(),
             contact_email: "".to_string(),
             contact_website: "".to_string(),
+            tax_inclusive: false,
+            tax_breakdown: "[]".to_string(),
+            auto_print_kot: false,
+            upi_id: "".to_string(),
+            business_type: "restaurant".to_string(),
         };
         db.save_settings(&settings).unwrap();
 
