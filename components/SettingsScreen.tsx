@@ -649,7 +649,7 @@ export default function SettingsScreen() {
     setSendingWhatsapp(true);
     setWhatsappMsg(null);
     try {
-      await sendWhatsAppMessage(waTestPhone, waTestMessage);
+      await sendWhatsAppMessage(waTestPhone, waTestMessage, activeStoreId);
       setWhatsappMsg({
         text: "✓ WhatsApp message sent successfully!",
         ok: true,
