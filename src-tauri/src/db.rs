@@ -1952,6 +1952,361 @@ impl Database {
         Ok(items)
     }
 
+    pub fn verify_pin(&self, pin: &str) -> Result<Option<User>> {
+        let mut stmt = self.conn.prepare("SELECT id, pin, name, role, store_id FROM users")?;
+        let user_iter = stmt.query_map([], |row| {
+            Ok((
+                User {
+                    id: row.get(0)?,
+                    name: row.get(2)?,
+                    role: row.get(3)?,
+                    store_id: row.get(4)?,
+                },
+                row.get::<_, String>(1)?,
+            ))
+        })?;
+
+        for user_res in user_iter {
+            if let Ok((user, hashed_pin)) = user_res {
+                if let Ok(verified) = bcrypt::verify(pin, &hashed_pin) {
+                    if verified {
+                        return Ok(Some(user));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn change_pin(&self, user_id: &str, new_pin: &str) -> Result<()> {
+        let hashed = bcrypt::hash(new_pin, bcrypt::DEFAULT_COST).map_err(|_| rusqlite::Error::InvalidQuery)?;
+        self.conn.execute(
+            "UPDATE users SET pin = ?1 WHERE id = ?2",
+            params![hashed, user_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_users(&self) -> Result<Vec<User>> {
+        let mut stmt = self.conn.prepare("SELECT id, name, role, store_id FROM users")?;
+        let users = stmt.query_map([], |row| {
+            Ok(User {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                role: row.get(2)?,
+                store_id: row.get(3)?,
+            })
+        })?.collect::<Result<Vec<_>>>()?;
+        Ok(users)
+    }
+
+    pub fn get_pending_orders_count(&self, store_id: &str) -> Result<i64> {
+        self.conn.query_row(
+            "SELECT COUNT(*) FROM orders WHERE store_id = ?1 AND status = 'pending'",
+            params![store_id],
+            |r| r.get(0),
+        )
+    }
+
+    pub fn get_pending_orders(&self, store_id: &str) -> Result<Vec<Order>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id FROM orders WHERE store_id = ?1 AND status = 'pending' ORDER BY created_at DESC"
+        )?;
+        let ids: Vec<String> = stmt.query_map(params![store_id], |r| r.get(0))?.collect::<Result<Vec<_>>>()?;
+        let mut res = Vec::new();
+        for id in ids {
+            if let Ok(o) = self.get_order_by_id(&id, store_id) { res.push(o); }
+        }
+        Ok(res)
+    }
+
+    pub fn delete_pending_order(&self, id: &str, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM orders WHERE id = ?1 AND store_id = ?2 AND status = 'pending'",
+            params![id, store_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_kds_orders(&self, store_id: &str) -> Result<Vec<KdsOrder>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, order_type, customer_name, created_at FROM orders
+             WHERE store_id = ?1 AND status IN ('completed', 'pending', 'processing')
+             AND created_at >= date('now', '-1 day')
+             ORDER BY created_at ASC"
+        )?;
+        let mut orders = stmt.query_map(params![store_id], |row| {
+            Ok(KdsOrder {
+                id: row.get(0)?,
+                order_type: row.get(1)?,
+                customer_name: row.get(2)?,
+                created_at: row.get(3)?,
+                items: vec![],
+            })
+        })?.collect::<Result<Vec<_>>>()?;
+
+        for order in &mut orders {
+            let mut item_stmt = self.conn.prepare(
+                "SELECT product_name, quantity, done FROM order_items WHERE order_id = ?1"
+            )?;
+            order.items = item_stmt.query_map(params![order.id], |row| {
+                Ok(KdsItem {
+                    product_name: row.get(0)?,
+                    quantity: row.get(1)?,
+                    done: row.get::<_, i32>(2)? == 1,
+                })
+            })?.collect::<Result<Vec<_>>>()?;
+        }
+        Ok(orders)
+    }
+
+    pub fn mark_kds_item_done(&self, order_id: &str, item_index: usize, _store_id: &str) -> Result<()> {
+        let items: Vec<i64> = self.conn.prepare("SELECT id FROM order_items WHERE order_id = ?1 ORDER BY id")?
+            .query_map(params![order_id], |r| r.get(0))?
+            .collect::<Result<Vec<_>>>()?;
+
+        if let Some(item_id) = items.get(item_index) {
+            self.conn.execute(
+                "UPDATE order_items SET done = 1 WHERE id = ?1",
+                params![item_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn get_coupons(&self, store_id: &str) -> Result<Vec<Coupon>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, store_id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active, created_at
+             FROM coupons WHERE store_id = ?1"
+        )?;
+        let coupons = stmt.query_map(params![store_id], |row| {
+            Ok(Coupon {
+                id: row.get(0)?,
+                store_id: row.get(1)?,
+                code: row.get(2)?,
+                discount_type: row.get(3)?,
+                discount_value: row.get(4)?,
+                min_order_amount: row.get(5)?,
+                max_uses: row.get(6)?,
+                used_count: row.get(7)?,
+                valid_from: row.get(8)?,
+                valid_until: row.get(9)?,
+                active: row.get::<_, i32>(10)? == 1,
+                created_at: row.get(11)?,
+            })
+        })?.collect::<Result<Vec<_>>>()?;
+        Ok(coupons)
+    }
+
+    pub fn save_coupon(&self, c: &Coupon, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO coupons (id, store_id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+             ON CONFLICT(id) DO UPDATE SET
+                code=excluded.code, discount_type=excluded.discount_type, discount_value=excluded.discount_value,
+                min_order_amount=excluded.min_order_amount, max_uses=excluded.max_uses,
+                valid_from=excluded.valid_from, valid_until=excluded.valid_until, active=excluded.active",
+            params![c.id, store_id, c.code, c.discount_type, c.discount_value, c.min_order_amount, c.max_uses, c.used_count, c.valid_from, c.valid_until, if c.active { 1 } else { 0 }],
+        )?;
+        Ok(())
+    }
+
+    pub fn validate_coupon(&self, code: &str, order_amount: f64, store_id: &str) -> Result<Coupon> {
+        let coupon: Coupon = self.conn.query_row(
+            "SELECT id, store_id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active, created_at
+             FROM coupons WHERE code = ?1 AND store_id = ?2 AND active = 1",
+            params![code, store_id],
+            |row| {
+                Ok(Coupon {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    code: row.get(2)?,
+                    discount_type: row.get(3)?,
+                    discount_value: row.get(4)?,
+                    min_order_amount: row.get(5)?,
+                    max_uses: row.get(6)?,
+                    used_count: row.get(7)?,
+                    valid_from: row.get(8)?,
+                    valid_until: row.get(9)?,
+                    active: row.get::<_, i32>(10)? == 1,
+                    created_at: row.get(11)?,
+                })
+            }
+        )?;
+
+        if order_amount < coupon.min_order_amount {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        if coupon.used_count >= coupon.max_uses {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        Ok(coupon)
+    }
+
+    pub fn use_coupon(&self, code: &str, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE coupons SET used_count = used_count + 1 WHERE code = ?1 AND store_id = ?2",
+            params![code, store_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_coupon(&self, id: &str, store_id: &str) -> Result<()> {
+        self.conn.execute("DELETE FROM coupons WHERE id = ?1 AND store_id = ?2", params![id, store_id])?;
+        Ok(())
+    }
+
+    pub fn get_reservations(&self, date: &str, store_id: &str) -> Result<Vec<Reservation>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT r.id, r.store_id, r.table_id, t.name, r.customer_name, r.phone, r.date, r.time, r.party_size, r.status, r.notes, r.created_at
+             FROM reservations r JOIN tables t ON r.table_id = t.id
+             WHERE r.store_id = ?1 AND r.date = ?2 ORDER BY r.time ASC"
+        )?;
+        let reservations = stmt.query_map(params![store_id, date], |row| {
+            Ok(Reservation {
+                id: row.get(0)?,
+                store_id: row.get(1)?,
+                table_id: row.get(2)?,
+                table_name: row.get(3)?,
+                customer_name: row.get(4)?,
+                phone: row.get(5)?,
+                date: row.get(6)?,
+                time: row.get(7)?,
+                party_size: row.get(8)?,
+                status: row.get(9)?,
+                notes: row.get(10)?,
+                created_at: row.get(11)?,
+            })
+        })?.collect::<Result<Vec<_>>>()?;
+        Ok(reservations)
+    }
+
+    pub fn save_reservation(&self, r: &Reservation, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO reservations (id, store_id, table_id, customer_name, phone, date, time, party_size, status, notes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(id) DO UPDATE SET
+                table_id=excluded.table_id, customer_name=excluded.customer_name, phone=excluded.phone,
+                date=excluded.date, time=excluded.time, party_size=excluded.party_size,
+                status=excluded.status, notes=excluded.notes",
+            params![r.id, store_id, r.table_id, r.customer_name, r.phone, r.date, r.time, r.party_size, r.status, r.notes],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_reservation(&self, id: &str, store_id: &str) -> Result<()> {
+        self.conn.execute("DELETE FROM reservations WHERE id = ?1 AND store_id = ?2", params![id, store_id])?;
+        Ok(())
+    }
+
+    pub fn get_expenses(&self, date: &str, store_id: &str) -> Result<Vec<Expense>> {
+        let mut stmt = self.conn.prepare("SELECT id, store_id, category, amount, description, date, payment_method, created_at FROM expenses WHERE store_id = ?1 AND date = ?2")?;
+        let expenses = stmt.query_map(params![store_id, date], |row| {
+            Ok(Expense {
+                id: row.get(0)?,
+                store_id: row.get(1)?,
+                category: row.get(2)?,
+                amount: row.get(3)?,
+                description: row.get(4)?,
+                date: row.get(5)?,
+                payment_method: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?.collect::<Result<Vec<_>>>()?;
+        Ok(expenses)
+    }
+
+    pub fn get_expenses_by_range(&self, start_date: &str, end_date: &str, store_id: &str) -> Result<Vec<Expense>> {
+        let mut stmt = self.conn.prepare("SELECT id, store_id, category, amount, description, date, payment_method, created_at FROM expenses WHERE store_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date DESC")?;
+        let expenses = stmt.query_map(params![store_id, start_date, end_date], |row| {
+            Ok(Expense {
+                id: row.get(0)?,
+                store_id: row.get(1)?,
+                category: row.get(2)?,
+                amount: row.get(3)?,
+                description: row.get(4)?,
+                date: row.get(5)?,
+                payment_method: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?.collect::<Result<Vec<_>>>()?;
+        Ok(expenses)
+    }
+
+    pub fn save_expense(&self, e: &Expense, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO expenses (id, store_id, category, amount, description, date, payment_method)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(id) DO UPDATE SET
+                category=excluded.category, amount=excluded.amount, description=excluded.description,
+                date=excluded.date, payment_method=excluded.payment_method",
+            params![e.id, store_id, e.category, e.amount, e.description, e.date, e.payment_method],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_expense(&self, id: &str, store_id: &str) -> Result<()> {
+        self.conn.execute("DELETE FROM expenses WHERE id = ?1 AND store_id = ?2", params![id, store_id])?;
+        Ok(())
+    }
+
+    pub fn get_expense_categories(&self, store_id: &str) -> Result<Vec<ExpenseCategory>> {
+        let mut stmt = self.conn.prepare("SELECT id, store_id, name, icon FROM expense_categories WHERE store_id = ?1")?;
+        let items = stmt.query_map(params![store_id], |row| {
+            Ok(ExpenseCategory { id: row.get(0)?, store_id: row.get(1)?, name: row.get(2)?, icon: row.get(3)? })
+        })?.collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    pub fn save_expense_category(&self, c: &ExpenseCategory, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO expense_categories (id, store_id, name, icon) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(id) DO UPDATE SET name=excluded.name, icon=excluded.icon",
+            params![c.id, store_id, c.name, c.icon],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_day_end_reconciliation(&self, date: &str, store_id: &str) -> Result<Option<DayEndReconciliation>> {
+        let res = self.conn.query_row(
+            "SELECT id, store_id, date, opening_cash, expected_cash, actual_cash, difference, cash_sales, upi_sales, card_sales, total_expenses, notes, created_by, created_at
+             FROM day_end_reconciliations WHERE store_id = ?1 AND date = ?2",
+            params![store_id, date],
+            |row| {
+                Ok(DayEndReconciliation {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    date: row.get(2)?,
+                    opening_cash: row.get(3)?,
+                    expected_cash: row.get(4)?,
+                    actual_cash: row.get(5)?,
+                    difference: row.get(6)?,
+                    cash_sales: row.get(7)?,
+                    upi_sales: row.get(8)?,
+                    card_sales: row.get(9)?,
+                    total_expenses: row.get(10)?,
+                    notes: row.get(11)?,
+                    created_by: row.get(12)?,
+                    created_at: row.get(13)?,
+                })
+            }
+        );
+        match res { Ok(r) => Ok(Some(r)), Err(_) => Ok(None) }
+    }
+
+    pub fn save_day_end_reconciliation(&self, r: &DayEndReconciliation, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO day_end_reconciliations (id, store_id, date, opening_cash, expected_cash, actual_cash, difference, cash_sales, upi_sales, card_sales, total_expenses, notes, created_by)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+             ON CONFLICT(store_id, date) DO UPDATE SET
+                opening_cash=excluded.opening_cash, expected_cash=excluded.expected_cash, actual_cash=excluded.actual_cash,
+                difference=excluded.difference, cash_sales=excluded.cash_sales, upi_sales=excluded.upi_sales,
+                card_sales=excluded.card_sales, total_expenses=excluded.total_expenses, notes=excluded.notes, created_by=excluded.created_by",
+            params![r.id, store_id, r.date, r.opening_cash, r.expected_cash, r.actual_cash, r.difference, r.cash_sales, r.upi_sales, r.card_sales, r.total_expenses, r.notes, r.created_by],
+        )?;
+        Ok(())
+    }
+
     pub fn export_to_tally(&self, _start: &str, _end: &str, _store_id: &str) -> Result<String> { Ok("Tally XML export placeholder".into()) }
     pub fn export_to_quickbooks(&self, _start: &str, _end: &str, _store_id: &str) -> Result<String> { Ok("Quickbooks CSV export placeholder".into()) }
     pub fn create_compressed_backup(&self, store_id: &str) -> Result<Vec<u8>> {
