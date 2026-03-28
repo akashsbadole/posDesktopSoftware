@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Check, X, Clock, RefreshCw, ChefHat, ArrowLeft, Utensils, Play, Ban, Flame, Volume2, VolumeX, RotateCcw } from "lucide-react";
 import { KdsOrder, getKdsOrders, markKdsItemDone, openKdsWindow, startPreparingItem, cancelKdsItem, recallKdsOrder } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 
 const playNotificationSound = () => {
   const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -27,6 +28,7 @@ const getOrderTypeColor = (type: string) => {
 };
 
 export default function KDSScreen() {
+  const { activeStoreId } = useSettingsStore();
   const [orders, setOrders] = useState<KdsOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
@@ -37,7 +39,7 @@ export default function KDSScreen() {
 
   const fetchOrders = async () => {
     try {
-      const data = await getKdsOrders();
+      const data = await getKdsOrders(activeStoreId);
       if (hasLoadedInitially.current) {
         const newOrders = data.filter(order => !previousOrders.some(prev => prev.id === order.id));
         if (newOrders.length > 0 && soundEnabled) {
@@ -58,12 +60,12 @@ export default function KDSScreen() {
     fetchOrders();
     const interval = setInterval(fetchOrders, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [activeStoreId]);
 
   const handleStartPreparing = async (orderId: string, itemIndex: number) => {
     setProcessing(`${orderId}-${itemIndex}-prepare`);
     try {
-      await startPreparingItem(orderId, itemIndex);
+      await startPreparingItem(orderId, itemIndex, activeStoreId);
       await fetchOrders();
     } catch (err) {
       console.error("Failed to start preparing:", err);
@@ -75,7 +77,7 @@ export default function KDSScreen() {
   const handleItemDone = async (orderId: string, itemIndex: number) => {
     setProcessing(`${orderId}-${itemIndex}`);
     try {
-      await markKdsItemDone(orderId, itemIndex);
+      await markKdsItemDone(orderId, itemIndex, activeStoreId);
       await fetchOrders();
     } catch (err) {
       console.error("Failed to mark item done:", err);
@@ -88,7 +90,7 @@ export default function KDSScreen() {
     if (!confirm("Cancel this item? This cannot be undone.")) return;
     setProcessing(`${orderId}-${itemIndex}-cancel`);
     try {
-      await cancelKdsItem(orderId, itemIndex);
+      await cancelKdsItem(orderId, itemIndex, activeStoreId);
       await fetchOrders();
     } catch (err) {
       console.error("Failed to cancel item:", err);
@@ -104,7 +106,7 @@ export default function KDSScreen() {
       if (order) {
         for (let i = 0; i < order.items.length; i++) {
           if (!order.items[i].done) {
-            await markKdsItemDone(orderId, i);
+            await markKdsItemDone(orderId, i, activeStoreId);
           }
         }
       }
@@ -120,7 +122,7 @@ export default function KDSScreen() {
     if (!confirm("Recall this order back to pending?")) return;
     setProcessing(orderId + "-recall");
     try {
-      await recallKdsOrder(orderId);
+      await recallKdsOrder(orderId, activeStoreId);
       await fetchOrders();
     } catch (err) {
       console.error("Failed to recall order:", err);

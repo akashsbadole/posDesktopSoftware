@@ -3,18 +3,20 @@
 import { useState, useEffect } from "react";
 import { Plus, Trash2, RefreshCw, Truck, Phone, Mail, MapPin, Search } from "lucide-react";
 import { getSuppliers, saveSupplier, deleteSupplier, Supplier } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
 
 export default function SuppliersScreen() {
+  const { activeStoreId } = useSettingsStore();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState<Supplier>({ id: "", name: "", phone: "", email: "", address: "" });
+  const [form, setForm] = useState<Supplier>({ id: "", store_id: "", name: "", phone: "", email: "", address: "" });
 
   const fetchSuppliers = async () => {
     try {
-      const data = await getSuppliers();
+      const data = await getSuppliers(activeStoreId);
       setSuppliers(data);
     } catch (err) {
       console.error("Failed to fetch suppliers:", err);
@@ -23,15 +25,15 @@ export default function SuppliersScreen() {
     }
   };
 
-  useEffect(() => { fetchSuppliers(); }, []);
+  useEffect(() => { fetchSuppliers(); }, [activeStoreId]);
 
   const handleSave = async () => {
     if (!form.name.trim()) return;
     try {
-      const supplier = { ...form, id: form.id || uuid() };
-      await saveSupplier(supplier);
+      const supplier = { ...form, id: form.id || uuid(), store_id: activeStoreId };
+      await saveSupplier(supplier, activeStoreId);
       setShowForm(false);
-      setForm({ id: "", name: "", phone: "", email: "", address: "" });
+      setForm({ id: "", store_id: "", name: "", phone: "", email: "", address: "" });
       await fetchSuppliers();
     } catch (err) {
       console.error("Failed to save supplier:", err);
@@ -41,7 +43,7 @@ export default function SuppliersScreen() {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this supplier?")) return;
     try {
-      await deleteSupplier(id);
+      await deleteSupplier(id, activeStoreId);
       await fetchSuppliers();
     } catch (err) {
       console.error("Failed to delete supplier:", err);
@@ -78,7 +80,7 @@ export default function SuppliersScreen() {
           <button onClick={fetchSuppliers} className="btn-ghost py-2 px-3" title="Refresh">
             <RefreshCw size={16} />
           </button>
-          <button onClick={() => { setForm({ id: "", name: "", phone: "", email: "", address: "" }); setShowForm(true); }} className="btn-accent py-2 px-4 flex items-center gap-2 text-sm">
+          <button onClick={() => { setForm({ id: "", store_id: "", name: "", phone: "", email: "", address: "" }); setShowForm(true); }} className="btn-accent py-2 px-4 flex items-center gap-2 text-sm">
             <Plus size={16} /> Add Supplier
           </button>
         </div>

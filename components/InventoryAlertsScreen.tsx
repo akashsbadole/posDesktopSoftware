@@ -3,8 +3,10 @@
 import { useState, useEffect } from "react";
 import { RefreshCw, AlertTriangle, X, Bell, Package } from "lucide-react";
 import { dbGetInventoryAlerts, dbCheckInventoryAlerts, dbClearInventoryAlert, InventoryAlert } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 
 export default function InventoryAlertsScreen() {
+  const { activeStoreId } = useSettingsStore();
   const [alerts, setAlerts] = useState<InventoryAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
@@ -12,7 +14,7 @@ export default function InventoryAlertsScreen() {
 
   const fetchAlerts = async () => {
     try {
-      const data = await dbGetInventoryAlerts();
+      const data = await dbGetInventoryAlerts(activeStoreId);
       setAlerts(data);
     } catch (err) {
       console.error("Failed to fetch alerts:", err);
@@ -21,12 +23,12 @@ export default function InventoryAlertsScreen() {
     }
   };
 
-  useEffect(() => { fetchAlerts(); }, []);
+  useEffect(() => { fetchAlerts(); }, [activeStoreId]);
 
   const handleCheckAlerts = async () => {
     setChecking(true);
     try {
-      const data = await dbCheckInventoryAlerts();
+      const data = await dbCheckInventoryAlerts(activeStoreId);
       setAlerts(data);
     } catch (err) {
       console.error("Failed to check alerts:", err);
@@ -38,7 +40,7 @@ export default function InventoryAlertsScreen() {
   const handleClearAlert = async (id: string) => {
     setClearing(id);
     try {
-      await dbClearInventoryAlert(id);
+      await dbClearInventoryAlert(id, activeStoreId);
       setAlerts(prev => prev.filter(a => a.id !== id));
     } catch (err) {
       console.error("Failed to clear alert:", err);

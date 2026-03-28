@@ -7,6 +7,7 @@ import { useOrdersStore, useSettingsStore, useProductsStore, useCartStore, useAu
 const ITEMS_PER_PAGE = 20;
 
 export default function OrdersScreen() {
+  const { activeStoreId } = useSettingsStore();
   const { orders, isLoading, fetchOrders, refundOrder, updateDeliveryStatus: updateStatus, updateOrder, filterStatus, setFilterStatus } = useOrdersStore();
   const { settings, fetchSettings } = useSettingsStore();
   const { products, fetchProducts } = useProductsStore();
@@ -27,7 +28,7 @@ export default function OrdersScreen() {
     fetchOrders(); 
     fetchSettings();
     fetchProducts();
-  }, []);
+  }, [activeStoreId]);
 
   const [refundReason, setRefundReason] = useState("");
   const [showRefundModal, setShowRefundModal] = useState<string | null>(null);
@@ -65,7 +66,7 @@ export default function OrdersScreen() {
     const reason = refundReason.trim();
     setShowRefundModal(null);
     setRefundReason("");
-    await dbCreateRefundRequest(id, order.total, reason);
+    await dbCreateRefundRequest(id, order.total, reason, activeStoreId);
     alert("Refund request created. Please approve from Refund Requests screen.");
   };
 
@@ -124,7 +125,7 @@ export default function OrdersScreen() {
     if (!cancelReason.trim()) return;
     const userId = user?.id || "system";
     const userName = user?.name || "System";
-    await dbCancelOrder(id, cancelReason, userId, userName);
+    await dbCancelOrder(id, cancelReason, userId, userName, activeStoreId);
     setShowCancelModal(null);
     setCancelReason("");
     await fetchOrders();
@@ -132,16 +133,16 @@ export default function OrdersScreen() {
 
   const handleAddNote = async (orderId: string) => {
     if (!newNote.trim()) return;
-    await dbAddOrderNote(orderId, newNote);
+    await dbAddOrderNote(orderId, newNote, activeStoreId);
     setNewNote("");
-    const notes = await dbGetOrderNotes(orderId);
+    const notes = await dbGetOrderNotes(orderId, activeStoreId);
     setOrderNotes(prev => ({ ...prev, [orderId]: notes }));
   };
 
   const loadOrderNotes = async (orderId: string) => {
     if (orderNotes[orderId]) return;
     try {
-      const notes = await dbGetOrderNotes(orderId);
+      const notes = await dbGetOrderNotes(orderId, activeStoreId);
       setOrderNotes(prev => ({ ...prev, [orderId]: notes }));
     } catch (err) {
       console.error("Failed to load notes:", err);

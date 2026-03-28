@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { dbGetHourlySales, dbGetStaffPerformance, dbGetSalesByItem, HourlySales, StaffPerformance, SalesByItem } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 import { X, BarChart2, Clock, Users, Package } from "lucide-react";
 
 interface EnhancedReportsProps {
@@ -10,6 +11,7 @@ interface EnhancedReportsProps {
 type TabType = "hourly" | "staff" | "items";
 
 export default function EnhancedReports({ onClose }: EnhancedReportsProps) {
+  const { settings, activeStoreId } = useSettingsStore();
   const [activeTab, setActiveTab] = useState<TabType>("hourly");
   const [hourlyData, setHourlyData] = useState<HourlySales[]>([]);
   const [staffData, setStaffData] = useState<StaffPerformance[]>([]);
@@ -17,17 +19,19 @@ export default function EnhancedReports({ onClose }: EnhancedReportsProps) {
   const [loading, setLoading] = useState(true);
   const today = new Date().toISOString().split("T")[0];
 
+  const curr = settings?.currency_symbol ?? "₹";
+
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeStoreId]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [hourly, staff, items] = await Promise.all([
-        dbGetHourlySales(today),
-        dbGetStaffPerformance(today, today),
-        dbGetSalesByItem(today, today),
+        dbGetHourlySales(today, activeStoreId),
+        dbGetStaffPerformance(today, today, activeStoreId),
+        dbGetSalesByItem(today, today, activeStoreId),
       ]);
       setHourlyData(hourly);
       setStaffData(staff);
@@ -97,7 +101,7 @@ export default function EnhancedReports({ onClose }: EnhancedReportsProps) {
                           />
                         </div>
                         <span className="text-xs w-20 text-right" style={{ color: "#9090A8" }}>
-                          ₹{h.revenue.toFixed(0)} ({h.orders})
+                          {curr}{h.revenue.toFixed(0)} ({h.orders})
                         </span>
                       </div>
                     ))
@@ -120,7 +124,7 @@ export default function EnhancedReports({ onClose }: EnhancedReportsProps) {
                           <div className="text-xs" style={{ color: "#4A4A5A" }}>{s.total_orders} orders</div>
                         </div>
                         <div className="text-right">
-                          <div className="font-semibold" style={{ color: "#F5C842" }}>₹{s.total_revenue.toFixed(0)}</div>
+                          <div className="font-semibold" style={{ color: "#F5C842" }}>{curr}{s.total_revenue.toFixed(0)}</div>
                         </div>
                       </div>
                     ))}
@@ -154,7 +158,7 @@ export default function EnhancedReports({ onClose }: EnhancedReportsProps) {
                           </div>
                         </div>
                         <span className="text-sm font-medium w-20 text-right" style={{ color: "#2ECC71" }}>
-                          ₹{item.revenue.toFixed(0)}
+                          {curr}{item.revenue.toFixed(0)}
                         </span>
                       </div>
                     ))}

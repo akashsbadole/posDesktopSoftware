@@ -1,14 +1,20 @@
 "use client";
 import { useEffect, useRef, useCallback, useState } from "react";
-import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet, Package, QrCode } from "lucide-react";
-import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet, Combo, dbHoldOrder, openCashDrawer, printReceipt, openWhatsAppShare, openEmailShare, saveReceiptToFile } from "@/lib/db";
+import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet, Package, QrCode, ShieldCheck } from "lucide-react";
+import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet, Combo, dbHoldOrder, openCashDrawer, printReceipt, openWhatsAppShare, openEmailShare, saveReceiptToFile, Product } from "@/lib/db";
 import { QRCodeSVG } from "qrcode.react";
-import { useCartStore, useProductsStore, useSettingsStore, useAuthStore, useCombosStore } from "@/lib/stores";
+import { useCartStore, useProductsStore, useSettingsStore, useAuthStore, useCombosStore, useStoresStore } from "@/lib/stores";
 import { useGridNavigation } from "@/lib/keyboard";
+import { getIndustryLabels } from "@/lib/industry";
 import { v4 as uuid } from "uuid";
 import { Order } from "@/lib/db";
 
 export default function POSScreen() {
+  const { activeStoreId } = useSettingsStore();
+  const { stores } = useStoresStore();
+  const activeStore = stores.find(s => s.id === activeStoreId);
+  const labels = getIndustryLabels(activeStore?.industry || 'food');
+
   const { 
     items: cart, 
     orderType, 
@@ -58,6 +64,8 @@ export default function POSScreen() {
   const [receipt, setReceipt] = useState<string | null>(null);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [metadataPrompt, setMetadataPrompt] = useState<{ productId: string, name: string, field: string } | null>(null);
+  const [metadataValue, setMetadataValue] = useState("");
   const [focusedProductIndex, setFocusedProductIndex] = useState<number>(-1);
   const [isGridFocused, setIsGridFocused] = useState(false);
   const [heldOrders, setHeldOrders] = useState<Order[]>([]);
@@ -76,10 +84,10 @@ export default function POSScreen() {
     fetchSettings();
     loadHeldOrders();
     fetchCombos();
-  }, []);
+  }, [activeStoreId]);
 
   const loadHeldOrders = async () => {
-    const h = await dbGetHeldOrders();
+    const h = await dbGetHeldOrders(activeStoreId);
     setHeldOrders(h);
   };
 
@@ -161,10 +169,25 @@ export default function POSScreen() {
     }
   };
 
-  const handleAddToCart = (product: typeof products[0]) => {
+  const handleAddItem = (product: Product) => {
     if (product.stock === 0) return;
-    addItem(product);
+    if (product.metadata?.track_serial) {
+      setMetadataPrompt({ productId: product.id, name: product.name, field: 'Serial Number' });
+      setMetadataValue("");
+    } else {
+      addItem(product);
+    }
   };
+
+  const handleMetadataSubmit = () => {
+    if (!metadataPrompt) return;
+    const p = products.find(x => x.id === metadataPrompt.productId);
+    if (p) {
+        addItem({ ...p, metadata: { ...p.metadata, serial_number: metadataValue } });
+    }
+    setMetadataPrompt(null);
+    setMetadataValue("");
+  }
 
   const handleAddComboToCart = (combo: Combo) => {
     combo.items.forEach(item => {
@@ -181,7 +204,7 @@ export default function POSScreen() {
     if (!couponCode.trim()) return;
     setCouponError("");
     try {
-      const coupon = await validateCoupon(couponCode.trim(), getSubtotal());
+      const coupon = await validateCoupon(couponCode.trim(), getSubtotal(), activeStoreId);
       setAppliedCoupon(coupon);
       setCouponError("");
     } catch (err) {
@@ -272,10 +295,10 @@ export default function POSScreen() {
     order.total = finalTotal;
 
     try {
-      await dbSaveOrder(order);
+      await dbSaveOrder(order, activeStoreId);
 
       if (appliedCoupon) {
-        try { await useCoupon(appliedCoupon.code); } catch (e) { console.error("Failed to mark coupon used:", e); }
+        try { await useCoupon(appliedCoupon.code, activeStoreId); } catch (e) { console.error("Failed to mark coupon used:", e); }
       }
       if (useWallet && walletCustomerId && walletDeduction > 0) {
         try { await deductWalletBalance(walletCustomerId, walletDeduction, order.id); } catch (e) { console.error("Failed to deduct wallet:", e); }
@@ -321,7 +344,7 @@ export default function POSScreen() {
     order.delivery_phone = customerInfo?.phone || "";
 
     try {
-      await dbHoldOrder(order);
+      await dbHoldOrder(order, activeStoreId);
       alert("Order held successfully!");
       clearCart();
       await loadHeldOrders();
@@ -347,7 +370,7 @@ export default function POSScreen() {
     order.delivery_phone = customerInfo?.phone || "";
 
     try {
-      await dbSaveOrder(order);
+      await dbSaveOrder(order, activeStoreId);
       const kotText = generateKOTText(order);
       await printReceipt(kotText);
       alert("KOT sent to printer!");
@@ -410,7 +433,7 @@ export default function POSScreen() {
   const handleDeleteHeldOrder = async (id: string) => {
     if (!confirm("Delete this held order?")) return;
     try {
-      await dbDeletePendingOrder(id);
+      await dbDeletePendingOrder(id, activeStoreId);
       await loadHeldOrders();
     } catch (err) {
       console.error("Failed to delete held order:", err);
@@ -675,7 +698,7 @@ export default function POSScreen() {
                 return (
                   <button 
                     key={p.id} 
-                    onClick={() => handleAddToCart(p)} 
+                    onClick={() => handleAddItem(p)}
                     disabled={oos}
                     ref={(el) => {
                       if (isFocused && el) {
@@ -761,14 +784,14 @@ export default function POSScreen() {
               aria-pressed={orderType === "dine_in"}
               className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "dine_in" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
             >
-              Dine In
+              {labels.dine_in}
             </button>
             <button
               onClick={() => setOrderType("takeaway")}
               aria-pressed={orderType === "takeaway"}
               className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "takeaway" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
             >
-              Takeaway
+              {labels.takeaway.split('/')[1] || "Takeaway"}
             </button>
             <button
               onClick={() => setOrderType("delivery")}
@@ -837,9 +860,17 @@ export default function POSScreen() {
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm truncate">{item.product.name}</div>
-                  <div className="text-xs mt-0.5" style={{ color: "#4A4A5A" }}>
+                  <div className="text-xs mt-0.5 flex items-center gap-2" style={{ color: "#4A4A5A" }}>
                     {curr}{item.product.price} × {item.quantity} = {curr}{(item.product.price * item.quantity).toFixed(2)}
+                    {item.product.metadata?.duration && (
+                      <span className="flex items-center gap-1 text-[10px]"><Clock size={10} /> {item.product.metadata.duration}m</span>
+                    )}
                   </div>
+                  {item.product.metadata?.serial_number && (
+                    <div className="text-[10px] text-[#F5C842] flex items-center gap-1 mt-1 font-mono">
+                      <ShieldCheck size={10} /> SN: {item.product.metadata.serial_number}
+                    </div>
+                  )}
                 </div>
                 <button 
                   onClick={() => useCartStore.getState().removeItem(item.product.id)} 
@@ -1079,6 +1110,30 @@ export default function POSScreen() {
           </div>
         )}
       </div>
+
+      {/* Metadata Prompt Modal */}
+      {metadataPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+               <ShieldCheck size={20} className="text-[#F5C842]" /> {metadataPrompt.name}
+            </h3>
+            <p className="text-xs text-[#9090A8] mb-4">Please enter the {metadataPrompt.field} for this item to proceed.</p>
+            <input
+              autoFocus
+              placeholder={`Enter ${metadataPrompt.field}`}
+              className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3 mb-4"
+              value={metadataValue}
+              onChange={(e) => setMetadataValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleMetadataSubmit()}
+            />
+            <div className="flex gap-2">
+               <button onClick={() => {setMetadataPrompt(null); setMetadataValue("");}} className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl">Cancel</button>
+               <button onClick={handleMetadataSubmit} className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Held Orders Modal */}
        {showHeldOrders && (

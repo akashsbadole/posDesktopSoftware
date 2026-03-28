@@ -30,8 +30,9 @@ import DayEndReconciliation from "@/components/DayEndReconciliation";
 import RefundRequestsScreen from "@/components/RefundRequestsScreen";
 import InventoryAlertsScreen from "@/components/InventoryAlertsScreen";
 import ContactTraining from "@/components/ContactTraining";
+import StoresScreen from "@/components/StoresScreen";
 import { dbGetPendingOrdersCount } from "@/lib/db";
-import { useAuthStore } from "@/lib/stores";
+import { useAuthStore, useSettingsStore } from "@/lib/stores";
 
 export type Screen =
   | "pos"
@@ -57,7 +58,8 @@ export type Screen =
   | "reconciliation"
   | "refund_requests"
   | "inventory_alerts"
-  | "contact_training";
+  | "contact_training"
+  | "stores";
 
 const adminScreens: Screen[] = [
   "settings",
@@ -75,6 +77,7 @@ const adminScreens: Screen[] = [
   "reconciliation",
   "refund_requests",
   "inventory_alerts",
+  "stores",
 ];
 
 const screenShortcuts: Record<string, Screen> = {
@@ -86,6 +89,7 @@ const screenShortcuts: Record<string, Screen> = {
   F6: "reports",
   F7: "logs",
   F8: "settings",
+  F9: "stores",
 };
 
 export default function Home() {
@@ -97,11 +101,17 @@ export default function Home() {
   const [isLocked, setIsLocked] = useState(false);
 
   const { user, isAuthenticated, logout } = useAuthStore();
+  const { activeStoreId } = useSettingsStore();
 
   useEffect(() => {
     setMounted(true);
-    checkPendingOrders();
   }, []);
+
+  useEffect(() => {
+    if (mounted) {
+        checkPendingOrders();
+    }
+  }, [mounted, activeStoreId]);
 
   useEffect(() => {
     if (isLocked && user) {
@@ -112,7 +122,7 @@ export default function Home() {
 
   const checkPendingOrders = async () => {
     try {
-      const count = await dbGetPendingOrdersCount();
+      const count = await dbGetPendingOrdersCount(activeStoreId);
       setPendingOrdersCount(count);
       if (count > 0) {
         setShowRecovery(true);
@@ -262,7 +272,7 @@ export default function Home() {
               {screen === "reports" && <ReportsScreen />}
               {screen === "logs" && <ActivityLogsScreen />}
               {screen === "kds" && <KDSScreen />}
-              {/* {screen === "expenses" && <ExpenseScreen />} */}
+              {screen === "expenses" && <ExpenseScreen />}
               {screen === "staff" && <StaffAttendance />}
               {screen === "customers" && <CustomerCRM />}
               {screen === "tables" && <TableManager />}
@@ -278,6 +288,7 @@ export default function Home() {
               {screen === "refund_requests" && <RefundRequestsScreen />}
               {screen === "inventory_alerts" && <InventoryAlertsScreen />}
               {screen === "contact_training" && <ContactTraining />}
+              {screen === "stores" && <StoresScreen />}
             </ErrorBoundary>
           </main>
         </div>

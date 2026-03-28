@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { exportProductsCsv, exportOrdersCsv, importProductsCsv, getSalesReport, exportBackup, exportToTally, exportToQuickbooks } from "@/lib/db";
 import EnhancedReports from "@/components/EnhancedReports";
+import { useSettingsStore } from "@/lib/stores";
 
 interface SalesReport {
   start_date: string;
@@ -12,6 +13,7 @@ interface SalesReport {
 }
 
 export default function ReportsScreen() {
+  const { activeStoreId } = useSettingsStore();
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -26,7 +28,7 @@ export default function ReportsScreen() {
   const handleGenerateReport = async () => {
     setLoading(true);
     try {
-      const r = await getSalesReport(startDate, endDate);
+      const r = await getSalesReport(startDate, endDate, activeStoreId);
       setReport(r);
     } catch (e) {
       setMessage("Error generating report");
@@ -36,7 +38,7 @@ export default function ReportsScreen() {
 
   const handleExportProducts = async () => {
     try {
-      const csv = await exportProductsCsv();
+      const csv = await exportProductsCsv(activeStoreId);
       downloadFile(csv, "products.csv", "text/csv");
       setMessage("Products exported successfully");
     } catch (e) {
@@ -46,7 +48,7 @@ export default function ReportsScreen() {
 
   const handleExportOrders = async () => {
     try {
-      const csv = await exportOrdersCsv();
+      const csv = await exportOrdersCsv(activeStoreId);
       downloadFile(csv, "orders.csv", "text/csv");
       setMessage("Orders exported successfully");
     } catch (e) {
@@ -65,7 +67,7 @@ export default function ReportsScreen() {
       reader.onload = async (evt) => {
         const csv = evt.target?.result as string;
         try {
-          const result = await importProductsCsv(csv);
+          const result = await importProductsCsv(csv, activeStoreId);
           setMessage(`Imported ${result.imported} products, ${result.errors} errors`);
         } catch (err) {
           setMessage("Error importing products");
@@ -78,7 +80,7 @@ export default function ReportsScreen() {
 
   const handleExportBackup = async () => {
     try {
-      const backup = await exportBackup();
+      const backup = await exportBackup(activeStoreId);
       const timestamp = new Date().toISOString().split("T")[0];
       downloadFile(backup, `pos-backup-${timestamp}.json`, "application/json");
       setMessage("Backup exported successfully");
@@ -89,7 +91,7 @@ export default function ReportsScreen() {
 
   const handleExportTally = async () => {
     try {
-      const xml = await exportToTally(startDate, endDate);
+      const xml = await exportToTally(startDate, endDate, activeStoreId);
       downloadFile(xml, `tally-export-${startDate}-to-${endDate}.xml`, "application/xml");
       setMessage("Tally export completed successfully");
     } catch (e) {
@@ -99,7 +101,7 @@ export default function ReportsScreen() {
 
   const handleExportQuickbooks = async () => {
     try {
-      const json = await exportToQuickbooks(startDate, endDate);
+      const json = await exportToQuickbooks(startDate, endDate, activeStoreId);
       downloadFile(json, `quickbooks-export-${startDate}-to-${endDate}.json`, "application/json");
       setMessage("QuickBooks export completed successfully");
     } catch (e) {

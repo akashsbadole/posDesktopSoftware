@@ -1,9 +1,11 @@
 "use client";
 import { useEffect } from "react";
 import { TrendingUp, ShoppingBag, DollarSign, Package, RefreshCw } from "lucide-react";
-import { useOrdersStore, useSettingsStore } from "@/lib/stores";
+import { useOrdersStore, useSettingsStore, useStoresStore } from "@/lib/stores";
 
 export default function DashboardScreen() {
+  const { activeStoreId } = useSettingsStore();
+  const { stores } = useStoresStore();
   const { 
     dashboardData, 
     weeklyRevenue, 
@@ -18,23 +20,31 @@ export default function DashboardScreen() {
   useEffect(() => { 
     fetchDashboardData();
     fetchSettings();
-  }, []);
+  }, [activeStoreId]);
 
   const curr = settings?.currency_symbol ?? "₹";
-  const maxRevenue = Math.max(...weeklyRevenue.map((d) => d.revenue), 1);
+  const revenueData = weeklyRevenue || [];
+  const topProductsData = topProducts || [];
+  const lowStockData = lowStock || [];
+  const maxRevenue = Math.max(...revenueData.map((d) => d.revenue), 1);
 
   const stats = [
-    { label: "Today's Revenue", value: `${curr}${dashboardData.revenue.toFixed(0)}`, icon: DollarSign, color: "#F5C842" },
-    { label: "Transactions", value: dashboardData.transactions, icon: ShoppingBag, color: "#3498DB" },
-    { label: "Avg Order", value: `${curr}${dashboardData.avg_order.toFixed(0)}`, icon: TrendingUp, color: "#2ECC71" },
-    { label: "Items Sold", value: dashboardData.items_sold, icon: Package, color: "#9B59B6" },
+    { label: "Today's Revenue", value: `${curr}${(dashboardData?.revenue || 0).toFixed(0)}`, icon: DollarSign, color: "#F5C842" },
+    { label: "Transactions", value: dashboardData?.transactions || 0, icon: ShoppingBag, color: "#3498DB" },
+    { label: "Avg Order", value: `${curr}${(dashboardData?.avg_order || 0).toFixed(0)}`, icon: TrendingUp, color: "#2ECC71" },
+    { label: "Items Sold", value: dashboardData?.items_sold || 0, icon: Package, color: "#9B59B6" },
   ];
+
+  const activeStore = stores.find(s => s.id === activeStoreId);
 
   return (
     <div className="h-full overflow-y-auto p-5">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="font-display text-xl font-bold font-display">Dashboard</h1>
-        <button onClick={() => fetchDashboardData()} className="btn-ghost py-2 px-3"><RefreshCw size={14} className={isLoading ? "spin" : ""} /></button>
+        <h1 className="font-display text-xl font-bold font-display">Dashboard - {activeStore?.name || 'Main Store'}</h1>
+        <div className="flex items-center gap-3">
+            <span className="text-xs px-2 py-1 rounded bg-[#1E1E26] text-[#9090A8]">Store ID: {activeStoreId}</span>
+            <button onClick={() => fetchDashboardData()} className="btn-ghost py-2 px-3"><RefreshCw size={14} className={isLoading ? "spin" : ""} /></button>
+        </div>
       </div>
 
       {error && (
@@ -67,7 +77,7 @@ export default function DashboardScreen() {
         <div className="card p-4">
           <h2 className="font-semibold mb-4 text-sm">Weekly Revenue</h2>
           <div className="flex items-end gap-2" style={{ height: 120 }}>
-            {weeklyRevenue.map((d) => {
+            {revenueData.map((d) => {
               const pct = (d.revenue / maxRevenue) * 100;
               const isToday = d.label === new Date().toLocaleDateString("en", { weekday: "short" });
               return (
@@ -79,15 +89,15 @@ export default function DashboardScreen() {
               );
             })}
           </div>
-          {weeklyRevenue.every((d) => d.revenue === 0) && <div className="text-center text-xs mt-2" style={{ color: "#4A4A5A" }}>No sales data yet</div>}
+          {(revenueData.length === 0 || revenueData.every((d) => d.revenue === 0)) && <div className="text-center text-xs mt-2" style={{ color: "#4A4A5A" }}>No sales data yet</div>}
         </div>
 
         <div className="card p-4">
           <h2 className="font-semibold mb-4 text-sm">Top Products</h2>
-          {topProducts.length === 0 && <div className="text-sm" style={{ color: "#4A4A5A" }}>No sales data yet</div>}
+          {topProductsData.length === 0 && <div className="text-sm" style={{ color: "#4A4A5A" }}>No sales data yet</div>}
           <div className="space-y-3">
-            {topProducts.map((p, i) => {
-              const pct = (p.revenue / (topProducts[0]?.revenue || 1)) * 100;
+            {topProductsData.map((p, i) => {
+              const pct = (p.revenue / (topProductsData[0]?.revenue || 1)) * 100;
               return (
                 <div key={p.name}>
                   <div className="flex justify-between text-sm mb-1">
@@ -107,15 +117,15 @@ export default function DashboardScreen() {
         <div className="card p-4 col-span-2">
           <h2 className="font-semibold mb-3 text-sm flex items-center gap-2">
             Low Stock Alerts
-            {lowStock.length > 0 && (
+            {lowStockData.length > 0 && (
               <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: "rgba(231,76,60,0.15)", color: "#E74C3C" }}>
-                {lowStock.length}
+                {lowStockData.length}
               </span>
             )}
           </h2>
-          {lowStock.length === 0 && <div className="text-sm" style={{ color: "#2ECC71" }}>✓ All products have sufficient stock</div>}
+          {lowStockData.length === 0 && <div className="text-sm" style={{ color: "#2ECC71" }}>✓ All products have sufficient stock</div>}
           <div className="grid grid-cols-4 gap-2">
-            {lowStock.map((p) => (
+            {lowStockData.map((p) => (
               <div key={p.name} className="rounded-lg p-3 text-sm"
                 style={{
                   background: p.stock === 0 ? "rgba(231,76,60,0.08)" : "rgba(245,200,66,0.06)",

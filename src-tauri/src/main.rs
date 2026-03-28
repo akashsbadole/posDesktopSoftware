@@ -19,171 +19,165 @@ fn get_db() -> &'static Mutex<Database> {
 // ─── Product Commands ────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_products() -> Result<Vec<db::Product>, String> {
+fn get_products(store_id: String) -> Result<Vec<db::Product>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_products().map_err(|e| e.to_string())
+    db.get_products(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn upsert_product(product: db::Product) -> Result<(), String> {
+fn upsert_product(product: db::Product, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.upsert_product(&product).map_err(|e| e.to_string())
+    db.upsert_product(&product, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn delete_product(id: String) -> Result<(), String> {
+fn delete_product(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.delete_product(&id).map_err(|e| e.to_string())
+    db.delete_product(&id, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn update_stock(id: String, delta: i64) -> Result<(), String> {
+fn update_stock(id: String, delta: i64, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.update_stock(&id, delta).map_err(|e| e.to_string())
+    db.update_stock(&id, delta, &store_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn transfer_stock(id: String, from_store: String, to_store: String, qty: i64) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.transfer_stock(&id, &from_store, &to_store, qty).map_err(|e| e.to_string())
 }
 
 // ─── Combo Commands ───────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_combos() -> Result<Vec<db::Combo>, String> {
+fn get_combos(store_id: String) -> Result<Vec<db::Combo>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_combos().map_err(|e| e.to_string())
+    db.get_combos(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_combo(combo: db::Combo) -> Result<(), String> {
+fn save_combo(combo: db::Combo, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_combo(&combo).map_err(|e| e.to_string())
+    db.save_combo(&combo, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn delete_combo(id: String) -> Result<(), String> {
+fn delete_combo(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.delete_combo(&id).map_err(|e| e.to_string())
+    db.delete_combo(&id, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn toggle_combo(id: String, active: bool) -> Result<(), String> {
+fn toggle_combo(id: String, active: bool, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.toggle_combo(&id, active).map_err(|e| e.to_string())
+    db.toggle_combo(&id, active, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Order Commands ───────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_orders() -> Result<Vec<db::Order>, String> {
+fn get_orders(store_id: String) -> Result<Vec<db::Order>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_orders().map_err(|e| e.to_string())
+    db.get_orders(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_order(order: db::Order) -> Result<(), String> {
+fn save_order(order: db::Order, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_order(&order).map_err(|e| e.to_string())
+    db.save_order(&order, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn refund_order(id: String, user_id: String, user_name: String) -> Result<(), String> {
+fn refund_order(id: String, store_id: String, user_id: String, user_name: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.refund_order(&id, &user_id, &user_name).map_err(|e| e.to_string())
+    db.refund_order(&id, &store_id, &user_id, &user_name).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn update_delivery_status(id: String, status: String) -> Result<(), String> {
+fn update_delivery_status(id: String, status: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.update_delivery_status(&id, &status).map_err(|e| e.to_string())
+    db.update_delivery_status(&id, &status, &store_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_order_status(id: String, status: String, store_id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.update_order_status(&id, &status, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Settings Commands ────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_settings() -> Result<db::Settings, String> {
+fn get_settings(store_id: String) -> Result<db::Settings, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_settings().map_err(|e| e.to_string())
+    db.get_settings(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_settings(settings: db::Settings) -> Result<(), String> {
+fn save_settings(settings: db::Settings, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_settings(&settings).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn get_tax_rates() -> Result<Vec<db::TaxRate>, String> {
-    let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_tax_rates().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn save_tax_rate(tax_rate: db::TaxRate) -> Result<(), String> {
-    let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_tax_rate(&tax_rate).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn delete_tax_rate(id: String) -> Result<(), String> {
-    let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.delete_tax_rate(&id).map_err(|e| e.to_string())
+    db.save_settings(&settings, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Analytics Commands ───────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_daily_summary() -> Result<db::DailySummary, String> {
+fn get_daily_summary(store_id: String) -> Result<db::DailySummary, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_daily_summary().map_err(|e| e.to_string())
+    db.get_daily_summary(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_weekly_revenue() -> Result<Vec<db::DayRevenue>, String> {
+fn get_weekly_revenue(store_id: String) -> Result<Vec<db::DayRevenue>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_weekly_revenue().map_err(|e| e.to_string())
+    db.get_weekly_revenue(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_top_products() -> Result<Vec<db::TopProduct>, String> {
+fn get_top_products(store_id: String) -> Result<Vec<db::TopProduct>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_top_products().map_err(|e| e.to_string())
+    db.get_top_products(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_low_stock() -> Result<Vec<db::LowStockItem>, String> {
+fn get_low_stock(store_id: String) -> Result<Vec<db::LowStockItem>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_low_stock().map_err(|e| e.to_string())
+    db.get_low_stock(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_sales_by_payment_method(date: String) -> Result<(f64, f64, f64), String> {
+fn get_sales_by_payment_method(date: String, store_id: String) -> Result<(f64, f64, f64), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_sales_by_payment_method(&date).map_err(|e| e.to_string())
+    db.get_sales_by_payment_method(&date, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── CSV Commands ───────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn export_products_csv() -> Result<String, String> {
+fn export_products_csv(store_id: String) -> Result<String, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.export_products_csv().map_err(|e| e.to_string())
+    db.export_products_csv(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn export_orders_csv() -> Result<String, String> {
+fn export_orders_csv(store_id: String) -> Result<String, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.export_orders_csv().map_err(|e| e.to_string())
+    db.export_orders_csv(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn import_products_csv(csv_data: String) -> Result<(i64, i64), String> {
+fn import_products_csv(csv_data: String, store_id: String) -> Result<(i64, i64), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.import_products_csv(&csv_data).map_err(|e| e.to_string())
+    db.import_products_csv(&csv_data, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Reports Commands ───────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_sales_report(start_date: String, end_date: String) -> Result<db::SalesReport, String> {
+fn get_sales_report(start_date: String, end_date: String, store_id: String) -> Result<db::SalesReport, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_sales_report(&start_date, &end_date).map_err(|e| e.to_string())
+    db.get_sales_report(&start_date, &end_date, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── User Commands ───────────────────────────────────────────────────────────
@@ -207,323 +201,251 @@ fn get_users() -> Result<Vec<db::User>, String> {
 }
 
 #[tauri::command]
-fn export_backup() -> Result<String, String> {
+fn export_backup(store_id: String) -> Result<String, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.export_backup().map_err(|e| e.to_string())
+    db.export_backup(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn import_backup(backup_json: String) -> Result<db::ImportResult, String> {
+fn import_backup(backup_json: String, store_id: String) -> Result<db::ImportResult, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.import_backup(&backup_json).map_err(|e| e.to_string())
+    db.import_backup(&backup_json, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_activity_logs(limit: i64) -> Result<Vec<db::ActivityLog>, String> {
+fn get_activity_logs(store_id: String, limit: i64) -> Result<Vec<db::ActivityLog>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_activity_logs(limit).map_err(|e| e.to_string())
+    db.get_activity_logs(&store_id, limit).map_err(|e| e.to_string())
 }
 
 // ─── Table Commands ────────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_tables() -> Result<Vec<db::Table>, String> {
+fn get_tables(store_id: String) -> Result<Vec<db::Table>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_tables().map_err(|e| e.to_string())
+    db.get_tables(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_table(table: db::Table) -> Result<(), String> {
+fn save_table(table: db::Table, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_table(&table).map_err(|e| e.to_string())
+    db.save_table(&table, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn delete_table(id: String) -> Result<(), String> {
+fn delete_table(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.delete_table(&id).map_err(|e| e.to_string())
+    db.delete_table(&id, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn update_table_status(id: String, status: String) -> Result<(), String> {
+fn update_table_status(id: String, status: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.update_table_status(&id, &status).map_err(|e| e.to_string())
+    db.update_table_status(&id, &status, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Staff Attendance Commands ─────────────────────────────────────────────────
 
 #[tauri::command]
-fn clock_in(user_id: String, user_name: String) -> Result<(), String> {
+fn clock_in(user_id: String, user_name: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.clock_in(&user_id, &user_name).map_err(|e| e.to_string())
+    db.clock_in(&user_id, &user_name, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn clock_out(user_id: String) -> Result<(), String> {
+fn clock_out(user_id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.clock_out(&user_id).map_err(|e| e.to_string())
+    db.clock_out(&user_id, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_today_attendance() -> Result<Vec<db::StaffAttendance>, String> {
+fn get_today_attendance(store_id: String) -> Result<Vec<db::StaffAttendance>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_today_attendance().map_err(|e| e.to_string())
+    db.get_today_attendance(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn is_clocked_in(user_id: String) -> Result<bool, String> {
+fn is_clocked_in(user_id: String, store_id: String) -> Result<bool, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.is_clocked_in(&user_id).map_err(|e| e.to_string())
+    db.is_clocked_in(&user_id, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Customer Commands ─────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_customers() -> Result<Vec<db::Customer>, String> {
+fn get_customers(store_id: String) -> Result<Vec<db::Customer>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_customers().map_err(|e| e.to_string())
+    db.get_customers(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_customer(customer: db::Customer) -> Result<(), String> {
+fn save_customer(customer: db::Customer, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_customer(&customer).map_err(|e| e.to_string())
+    db.save_customer(&customer, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_customer_by_phone(phone: String) -> Result<Option<db::Customer>, String> {
+fn get_customer_by_phone(phone: String, store_id: String) -> Result<Option<db::Customer>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_customer_by_phone(&phone).map_err(|e| e.to_string())
+    db.get_customer_by_phone(&phone, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn add_loyalty_points(customer_id: String, points: i32, spent: f64) -> Result<(), String> {
+fn add_loyalty_points(customer_id: String, points: i32, spent: f64, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.add_loyalty_points(&customer_id, points, spent).map_err(|e| e.to_string())
+    db.add_loyalty_points(&customer_id, points, spent, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_customer_orders(phone: String) -> Result<Vec<db::Order>, String> {
+fn get_customer_orders(phone: String, store_id: String) -> Result<Vec<db::Order>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_customer_orders(&phone).map_err(|e| e.to_string())
+    db.get_customer_orders(&phone, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Order Notes Commands ─────────────────────────────────────────────────────
 
 #[tauri::command]
-fn add_order_note(order_id: String, note: String) -> Result<(), String> {
+fn add_order_note(order_id: String, note: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.add_order_note(&order_id, &note).map_err(|e| e.to_string())
+    db.add_order_note(&order_id, &note, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_order_notes(order_id: String) -> Result<Vec<db::OrderNote>, String> {
+fn get_order_notes(order_id: String, store_id: String) -> Result<Vec<db::OrderNote>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_order_notes(&order_id).map_err(|e| e.to_string())
+    db.get_order_notes(&order_id, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Inventory Alert Commands ─────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_inventory_alerts() -> Result<Vec<db::InventoryAlert>, String> {
+fn get_inventory_alerts(store_id: String) -> Result<Vec<db::InventoryAlert>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_inventory_alerts().map_err(|e| e.to_string())
+    db.get_inventory_alerts(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn check_inventory_alerts() -> Result<Vec<db::InventoryAlert>, String> {
+fn check_inventory_alerts(store_id: String) -> Result<Vec<db::InventoryAlert>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.check_inventory_alerts().map_err(|e| e.to_string())
+    db.check_inventory_alerts(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn create_inventory_alert(alert: db::InventoryAlert) -> Result<(), String> {
+fn create_inventory_alert(alert: db::InventoryAlert, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.create_inventory_alert(&alert).map_err(|e| e.to_string())
+    db.create_inventory_alert(&alert, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn clear_inventory_alert(id: String) -> Result<(), String> {
+fn clear_inventory_alert(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.clear_inventory_alert(&id).map_err(|e| e.to_string())
+    db.clear_inventory_alert(&id, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Enhanced Reports Commands ────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_hourly_sales(date: String) -> Result<Vec<db::HourlySales>, String> {
+fn get_hourly_sales(date: String, store_id: String) -> Result<Vec<db::HourlySales>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_hourly_sales(&date).map_err(|e| e.to_string())
+    db.get_hourly_sales(&date, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_staff_performance(start_date: String, end_date: String) -> Result<Vec<db::StaffPerformance>, String> {
+fn get_staff_performance(start_date: String, end_date: String, store_id: String) -> Result<Vec<db::StaffPerformance>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_staff_performance(&start_date, &end_date).map_err(|e| e.to_string())
+    db.get_staff_performance(&start_date, &end_date, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_sales_by_item(start_date: String, end_date: String) -> Result<Vec<db::SalesByItem>, String> {
+fn get_sales_by_item(start_date: String, end_date: String, store_id: String) -> Result<Vec<db::SalesByItem>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_sales_by_item(&start_date, &end_date).map_err(|e| e.to_string())
+    db.get_sales_by_item(&start_date, &end_date, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Hold & Cancel Commands ───────────────────────────────────────────────────
 
 #[tauri::command]
-fn hold_order(order: db::Order) -> Result<(), String> {
+fn hold_order(order: db::Order, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.hold_order(&order).map_err(|e| e.to_string())
+    db.hold_order(&order, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_held_orders() -> Result<Vec<db::Order>, String> {
+fn get_held_orders(store_id: String) -> Result<Vec<db::Order>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_held_orders().map_err(|e| e.to_string())
+    db.get_held_orders(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn cancel_order(id: String, reason: String, user_id: String, user_name: String) -> Result<(), String> {
+fn cancel_order(id: String, reason: String, user_id: String, user_name: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.cancel_order(&id, &reason, &user_id, &user_name).map_err(|e| e.to_string())
+    db.cancel_order(&id, &reason, &user_id, &user_name, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Refund Commands ─────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn create_refund_request(order_id: String, amount: f64, reason: String) -> Result<String, String> {
+fn create_refund_request(order_id: String, amount: f64, reason: String, store_id: String) -> Result<String, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.create_refund_request(&order_id, amount, &reason).map_err(|e| e.to_string())
+    db.create_refund_request(&order_id, amount, &reason, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_refund_requests() -> Result<Vec<db::RefundRequest>, String> {
+fn get_refund_requests(store_id: String) -> Result<Vec<db::RefundRequest>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_refund_requests().map_err(|e| e.to_string())
+    db.get_refund_requests(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn approve_refund(id: String, user_id: String, user_name: String) -> Result<(), String> {
+fn approve_refund(id: String, user_id: String, user_name: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.approve_refund(&id, &user_id, &user_name).map_err(|e| e.to_string())
+    db.approve_refund(&id, &user_id, &user_name, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn reject_refund(id: String) -> Result<(), String> {
+fn reject_refund(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.reject_refund(&id).map_err(|e| e.to_string())
+    db.reject_refund(&id, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Crash Recovery Commands ────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_pending_orders_count() -> Result<i64, String> {
+fn get_pending_orders_count(store_id: String) -> Result<i64, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_pending_orders_count().map_err(|e| e.to_string())
+    db.get_pending_orders_count(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_pending_orders() -> Result<Vec<db::Order>, String> {
+fn get_pending_orders(store_id: String) -> Result<Vec<db::Order>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_pending_orders().map_err(|e| e.to_string())
+    db.get_pending_orders(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn delete_pending_order(id: String) -> Result<(), String> {
+fn delete_pending_order(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.delete_pending_order(&id).map_err(|e| e.to_string())
+    db.delete_pending_order(&id, &store_id).map_err(|e| e.to_string())
 }
 
-// ─── Receipt Commands ───────────────────────────────────────────────────────
+// ─── Store Management Commands ────────────────────────────────────────────────
 
 #[tauri::command]
-fn save_receipt_to_file(receipt: String, file_name: String) -> Result<String, String> {
+fn get_stores() -> Result<Vec<db::Store>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    let settings = db.get_settings().map_err(|e| e.to_string())?;
-    
-    let app_dir = if settings.receipt_save_path.is_empty() {
-        dirs::document_dir()
-            .or_else(dirs::desktop_dir)
-            .or_else(dirs::home_dir)
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-    } else {
-        std::path::PathBuf::from(&settings.receipt_save_path)
-    };
-    
-    if !app_dir.exists() {
-        return Err(format!("Directory does not exist: {}", app_dir.display()));
-    }
-    
-    let file_path = app_dir.join(&file_name);
-    std::fs::write(&file_path, &receipt).map_err(|e| e.to_string())?;
-    
-    Ok(file_path.to_string_lossy().to_string())
+    db.get_stores().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_receipt_share_text(receipt: String) -> String {
-    let encoded = urlencoding::encode(&receipt);
-    format!("https://wa.me/?text={}", encoded)
+fn upsert_store(store: db::Store) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.upsert_store(&store).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn open_whatsapp_share(receipt: String) -> Result<(), String> {
-    let encoded = urlencoding::encode(&receipt);
-    let url = format!("https://wa.me/?text={}", encoded);
-    open::that(&url).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn open_email_share(receipt: String, subject: String) -> Result<(), String> {
-    let encoded = urlencoding::encode(&receipt);
-    let url = format!("mailto:?subject={}&body={}", urlencoding::encode(&subject), encoded);
-    open::that(&url).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn print_receipt(receipt: String) -> Result<(), String> {
-    let temp_dir = std::env::temp_dir();
-    let file_path = temp_dir.join("receipt_print.txt");
-    std::fs::write(&file_path, &receipt).map_err(|e| e.to_string())?;
-    open::that(&file_path).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn print_to_printer(receipt: String, printer_name: Option<String>) -> Result<(), String> {
-    // If no specific printer, open default print dialog
-    if printer_name.is_none() {
-        let temp_dir = std::env::temp_dir();
-        let file_path = temp_dir.join("receipt_print.txt");
-        std::fs::write(&file_path, &receipt).map_err(|e| e.to_string())?;
-        open::that(&file_path).map_err(|e| e.to_string())?;
-        return Ok(());
-    }
-    
-    // For specific printer, we would need platform-specific code
-    // For now, save to temp file as fallback
-    let temp_dir = std::env::temp_dir();
-    let file_path = temp_dir.join("receipt_print.txt");
-    std::fs::write(&file_path, &receipt).map_err(|e| e.to_string())?;
-    
-    Ok(())
-}
-
-#[tauri::command]
-fn open_cash_drawer() -> Result<(), String> {
-    // ESC/POS command to open cash drawer
-    // This typically connects via printer serial/USB
-    let _drawer_code: [u8; 4] = [0x1B, 0x70, 0x00, 0x19];
-    
-    // For now, we'll just log this - actual implementation depends on
-    // whether the cash drawer is connected via printer or directly
-    eprintln!("[POS] Cash drawer open command sent");
-    
-    // In a real implementation, you would:
-    // 1. Send to serial port if connected directly
-    // 2. Send via printer if connected through USB printer
-    // For now, we show a success - in production, add serial port support
-    
-    Ok(())
+fn delete_store(id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.delete_store(&id).map_err(|e| e.to_string())
 }
 
 // ─── KDS Commands ───────────────────────────────────────────────────────────
@@ -552,120 +474,120 @@ async fn open_kds_window(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_kds_orders() -> Result<Vec<db::KdsOrder>, String> {
+fn get_kds_orders(store_id: String) -> Result<Vec<db::KdsOrder>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_kds_orders().map_err(|e| e.to_string())
+    db.get_kds_orders(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn mark_kds_item_done(order_id: String, item_index: usize) -> Result<(), String> {
+fn mark_kds_item_done(order_id: String, item_index: usize, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.mark_kds_item_done(&order_id, item_index).map_err(|e| e.to_string())
+    db.mark_kds_item_done(&order_id, item_index, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Ingredient & Recipe Commands ───────────────────────────────────────────
 
 #[tauri::command]
-fn get_ingredients() -> Result<Vec<db::Ingredient>, String> {
+fn get_ingredients(store_id: String) -> Result<Vec<db::Ingredient>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_ingredients().map_err(|e| e.to_string())
+    db.get_ingredients(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_ingredient(ingredient: db::Ingredient) -> Result<(), String> {
+fn save_ingredient(ingredient: db::Ingredient, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_ingredient(&ingredient).map_err(|e| e.to_string())
+    db.save_ingredient(&ingredient, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn delete_ingredient(id: String) -> Result<(), String> {
+fn delete_ingredient(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.delete_ingredient(&id).map_err(|e| e.to_string())
+    db.delete_ingredient(&id, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_recipes() -> Result<Vec<db::Recipe>, String> {
+fn get_recipes(store_id: String) -> Result<Vec<db::Recipe>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_recipes().map_err(|e| e.to_string())
+    db.get_recipes(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_recipe(recipe: db::Recipe) -> Result<(), String> {
+fn save_recipe(recipe: db::Recipe, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_recipe(&recipe).map_err(|e| e.to_string())
+    db.save_recipe(&recipe, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Supplier & PO Commands ─────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_suppliers() -> Result<Vec<db::Supplier>, String> {
+fn get_suppliers(store_id: String) -> Result<Vec<db::Supplier>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_suppliers().map_err(|e| e.to_string())
+    db.get_suppliers(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_supplier(supplier: db::Supplier) -> Result<(), String> {
+fn save_supplier(supplier: db::Supplier, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_supplier(&supplier).map_err(|e| e.to_string())
+    db.save_supplier(&supplier, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn delete_supplier(id: String) -> Result<(), String> {
+fn delete_supplier(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.delete_supplier(&id).map_err(|e| e.to_string())
+    db.delete_supplier(&id, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_purchase_orders() -> Result<Vec<db::PurchaseOrder>, String> {
+fn get_purchase_orders(store_id: String) -> Result<Vec<db::PurchaseOrder>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_purchase_orders().map_err(|e| e.to_string())
+    db.get_purchase_orders(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_purchase_order(po: db::PurchaseOrder) -> Result<(), String> {
+fn save_purchase_order(po: db::PurchaseOrder, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_purchase_order(&po).map_err(|e| e.to_string())
+    db.save_purchase_order(&po, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn update_po_status(id: String, status: String) -> Result<(), String> {
+fn update_po_status(id: String, status: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.update_po_status(&id, &status).map_err(|e| e.to_string())
+    db.update_po_status(&id, &status, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn receive_purchase_order(id: String) -> Result<(), String> {
+fn receive_purchase_order(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.receive_purchase_order(&id).map_err(|e| e.to_string())
+    db.receive_purchase_order(&id, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Reservation Commands ─────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_reservations(date: String) -> Result<Vec<db::Reservation>, String> {
+fn get_reservations(date: String, store_id: String) -> Result<Vec<db::Reservation>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_reservations(&date).map_err(|e| e.to_string())
+    db.get_reservations(&date, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_reservation(reservation: db::Reservation) -> Result<(), String> {
+fn save_reservation(reservation: db::Reservation, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_reservation(&reservation).map_err(|e| e.to_string())
+    db.save_reservation(&reservation, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn delete_reservation(id: String) -> Result<(), String> {
+fn delete_reservation(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.delete_reservation(&id).map_err(|e| e.to_string())
+    db.delete_reservation(&id, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── SMS Notification Commands ─────────────────────────────────────────────
 
 #[tauri::command]
-async fn send_sms_notification(phone: String, message: String) -> Result<(), String> {
+async fn send_sms_notification(phone: String, message: String, store_id: String) -> Result<(), String> {
     let (twilio_sid, twilio_token, twilio_phone) = {
         let db = get_db().lock().map_err(|e| e.to_string())?;
-        let settings = db.get_settings().map_err(|e| e.to_string())?;
+        let settings = db.get_settings(&store_id).map_err(|e| e.to_string())?;
         
         if settings.twilio_sid.is_empty() || settings.twilio_token.is_empty() || settings.twilio_phone.is_empty() {
             return Err("Twilio not configured. Set credentials in Settings.".to_string());
@@ -698,10 +620,10 @@ async fn send_sms_notification(phone: String, message: String) -> Result<(), Str
 // ─── LAN Sync Commands ───────────────────────────────────────────────────────
 
 #[tauri::command]
-async fn start_lan_server(port: Option<u16>) -> Result<String, String> {
+async fn start_lan_server(port: Option<u16>, store_id: String) -> Result<String, String> {
     let port = {
         let db = get_db().lock().map_err(|e| e.to_string())?;
-        let settings = db.get_settings().map_err(|e| e.to_string())?;
+        let settings = db.get_settings(&store_id).map_err(|e| e.to_string())?;
         port.unwrap_or(settings.lan_server_port as u16)
     };
 
@@ -727,59 +649,59 @@ fn get_lan_server_status() -> lan_sync::LanServerStatus {
 // ─── Shift Management Commands ───────────────────────────────────────────────
 
 #[tauri::command]
-fn get_shifts(date: String) -> Result<Vec<db::Shift>, String> {
+fn get_shifts(date: String, store_id: String) -> Result<Vec<db::Shift>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_shifts(&date).map_err(|e| e.to_string())
+    db.get_shifts(&date, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_shift(shift: db::Shift) -> Result<(), String> {
+fn save_shift(shift: db::Shift, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_shift(&shift).map_err(|e| e.to_string())
+    db.save_shift(&shift, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn delete_shift(id: String) -> Result<(), String> {
+fn delete_shift(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.delete_shift(&id).map_err(|e| e.to_string())
+    db.delete_shift(&id, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Expense Commands ─────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_expenses(date: String) -> Result<Vec<db::Expense>, String> {
+fn get_expenses(date: String, store_id: String) -> Result<Vec<db::Expense>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_expenses(&date).map_err(|e| e.to_string())
+    db.get_expenses(&date, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_expenses_by_range(start_date: String, end_date: String) -> Result<Vec<db::Expense>, String> {
+fn get_expenses_by_range(start_date: String, end_date: String, store_id: String) -> Result<Vec<db::Expense>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_expenses_by_range(&start_date, &end_date).map_err(|e| e.to_string())
+    db.get_expenses_by_range(&start_date, &end_date, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_expense(expense: db::Expense) -> Result<(), String> {
+fn save_expense(expense: db::Expense, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_expense(&expense).map_err(|e| e.to_string())
+    db.save_expense(&expense, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn delete_expense(id: String) -> Result<(), String> {
+fn delete_expense(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.delete_expense(&id).map_err(|e| e.to_string())
+    db.delete_expense(&id, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_expense_categories() -> Result<Vec<db::ExpenseCategory>, String> {
+fn get_expense_categories(store_id: String) -> Result<Vec<db::ExpenseCategory>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_expense_categories().map_err(|e| e.to_string())
+    db.get_expense_categories(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_expense_category(category: db::ExpenseCategory) -> Result<(), String> {
+fn save_expense_category(category: db::ExpenseCategory, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_expense_category(&category).map_err(|e| e.to_string())
+    db.save_expense_category(&category, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Wallet Commands ─────────────────────────────────────────────────────────
@@ -811,98 +733,98 @@ fn get_wallet_transactions(customer_id: String) -> Result<Vec<db::WalletTransact
 // ─── Coupon Commands ─────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_coupons() -> Result<Vec<db::Coupon>, String> {
+fn get_coupons(store_id: String) -> Result<Vec<db::Coupon>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_coupons().map_err(|e| e.to_string())
+    db.get_coupons(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_coupon(coupon: db::Coupon) -> Result<(), String> {
+fn save_coupon(coupon: db::Coupon, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_coupon(&coupon).map_err(|e| e.to_string())
+    db.save_coupon(&coupon, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn validate_coupon(code: String, order_amount: f64) -> Result<db::Coupon, String> {
+fn validate_coupon(code: String, order_amount: f64, store_id: String) -> Result<db::Coupon, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.validate_coupon(&code, order_amount).map_err(|e| e.to_string())
+    db.validate_coupon(&code, order_amount, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn use_coupon(code: String) -> Result<(), String> {
+fn use_coupon(code: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.use_coupon(&code).map_err(|e| e.to_string())
+    db.use_coupon(&code, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn delete_coupon(id: String) -> Result<(), String> {
+fn delete_coupon(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.delete_coupon(&id).map_err(|e| e.to_string())
+    db.delete_coupon(&id, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Day End Reconciliation Commands ────────────────────────────────────────
 
 #[tauri::command]
-fn get_day_end_reconciliation(date: String) -> Result<Option<db::DayEndReconciliation>, String> {
+fn get_day_end_reconciliation(date: String, store_id: String) -> Result<Option<db::DayEndReconciliation>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_day_end_reconciliation(&date).map_err(|e| e.to_string())
+    db.get_day_end_reconciliation(&date, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_day_end_reconciliation(reconciliation: db::DayEndReconciliation) -> Result<(), String> {
+fn save_day_end_reconciliation(reconciliation: db::DayEndReconciliation, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_day_end_reconciliation(&reconciliation).map_err(|e| e.to_string())
+    db.save_day_end_reconciliation(&reconciliation, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── GST Report Commands ───────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_gstr1_report(start_date: String, end_date: String) -> Result<Vec<db::GstReport>, String> {
+fn get_gstr1_report(start_date: String, end_date: String, store_id: String) -> Result<Vec<db::GstReport>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_gstr1_report(&start_date, &end_date).map_err(|e| e.to_string())
+    db.get_gstr1_report(&start_date, &end_date, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_gstr3b_report(start_date: String, end_date: String) -> Result<(f64, f64, f64, f64, f64, f64), String> {
+fn get_gstr3b_report(start_date: String, end_date: String, store_id: String) -> Result<(f64, f64, f64, f64, f64, f64), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_gstr3b_report(&start_date, &end_date).map_err(|e| e.to_string())
+    db.get_gstr3b_report(&start_date, &end_date, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Activity Log Commands ─────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_activity_logs_range(start_date: String, end_date: String, limit: i32) -> Result<Vec<db::ActivityLogEntry>, String> {
+fn get_activity_logs_range(start_date: String, end_date: String, limit: i32, store_id: String) -> Result<Vec<db::ActivityLogEntry>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_activity_logs_range(&start_date, &end_date, limit).map_err(|e| e.to_string())
+    db.get_activity_logs_range(&start_date, &end_date, limit, &store_id).map_err(|e| e.to_string())
 }
 
 // ─── Export Commands ───────────────────────────────────────────────────────
 
 #[tauri::command]
-fn export_to_tally(start_date: String, end_date: String) -> Result<String, String> {
+fn export_to_tally(start_date: String, end_date: String, store_id: String) -> Result<String, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.export_to_tally(&start_date, &end_date).map_err(|e| e.to_string())
+    db.export_to_tally(&start_date, &end_date, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn export_to_quickbooks(start_date: String, end_date: String) -> Result<String, String> {
+fn export_to_quickbooks(start_date: String, end_date: String, store_id: String) -> Result<String, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.export_to_quickbooks(&start_date, &end_date).map_err(|e| e.to_string())
+    db.export_to_quickbooks(&start_date, &end_date, &store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn create_compressed_backup() -> Result<Vec<u8>, String> {
+fn create_compressed_backup(store_id: String) -> Result<Vec<u8>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.create_compressed_backup().map_err(|e| e.to_string())
+    db.create_compressed_backup(&store_id).map_err(|e| e.to_string())
 }
 
 // ─── WhatsApp Commands ─────────────────────────────────────────────────────
 
 #[tauri::command]
-async fn send_whatsapp_message(phone: String, message: String) -> Result<(), String> {
+async fn send_whatsapp_message(phone: String, message: String, store_id: String) -> Result<(), String> {
     let whatsapp_api_url = {
         let db = get_db().lock().map_err(|e| e.to_string())?;
-        let settings = db.get_settings().map_err(|e| e.to_string())?;
+        let settings = db.get_settings(&store_id).map_err(|e| e.to_string())?;
         
         if !settings.whatsapp_enabled || settings.whatsapp_api_url.is_empty() {
             return Err("WhatsApp not configured. Set API URL in Settings.".to_string());
@@ -931,10 +853,10 @@ async fn send_whatsapp_message(phone: String, message: String) -> Result<(), Str
 // ─── Neon Sync Commands ───────────────────────────────────────────────────────
 
 #[tauri::command]
-async fn sync_to_neon() -> Result<neon::SyncResult, String> {
+async fn sync_to_neon(store_id: String) -> Result<neon::SyncResult, String> {
     let neon_url = {
         let db = get_db().lock().map_err(|e| e.to_string())?;
-        let settings = db.get_settings().map_err(|e| e.to_string())?;
+        let settings = db.get_settings(&store_id).map_err(|e| e.to_string())?;
         settings.neon_url
     };
 
@@ -948,24 +870,24 @@ async fn sync_to_neon() -> Result<neon::SyncResult, String> {
 
     let orders = {
         let db = get_db().lock().map_err(|e| e.to_string())?;
-        db.get_unsynced_orders().map_err(|e| e.to_string())?
+        db.get_unsynced_orders(&store_id).map_err(|e| e.to_string())?
     };
 
     let result = neon::sync_orders_to_neon(&neon_url, &orders).await;
 
     if result.synced > 0 {
         let db = get_db().lock().map_err(|e| e.to_string())?;
-        db.mark_orders_synced().map_err(|e| e.to_string())?;
+        db.mark_orders_synced(&store_id).map_err(|e| e.to_string())?;
     }
 
     Ok(result)
 }
 
 #[tauri::command]
-async fn sync_from_neon() -> Result<neon::SyncResult, String> {
+async fn sync_from_neon(store_id: String) -> Result<neon::SyncResult, String> {
     let neon_url = {
         let db = get_db().lock().map_err(|e| e.to_string())?;
-        let settings = db.get_settings().map_err(|e| e.to_string())?;
+        let settings = db.get_settings(&store_id).map_err(|e| e.to_string())?;
         settings.neon_url
     };
 
@@ -982,7 +904,7 @@ async fn sync_from_neon() -> Result<neon::SyncResult, String> {
     if let Some(orders) = &result.orders {
         let db = get_db().lock().map_err(|e| e.to_string())?;
         for order in orders {
-            let _ = db.save_order(order);
+            let _ = db.save_order(order, &store_id);
         }
     }
 
@@ -1019,6 +941,7 @@ fn main() {
             upsert_product,
             delete_product,
             update_stock,
+            transfer_stock,
             get_combos,
             save_combo,
             delete_combo,
@@ -1027,11 +950,9 @@ fn main() {
             save_order,
             refund_order,
             update_delivery_status,
+            update_order_status,
             get_settings,
             save_settings,
-            get_tax_rates,
-            save_tax_rate,
-            delete_tax_rate,
             get_daily_summary,
             get_weekly_revenue,
             get_top_products,
@@ -1086,6 +1007,9 @@ fn main() {
             get_pending_orders_count,
             get_pending_orders,
             delete_pending_order,
+            get_stores,
+            upsert_store,
+            delete_store,
             print_to_printer,
             open_cash_drawer,
             open_kds_window,

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { dbGetTables, dbSaveTable, dbDeleteTable, dbUpdateTableStatus, Table } from '@/lib/db';
+import { useSettingsStore } from './settingsStore';
 
 interface TablesState {
   tables: Table[];
@@ -24,9 +25,10 @@ export const useTablesStore = create<TablesState>((set, get) => ({
   selectedTableId: null,
 
   fetchTables: async () => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     set({ isLoading: true, error: null });
     try {
-      const tables = await dbGetTables();
+      const tables = await dbGetTables(storeId);
       set({ tables, isLoading: false });
     } catch (err) {
       set({ error: (err as Error).message, isLoading: false });
@@ -34,22 +36,26 @@ export const useTablesStore = create<TablesState>((set, get) => ({
   },
 
   addTable: async (table: Table) => {
-    await dbSaveTable(table);
+    const storeId = useSettingsStore.getState().activeStoreId;
+    await dbSaveTable(table, storeId);
     await get().fetchTables();
   },
 
   updateTable: async (table: Table) => {
-    await dbSaveTable(table);
+    const storeId = useSettingsStore.getState().activeStoreId;
+    await dbSaveTable(table, storeId);
     await get().fetchTables();
   },
 
   deleteTable: async (id: string) => {
-    await dbDeleteTable(id);
+    const storeId = useSettingsStore.getState().activeStoreId;
+    await dbDeleteTable(id, storeId);
     await get().fetchTables();
   },
 
   setTableStatus: async (id: string, status: Table['status']) => {
-    await dbUpdateTableStatus(id, status);
+    const storeId = useSettingsStore.getState().activeStoreId;
+    await dbUpdateTableStatus(id, status, storeId);
     set((state) => ({
       tables: state.tables.map((t) => (t.id === id ? { ...t, status } : t)),
     }));

@@ -1,19 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Plus, Trash2, Calendar, Clock, User, Save, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { getShifts, saveShift, deleteShift, getUsers as getStaff } from "@/lib/db";
+import { getShifts, saveShift, deleteShift, getUsers as getStaff, Shift } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
-
-interface Shift {
-  id: string;
-  staff_id: string;
-  staff_name: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  role: string;
-  notes: string;
-}
 
 interface Staff {
   id: string;
@@ -22,6 +12,7 @@ interface Staff {
 }
 
 export default function StaffScheduling() {
+  const { activeStoreId } = useSettingsStore();
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
@@ -37,11 +28,11 @@ export default function StaffScheduling() {
 
   useEffect(() => {
     loadData();
-  }, [selectedDate]);
+  }, [selectedDate, activeStoreId]);
 
   const loadData = async () => {
     const [shiftsData, staffData] = await Promise.all([
-      getShifts(selectedDate),
+      getShifts(selectedDate, activeStoreId),
       getStaff(),
     ]);
     setShifts(shiftsData);
@@ -51,6 +42,7 @@ export default function StaffScheduling() {
   const handleSave = async () => {
     const shift: Shift = {
       id: editingShift?.id || uuid(),
+      store_id: activeStoreId,
       staff_id: formData.staff_id,
       staff_name: staff.find((s) => s.id === formData.staff_id)?.name || "",
       date: selectedDate,
@@ -59,7 +51,7 @@ export default function StaffScheduling() {
       role: formData.role,
       notes: formData.notes,
     };
-    await saveShift(shift);
+    await saveShift(shift, activeStoreId);
     setShowForm(false);
     setEditingShift(null);
     setFormData({ staff_id: "", start_time: "09:00", end_time: "17:00", role: "cashier", notes: "" });
@@ -68,7 +60,7 @@ export default function StaffScheduling() {
 
   const handleDelete = async (id: string) => {
     if (confirm("Delete this shift?")) {
-      await deleteShift(id);
+      await deleteShift(id, activeStoreId);
       loadData();
     }
   };

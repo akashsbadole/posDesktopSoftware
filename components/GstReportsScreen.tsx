@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { FileText, Download, Calendar, Receipt, Calculator, Percent } from "lucide-react";
 import { getGstr1Report, getGstr3bReport, dbGetSettings } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 
 interface GstReport {
   invoice_no: string;
@@ -17,6 +18,7 @@ interface GstReport {
 }
 
 export default function GstReportsScreen() {
+  const { settings, activeStoreId } = useSettingsStore();
   const [gstr1Data, setGstr1Data] = useState<GstReport[]>([]);
   const [gstr3bData, setGstr3bData] = useState<[number, number, number, number, number, number]>([0, 0, 0, 0, 0, 0]);
   const [dateRange, setDateRange] = useState({
@@ -25,27 +27,19 @@ export default function GstReportsScreen() {
   });
   const [activeTab, setActiveTab] = useState<"gstr1" | "gstr3b">("gstr1");
   const [loading, setLoading] = useState(false);
-  const [settings, setSettings] = useState<any>(null);
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
+  const curr = settings?.currency_symbol ?? "₹";
 
   useEffect(() => {
     loadReports();
-  }, [dateRange]);
-
-  const loadSettings = async () => {
-    const s = await dbGetSettings();
-    setSettings(s);
-  };
+  }, [dateRange, activeStoreId]);
 
   const loadReports = async () => {
     setLoading(true);
     try {
       const [gstr1, gstr3b] = await Promise.all([
-        getGstr1Report(dateRange.start, dateRange.end),
-        getGstr3bReport(dateRange.start, dateRange.end),
+        getGstr1Report(dateRange.start, dateRange.end, activeStoreId),
+        getGstr3bReport(dateRange.start, dateRange.end, activeStoreId),
       ]);
       setGstr1Data(gstr1);
       setGstr3bData(gstr3b);
@@ -127,11 +121,11 @@ export default function GstReportsScreen() {
                     <td className="p-3 font-mono text-sm">{row.invoice_no.slice(0, 8)}</td>
                     <td className="p-3 text-sm">{row.date}</td>
                     <td className="p-3">{row.customer_name || "-"}</td>
-                    <td className="p-3 text-right">₹{row.taxable_value.toFixed(2)}</td>
-                    <td className="p-3 text-right">₹{row.cgst.toFixed(2)}</td>
-                    <td className="p-3 text-right">₹{row.sgst.toFixed(2)}</td>
-                    <td className="p-3 text-right">₹{row.igst.toFixed(2)}</td>
-                    <td className="p-3 text-right font-bold">₹{row.total.toFixed(2)}</td>
+                    <td className="p-3 text-right">{curr}{row.taxable_value.toFixed(2)}</td>
+                    <td className="p-3 text-right">{curr}{row.cgst.toFixed(2)}</td>
+                    <td className="p-3 text-right">{curr}{row.sgst.toFixed(2)}</td>
+                    <td className="p-3 text-right">{curr}{row.igst.toFixed(2)}</td>
+                    <td className="p-3 text-right font-bold">{curr}{row.total.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -146,27 +140,27 @@ export default function GstReportsScreen() {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">Total Taxable Value</div>
-                <div className="text-lg font-bold font-display">₹{taxable.toFixed(2)}</div>
+                <div className="text-lg font-bold font-display">{curr}{taxable.toFixed(2)}</div>
               </div>
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">CGST</div>
-                <div className="text-lg font-bold font-display text-blue-400">₹{cgst.toFixed(2)}</div>
+                <div className="text-lg font-bold font-display text-blue-400">{curr}{cgst.toFixed(2)}</div>
               </div>
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">SGST</div>
-                <div className="text-lg font-bold font-display text-green-400">₹{sgst.toFixed(2)}</div>
+                <div className="text-lg font-bold font-display text-green-400">{curr}{sgst.toFixed(2)}</div>
               </div>
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">IGST</div>
-                <div className="text-lg font-bold font-display text-purple-400">₹{igst.toFixed(2)}</div>
+                <div className="text-lg font-bold font-display text-purple-400">{curr}{igst.toFixed(2)}</div>
               </div>
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">Total Tax Liability</div>
-                <div className="text-lg font-bold font-display text-red-400">₹{liability.toFixed(2)}</div>
+                <div className="text-lg font-bold font-display text-red-400">{curr}{liability.toFixed(2)}</div>
               </div>
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">ITC Claimed</div>
-                <div className="text-lg font-bold font-display text-yellow-400">₹{itc.toFixed(2)}</div>
+                <div className="text-lg font-bold font-display text-yellow-400">{curr}{itc.toFixed(2)}</div>
               </div>
             </div>
           </div>
@@ -176,23 +170,23 @@ export default function GstReportsScreen() {
             <div className="space-y-3">
               <div className="flex justify-between py-2 border-b border-[#1E1E26]">
                 <span className="text-gray-400">Total Output Tax (CGST + SGST + IGST)</span>
-                <span className="font-bold">₹{liability.toFixed(2)}</span>
+                <span className="font-bold">{curr}{liability.toFixed(2)}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-[#1E1E26]">
                 <span className="text-gray-400">Less: ITC Available (CGST)</span>
-                <span className="text-green-400">-₹{cgst.toFixed(2)}</span>
+                <span className="text-green-400">-{curr}{cgst.toFixed(2)}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-[#1E1E26]">
                 <span className="text-gray-400">Less: ITC Available (SGST)</span>
-                <span className="text-green-400">-₹{sgst.toFixed(2)}</span>
+                <span className="text-green-400">-{curr}{sgst.toFixed(2)}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-[#1E1E26]">
                 <span className="text-gray-400">Less: ITC Available (IGST)</span>
-                <span className="text-green-400">-₹{igst.toFixed(2)}</span>
+                <span className="text-green-400">-{curr}{igst.toFixed(2)}</span>
               </div>
               <div className="flex justify-between py-2 text-base font-semibold">
                 <span>Net Tax Payable</span>
-                <span className="text-red-400">₹{(liability - itc).toFixed(2)}</span>
+                <span className="text-red-400">{curr}{(liability - itc).toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -201,9 +195,9 @@ export default function GstReportsScreen() {
             <h3 className="text-base font-semibold mb-4">Business Details</h3>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div><span className="text-gray-400">Business Name:</span> {settings?.business_name || "Not set"}</div>
-              <div><span className="text-gray-400">GSTIN:</span> {settings?.gstin || "Not set"}</div>
+              <div><span className="text-gray-400">GSTIN:</span> {settings?.tax_id || "Not set"}</div>
               <div><span className="text-gray-400">Period:</span> {dateRange.start} to {dateRange.end}</div>
-              <div><span className="text-gray-400">GST Type:</span> {settings?.gst_type || "Regular"}</div>
+              <div><span className="text-gray-400">GST Type:</span> {settings?.tax_system === 'gst' ? 'Regular' : 'Non-GST'}</div>
             </div>
           </div>
         </div>

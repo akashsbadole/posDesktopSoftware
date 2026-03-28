@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { RefreshCw, Check, X, Shield, Clock } from "lucide-react";
 import { dbGetRefundRequests, dbApproveRefund, dbRejectRefund, RefundRequest } from "@/lib/db";
-import { useAuthStore } from "@/lib/stores";
+import { useAuthStore, useSettingsStore } from "@/lib/stores";
 
 export default function RefundRequestsScreen() {
+  const { activeStoreId } = useSettingsStore();
   const [requests, setRequests] = useState<RefundRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
@@ -14,7 +15,7 @@ export default function RefundRequestsScreen() {
 
   const fetchRequests = async () => {
     try {
-      const data = await dbGetRefundRequests();
+      const data = await dbGetRefundRequests(activeStoreId);
       setRequests(data);
     } catch (err) {
       console.error("Failed to fetch refund requests:", err);
@@ -23,12 +24,12 @@ export default function RefundRequestsScreen() {
     }
   };
 
-  useEffect(() => { fetchRequests(); }, []);
+  useEffect(() => { fetchRequests(); }, [activeStoreId]);
 
   const handleApprove = async (id: string) => {
     setProcessing(id);
     try {
-      await dbApproveRefund(id, user?.id || "admin", user?.name || "Admin");
+      await dbApproveRefund(id, user?.id || "admin", user?.name || "Admin", activeStoreId);
       await fetchRequests();
     } catch (err) {
       console.error("Failed to approve refund:", err);
@@ -40,7 +41,7 @@ export default function RefundRequestsScreen() {
   const handleReject = async (id: string) => {
     setProcessing(id);
     try {
-      await dbRejectRefund(id);
+      await dbRejectRefund(id, activeStoreId);
       await fetchRequests();
     } catch (err) {
       console.error("Failed to reject refund:", err);

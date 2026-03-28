@@ -2,10 +2,12 @@
 import { useEffect, useState } from "react";
 import { CheckCircle, DollarSign, CreditCard, Smartphone, TrendingUp, TrendingDown, Save, X, Calculator } from "lucide-react";
 import { getDayEndReconciliation, saveDayEndReconciliation, dbGetDailySummary, getExpenses, dbGetSettings, getSalesByPaymentMethod } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
 
 interface DayEndReconciliation {
   id: string;
+  store_id: string;
   date: string;
   opening_cash: number;
   expected_cash: number;
@@ -21,11 +23,11 @@ interface DayEndReconciliation {
 }
 
 export default function DayEndReconciliationScreen() {
+  const { settings, activeStoreId } = useSettingsStore();
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [reconciliation, setReconciliation] = useState<DayEndReconciliation | null>(null);
   const [summary, setSummary] = useState<any>(null);
   const [expenses, setExpenses] = useState<any[]>([]);
-  const [settings, setSettings] = useState<any>(null);
   const [formData, setFormData] = useState({
     opening_cash: 0,
     actual_cash: 0,
@@ -34,22 +36,23 @@ export default function DayEndReconciliationScreen() {
   const [saving, setSaving] = useState(false);
   const [paymentBreakdown, setPaymentBreakdown] = useState({ cash: 0, upi: 0, card: 0 });
 
+  const curr = settings?.currency_symbol ?? "₹";
+
   useEffect(() => {
     loadData();
-  }, [selectedDate]);
+  }, [selectedDate, activeStoreId]);
 
   const loadData = async () => {
     const [rec, sum, exp, set, payments] = await Promise.all([
-      getDayEndReconciliation(selectedDate),
-      dbGetDailySummary(),
-      getExpenses(selectedDate),
-      dbGetSettings(),
-      getSalesByPaymentMethod(selectedDate),
+      getDayEndReconciliation(selectedDate, activeStoreId),
+      dbGetDailySummary(activeStoreId),
+      getExpenses(selectedDate, activeStoreId),
+      dbGetSettings(activeStoreId),
+      getSalesByPaymentMethod(selectedDate, activeStoreId),
     ]);
-    setReconciliation(rec);
+    setReconciliation(rec as any);
     setSummary(sum);
-    setExpenses(exp);
-    setSettings(set);
+    setExpenses(exp as any);
     setPaymentBreakdown(payments);
     if (rec) {
       setFormData({
@@ -79,6 +82,7 @@ export default function DayEndReconciliationScreen() {
     const difference = formData.actual_cash - expected + cashExpenses;
     const rec: DayEndReconciliation = {
       id: reconciliation?.id || uuid(),
+      store_id: activeStoreId,
       date: selectedDate,
       opening_cash: formData.opening_cash,
       expected_cash: expected - cashExpenses,
@@ -92,7 +96,7 @@ export default function DayEndReconciliationScreen() {
       created_by: "admin",
       created_at: new Date().toISOString(),
     };
-    await saveDayEndReconciliation(rec);
+    await saveDayEndReconciliation(rec, activeStoreId);
     setSaving(false);
     loadData();
   };
@@ -124,7 +128,7 @@ export default function DayEndReconciliationScreen() {
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Total Revenue</div>
-          <div className="text-lg font-bold font-display">₹{summary?.revenue?.toFixed(2) || "0.00"}</div>
+          <div className="text-lg font-bold font-display">{curr}{summary?.revenue?.toFixed(2) || "0.00"}</div>
         </div>
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Transactions</div>
@@ -132,11 +136,11 @@ export default function DayEndReconciliationScreen() {
         </div>
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Avg Order</div>
-          <div className="text-lg font-bold font-display">₹{summary?.avg_order?.toFixed(2) || "0.00"}</div>
+          <div className="text-lg font-bold font-display">{curr}{summary?.avg_order?.toFixed(2) || "0.00"}</div>
         </div>
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Total Expenses</div>
-          <div className="text-lg font-bold font-display text-red-400">₹{expenses.reduce((s, e) => s + e.amount, 0).toFixed(2)}</div>
+          <div className="text-lg font-bold font-display text-red-400">{curr}{expenses.reduce((s, e) => s + e.amount, 0).toFixed(2)}</div>
         </div>
       </div>
 
@@ -180,38 +184,38 @@ export default function DayEndReconciliationScreen() {
           <div className="space-y-3">
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">Opening Cash</span>
-              <span>₹{formData.opening_cash.toFixed(2)}</span>
+              <span>{curr}{formData.opening_cash.toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">+ Cash Sales</span>
-              <span className="text-green-400">₹{paymentBreakdown.cash.toFixed(2)}</span>
+              <span className="text-green-400">{curr}{paymentBreakdown.cash.toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">+ UPI Sales</span>
-              <span className="text-blue-400">₹{paymentBreakdown.upi.toFixed(2)}</span>
+              <span className="text-blue-400">{curr}{paymentBreakdown.upi.toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">+ Card Sales</span>
-              <span className="text-purple-400">₹{paymentBreakdown.card.toFixed(2)}</span>
+              <span className="text-purple-400">{curr}{paymentBreakdown.card.toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">- Total Expenses</span>
-              <span className="text-red-400">-₹{expenses.reduce((s: number, e: any) => s + e.amount, 0).toFixed(2)}</span>
+              <span className="text-red-400">-{curr}{expenses.reduce((s: number, e: any) => s + e.amount, 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">Expected Cash</span>
-              <span className="font-bold">₹{calculateExpected().toFixed(2)}</span>
+              <span className="font-bold">{curr}{calculateExpected().toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">Actual Cash</span>
-              <span>₹{formData.actual_cash.toFixed(2)}</span>
+              <span>{curr}{formData.actual_cash.toFixed(2)}</span>
             </div>
             <div className={`flex justify-between py-3 text-base font-semibold ${isBalanced ? "text-green-400" : "text-red-400"}`}>
               <span className="flex items-center gap-2">
                 {isBalanced ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
                 Difference
               </span>
-              <span>₹{difference.toFixed(2)}</span>
+              <span>{curr}{difference.toFixed(2)}</span>
             </div>
           </div>
 
@@ -230,7 +234,7 @@ export default function DayEndReconciliationScreen() {
         <div className="grid grid-cols-3 gap-4">
           <div className="p-4 bg-[#1E1E26] rounded-lg">
             <div className="text-gray-400 text-sm">Avg Order Value</div>
-            <div className="text-lg font-bold font-display">₹{(summary?.avg_order || 0).toFixed(2)}</div>
+            <div className="text-lg font-bold font-display">{curr}{(summary?.avg_order || 0).toFixed(2)}</div>
           </div>
           <div className="p-4 bg-[#1E1E26] rounded-lg">
             <div className="text-gray-400 text-sm">Items Sold</div>

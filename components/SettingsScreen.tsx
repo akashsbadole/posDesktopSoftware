@@ -381,13 +381,13 @@ const countryPresets: Record<string, CountryPreset> = {
 
 export default function SettingsScreen() {
   const {
+    activeStoreId,
     settings,
     isLoading,
     fetchSettings,
     saveSettings,
     isDarkMode,
     setDarkMode,
-    updateCurrency,
   } = useSettingsStore();
   const [saved, setSaved] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -458,6 +458,13 @@ export default function SettingsScreen() {
       contact_email: "",
       contact_website: "",
       upi_id: "",
+      show_logo_on_receipt: true,
+      receipt_header_text: "",
+      merchant_id: "",
+      show_tax_breakdown: true,
+      tax_inclusive: false,
+      tax_breakdown: "[]",
+      auto_print_kot: false,
     },
   );
 
@@ -466,10 +473,10 @@ export default function SettingsScreen() {
   useEffect(() => {
     fetchSettings();
     fetchLanStatus();
-  }, []);
+  }, [activeStoreId]);
 
   useEffect(() => {
-    setLocalSettings(settings);
+    if (settings) setLocalSettings(settings);
   }, [settings]);
 
   const toggleTheme = () => {
@@ -527,7 +534,7 @@ export default function SettingsScreen() {
   const handleSyncUp = async () => {
     setSyncing(true);
     setSyncMsg(null);
-    const r = await syncToNeon();
+    const r = await syncToNeon(activeStoreId);
     setSyncMsg(
       r.error
         ? { text: r.error, ok: false }
@@ -539,7 +546,7 @@ export default function SettingsScreen() {
   const handleSyncDown = async () => {
     setSyncing(true);
     setSyncMsg(null);
-    const r = await syncFromNeon();
+    const r = await syncFromNeon(activeStoreId);
     setSyncMsg(
       r.error
         ? { text: r.error, ok: false }
@@ -552,7 +559,7 @@ export default function SettingsScreen() {
     setBackingUp(true);
     setBackupMsg(null);
     try {
-      const backupData = await exportBackup();
+      const backupData = await exportBackup(activeStoreId);
       const binaryString = atob(backupData);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
@@ -582,7 +589,7 @@ export default function SettingsScreen() {
     setBackupMsg(null);
     try {
       const text = await file.text();
-      const result = await importBackup(text);
+      const result = await importBackup(text, activeStoreId);
       setBackupMsg({
         text: `✓ Imported ${result.products_imported} products and ${result.orders_imported} orders`,
         ok: true,
@@ -601,7 +608,7 @@ export default function SettingsScreen() {
       setRestoreMsg(null);
       try {
         const text = await file.text();
-        const result = await importBackup(text);
+        const result = await importBackup(text, activeStoreId);
         setRestoreMsg({
           text: `✓ Restored ${result.products_imported} products and ${result.orders_imported} orders`,
           ok: true,
@@ -784,63 +791,6 @@ export default function SettingsScreen() {
             </div>
           </div>
         </div>
-
-        {/* Appearance */}
-        {/* <div className="card p-5">
-          <div className="flex items-center gap-2 mb-4">
-            {isDarkMode ? (
-              <Moon size={16} style={{ color: "#9B59B6" }} />
-            ) : (
-              <Sun size={16} style={{ color: "#F39C12" }} />
-            )}
-            <h2 className="font-semibold">Appearance</h2>
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-medium">
-                {isDarkMode ? "Dark Mode" : "Light Mode"}
-              </div>
-              <div className="text-xs" style={{ color: "#4A4A5A" }}>
-                Toggle between dark and light theme
-              </div>
-            </div>
-            <button
-              onClick={toggleTheme}
-              style={{
-                width: 56,
-                height: 32,
-                borderRadius: 16,
-                background: isDarkMode ? "#1E1E26" : "#E0E0E5",
-                border: "none",
-                position: "relative",
-                transition: "background 0.2s",
-              }}
-            >
-              <div
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 12,
-                  background: isDarkMode ? "#F5C842" : "#FFFFFF",
-                  position: "absolute",
-                  top: 4,
-                  left: isDarkMode ? 28 : 4,
-                  transition: "left 0.2s",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                }}
-              >
-                {isDarkMode ? (
-                  <Moon size={12} color="#0D0D0F" />
-                ) : (
-                  <Sun size={12} color="#F39C12" />
-                )}
-              </div>
-            </button>
-          </div>
-        </div> */}
 
         {/* Location & Currency */}
         <div className="card p-5">
@@ -1162,91 +1112,6 @@ export default function SettingsScreen() {
             </div>
           </div>
         </div>
-
-        {/* Neon Sync */}
-        {/* <div className="card p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Database size={16} style={{ color: "#3498DB" }} />
-            <h2 className="font-semibold">Neon PostgreSQL Sync</h2>
-          </div>
-          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
-            Sync orders to Neon cloud DB for multi-device access and backup.
-            Paste your Neon connection string below.
-          </p>
-
-          <div className="mb-3">
-            <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
-              Neon Connection String
-            </label>
-            <input
-              value={localSettings.neon_url}
-              onChange={(e) => updateLocal("neon_url", e.target.value)}
-              placeholder="postgres://user:password@ep-xxx.region.neon.tech/dbname"
-              type="password"
-            />
-          </div>
-
-          <div
-            className="rounded-lg p-3 mb-4 flex gap-2"
-            style={{
-              background: "rgba(52,152,219,0.06)",
-              border: "1px solid rgba(52,152,219,0.15)",
-            }}
-          >
-            <Info
-              size={14}
-              style={{ color: "#3498DB", flexShrink: 0, marginTop: 2 }}
-            />
-            <div className="text-xs" style={{ color: "#4A4A5A" }}>
-              Get a free Neon database at{" "}
-              <strong style={{ color: "#3498DB" }}>neon.tech</strong>. Create a
-              project → copy the connection string → paste above. Sync pushes
-              unsynced orders to Neon. Pull imports orders from other devices.
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={handleSyncUp}
-              disabled={syncing || !localSettings.neon_url}
-              className="btn-success flex items-center gap-2 text-sm flex-1 justify-center"
-            >
-              {syncing ? (
-                <RefreshCw size={14} className="spin" />
-              ) : (
-                <CloudUpload size={14} />
-              )}
-              Push to Neon
-            </button>
-            <button
-              onClick={handleSyncDown}
-              disabled={syncing || !localSettings.neon_url}
-              className="btn-ghost flex items-center gap-2 text-sm flex-1 justify-center"
-            >
-              {syncing ? (
-                <RefreshCw size={14} className="spin" />
-              ) : (
-                <CloudDownload size={14} />
-              )}
-              Pull from Neon
-            </button>
-          </div>
-
-          {syncMsg && (
-            <div
-              className="mt-3 rounded-lg p-3 text-sm fade-in"
-              style={{
-                background: syncMsg.ok
-                  ? "rgba(46,204,113,0.08)"
-                  : "rgba(231,76,60,0.08)",
-                border: `1px solid ${syncMsg.ok ? "rgba(46,204,113,0.2)" : "rgba(231,76,60,0.2)"}`,
-                color: syncMsg.ok ? "#2ECC71" : "#E74C3C",
-              }}
-            >
-              {syncMsg.text}
-            </div>
-          )}
-        </div> */}
 
         {/* SQLite Info */}
         <div className="card p-5">
@@ -1586,295 +1451,6 @@ export default function SettingsScreen() {
             </div>
           )}
         </div>
-
-        {/* LAN Sync */}
-        {/* <div className="card p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <span style={{ color: "#9B59B6" }}>🔗</span>
-            <h2 className="font-semibold">LAN Sync</h2>
-            {lanStatus?.running && (
-              <span
-                style={{
-                  background: "#2ECC71",
-                  color: "#fff",
-                  padding: "2px 8px",
-                  borderRadius: "4px",
-                  fontSize: "10px",
-                  fontWeight: "600",
-                }}
-              >
-                RUNNING
-              </span>
-            )}
-          </div>
-          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
-            Share orders and data between devices on the same network.
-          </p>
-
-          <div className="mb-3">
-            <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
-              Server Port
-            </label>
-            <input
-              type="number"
-              value={localSettings.lan_server_port}
-              onChange={(e) => {
-                const val = parseInt(e.target.value) || 8765;
-                updateLocal("lan_server_port", val);
-              }}
-              min={1024}
-              max={65535}
-              disabled={lanStatus?.running}
-            />
-          </div>
-
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="font-medium">
-                {lanStatus?.running
-                  ? `Server Running on Port ${lanStatus.port}`
-                  : "LAN Sync Server"}
-              </div>
-              <div className="text-xs" style={{ color: "#4A4A5A" }}>
-                {lanStatus?.running
-                  ? `${lanStatus.connected_clients} client(s) connected`
-                  : "Start server to share with other devices"}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            {lanStatus?.running ? (
-              <button
-                onClick={handleStopLan}
-                disabled={lanLoading}
-                className="btn-danger flex items-center gap-2 text-sm flex-1 justify-center"
-              >
-                {lanLoading ? (
-                  <RefreshCw size={14} className="spin" />
-                ) : (
-                  "Stop Server"
-                )}
-              </button>
-            ) : (
-              <button
-                onClick={handleStartLan}
-                disabled={lanLoading}
-                className="btn-success flex items-center gap-2 text-sm flex-1 justify-center"
-              >
-                {lanLoading ? (
-                  <RefreshCw size={14} className="spin" />
-                ) : (
-                  "Start Server"
-                )}
-              </button>
-            )}
-          </div>
-        </div> */}
-
-        {/* Language & Offline */}
-        {/* <div className="card p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <span style={{ color: "#3498DB" }}>🌐</span>
-            <h2 className="font-semibold">Language & Offline Mode</h2>
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <label
-                className="text-xs mb-1 block"
-                style={{ color: "#4A4A5A" }}
-              >
-                Language
-              </label>
-              <select
-                value={localSettings.language}
-                onChange={(e) => updateLocal("language", e.target.value)}
-                style={{ padding: "10px" }}
-              >
-                <option value="en">English</option>
-                <option value="hi">Hindi (हिन्दी)</option>
-                <option value="mr">Marathi (मराठी)</option>
-                <option value="gu">Gujarati (ગુજરાતી)</option>
-                <option value="ta">Tamil (தமிழ்)</option>
-                <option value="te">Telugu (తెలుగు)</option>
-                <option value="kn">Kannada (ಕನ್ನಡ)</option>
-                <option value="ml">Malayalam (മലയാളം)</option>
-              </select>
-            </div>
-
-            <div className="flex items-center justify-between pt-2">
-              <div>
-                <div className="font-medium">Offline Mode</div>
-                <div className="text-xs" style={{ color: "#4A4A5A" }}>
-                  Work without internet
-                </div>
-              </div>
-              <button
-                onClick={() =>
-                  updateLocal("offline_mode", !localSettings.offline_mode)
-                }
-                style={{
-                  width: 48,
-                  height: 24,
-                  borderRadius: 12,
-                  background: localSettings.offline_mode
-                    ? "#E74C3C"
-                    : "#1E1E26",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                <div
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 10,
-                    background: "#fff",
-                    position: "relative",
-                    left: localSettings.offline_mode ? 26 : 2,
-                    transition: "left 0.2s",
-                  }}
-                />
-              </button>
-            </div>
-          </div>
-        </div> */}
-
-        {/* Whitelabel Settings */}
-        {/* <div className="card p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Palette size={16} style={{ color: "#9B59B6" }} />
-            <h2 className="font-semibold">Whitelabel & Branding</h2>
-          </div>
-          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
-            Customize your POS branding with your logo and colors.
-          </p>
-
-          <div className="space-y-3">
-            <div>
-              <label
-                className="text-xs mb-1 block"
-                style={{ color: "#4A4A5A" }}
-              >
-                Logo URL
-              </label>
-              <input
-                value={localSettings.logo_url}
-                onChange={(e) => updateLocal("logo_url", e.target.value)}
-                placeholder="https://your-logo-url.com/logo.png"
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label
-                  className="text-xs mb-1 block"
-                  style={{ color: "#4A4A5A" }}
-                >
-                  Primary Color
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="color"
-                    value={localSettings.primary_color}
-                    onChange={(e) =>
-                      updateLocal("primary_color", e.target.value)
-                    }
-                    style={{
-                      width: 40,
-                      height: 38,
-                      padding: 2,
-                      cursor: "pointer",
-                    }}
-                  />
-                  <input
-                    value={localSettings.primary_color}
-                    onChange={(e) =>
-                      updateLocal("primary_color", e.target.value)
-                    }
-                    placeholder="#F5C842"
-                    style={{ flex: 1 }}
-                  />
-                </div>
-              </div>
-              <div>
-                <label
-                  className="text-xs mb-1 block"
-                  style={{ color: "#4A4A5A" }}
-                >
-                  Secondary Color
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="color"
-                    value={localSettings.secondary_color}
-                    onChange={(e) =>
-                      updateLocal("secondary_color", e.target.value)
-                    }
-                    style={{
-                      width: 40,
-                      height: 38,
-                      padding: 2,
-                      cursor: "pointer",
-                    }}
-                  />
-                  <input
-                    value={localSettings.secondary_color}
-                    onChange={(e) =>
-                      updateLocal("secondary_color", e.target.value)
-                    }
-                    placeholder="#1E1E26"
-                    style={{ flex: 1 }}
-                  />
-                </div>
-              </div>
-              <div>
-                <label
-                  className="text-xs mb-1 block"
-                  style={{ color: "#4A4A5A" }}
-                >
-                  Accent Color
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="color"
-                    value={localSettings.accent_color}
-                    onChange={(e) =>
-                      updateLocal("accent_color", e.target.value)
-                    }
-                    style={{
-                      width: 40,
-                      height: 38,
-                      padding: 2,
-                      cursor: "pointer",
-                    }}
-                  />
-                  <input
-                    value={localSettings.accent_color}
-                    onChange={(e) =>
-                      updateLocal("accent_color", e.target.value)
-                    }
-                    placeholder="#2ECC71"
-                    style={{ flex: 1 }}
-                  />
-                </div>
-              </div>
-            </div>
-            <div>
-              <label
-                className="text-xs mb-1 block"
-                style={{ color: "#4A4A5A" }}
-              >
-                Footer Text (Receipt)
-              </label>
-              <input
-                value={localSettings.footer_text}
-                onChange={(e) => updateLocal("footer_text", e.target.value)}
-                placeholder="Powered by POS Billing"
-              />
-            </div>
-          </div>
-        </div> */}
 
         {/* Contact Us */}
         <div className="card p-5">

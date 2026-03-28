@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react";
 import { Plus, Trash2, RefreshCw, ClipboardList, Check, Package } from "lucide-react";
 import { getPurchaseOrders, savePurchaseOrder, updatePoStatus, receivePurchaseOrder, getSuppliers, getIngredients, PurchaseOrder, PurchaseOrderItem, Supplier, Ingredient } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
 
 export default function PurchaseOrdersScreen() {
+  const { activeStoreId } = useSettingsStore();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -19,9 +21,9 @@ export default function PurchaseOrdersScreen() {
   const fetchData = async () => {
     try {
       const [poData, supData, ingData] = await Promise.all([
-        getPurchaseOrders(),
-        getSuppliers(),
-        getIngredients(),
+        getPurchaseOrders(activeStoreId),
+        getSuppliers(activeStoreId),
+        getIngredients(activeStoreId),
       ]);
       setOrders(poData);
       setSuppliers(supData);
@@ -33,7 +35,7 @@ export default function PurchaseOrdersScreen() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [activeStoreId]);
 
   const addItem = () => {
     setForm({
@@ -63,6 +65,7 @@ export default function PurchaseOrdersScreen() {
     try {
       const po: PurchaseOrder = {
         id: uuid(),
+        store_id: activeStoreId,
         supplier_id: form.supplier_id,
         supplier_name: suppliers.find(s => s.id === form.supplier_id)?.name || "",
         status: "draft",
@@ -71,7 +74,7 @@ export default function PurchaseOrdersScreen() {
         items: form.items,
         created_at: new Date().toISOString(),
       };
-      await savePurchaseOrder(po);
+      await savePurchaseOrder(po, activeStoreId);
       setShowForm(false);
       setForm({ supplier_id: "", notes: "", items: [] });
       await fetchData();
@@ -83,7 +86,7 @@ export default function PurchaseOrdersScreen() {
   const handleReceive = async (id: string) => {
     setProcessing(id);
     try {
-      await receivePurchaseOrder(id);
+      await receivePurchaseOrder(id, activeStoreId);
       await fetchData();
     } catch (err) {
       console.error("Failed to receive PO:", err);
@@ -95,7 +98,7 @@ export default function PurchaseOrdersScreen() {
   const handleStatusChange = async (id: string, status: string) => {
     setProcessing(id);
     try {
-      await updatePoStatus(id, status);
+      await updatePoStatus(id, status, activeStoreId);
       await fetchData();
     } catch (err) {
       console.error("Failed to update PO status:", err);

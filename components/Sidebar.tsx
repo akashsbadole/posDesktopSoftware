@@ -24,10 +24,13 @@ import {
   Calculator,
   GraduationCap,
   Lock,
+  ChevronDown,
+  LayoutGrid
 } from "lucide-react";
 import { Screen } from "@/app/page";
 import { User } from "@/lib/db";
-import { useAuthStore } from "@/lib/stores";
+import { useAuthStore, useSettingsStore, useStoresStore } from "@/lib/stores";
+import { getIndustryLabels } from "@/lib/industry";
 
 const allNavItems = [
   { id: "pos" as Screen, label: "POS", icon: ShoppingCart, adminOnly: false },
@@ -82,12 +85,6 @@ const allNavItems = [
     icon: Shield,
     adminOnly: true,
   },
-  // { id: "ingredients" as Screen, label: "Ingredients", icon: Wheat, adminOnly: true },
-  // { id: "suppliers" as Screen, label: "Suppliers", icon: Truck, adminOnly: true },
-  // { id: "purchase_orders" as Screen, label: "PO", icon: ClipboardList, adminOnly: true },
-  // { id: "scheduling" as Screen, label: "Schedule", icon: CalendarDays, adminOnly: true },
-  // { id: "reconciliation" as Screen, label: "Day End", icon: Calculator, adminOnly: true },
-  // { id: "expenses" as Screen, label: "Expenses", icon: DollarSign, adminOnly: true },
   { id: "staff" as Screen, label: "Staff", icon: Users, adminOnly: true },
   {
     id: "reports" as Screen,
@@ -97,6 +94,12 @@ const allNavItems = [
   },
   { id: "gst" as Screen, label: "GST", icon: FileText, adminOnly: true },
   { id: "logs" as Screen, label: "Logs", icon: History, adminOnly: true },
+  {
+    id: "stores" as Screen,
+    label: "Stores",
+    icon: LayoutGrid,
+    adminOnly: true,
+  },
   {
     id: "settings" as Screen,
     label: "Settings",
@@ -123,13 +126,20 @@ export default function Sidebar({
   onLock?: () => void;
 }) {
   const { logout } = useAuthStore();
+  const { activeStoreId, setActiveStore } = useSettingsStore();
+  const { stores, fetchStores } = useStoresStore();
   const isAdmin = user?.role === "admin";
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  const [showStoreSwitcher, setShowStoreSwitcher] = useState(false);
 
   useEffect(() => {
+    fetchStores();
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const activeStore = stores.find(s => s.id === activeStoreId);
+  const labels = getIndustryLabels(activeStore?.industry || 'food');
 
   const formatDate = (d: Date) =>
     d.toLocaleDateString("en-IN", {
@@ -144,7 +154,11 @@ export default function Sidebar({
       second: "2-digit",
     });
 
-  const nav = allNavItems.filter((item) => !item.adminOnly || isAdmin);
+  const nav = allNavItems.filter((item) => !item.adminOnly || isAdmin).map(item => {
+    if (item.id === 'tables') return { ...item, label: labels.tables };
+    if (item.id === 'kds') return { ...item, label: (labels.kitchen || "Kitchen").split('/')[0] };
+    return item;
+  });
 
   const handleLogout = () => {
     logout();
@@ -161,15 +175,43 @@ export default function Sidebar({
       role="navigation"
       aria-label="Main navigation"
     >
-      <div className="mb-4">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
+      <div className="mb-4 relative group">
+        <button
+          onClick={() => setShowStoreSwitcher(!showStoreSwitcher)}
+          className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-110 active:scale-95"
           style={{ background: "#F5C842" }}
-          role="img"
-          aria-label="POS Application Logo"
+          title={activeStore?.name || "Main Store"}
         >
-          <Zap size={20} color="#0D0D0F" fill="#0D0D0F" aria-hidden="true" />
-        </div>
+          <Zap size={20} color="#0D0D0F" fill="#0D0D0F" />
+        </button>
+        {showStoreSwitcher && (
+          <div className="absolute left-14 top-0 w-48 bg-[#141418] border border-[#1E1E26] rounded-xl shadow-2xl z-50 p-2 fade-in">
+             <div className="text-[10px] font-bold text-[#4A4A5A] px-2 mb-1 uppercase tracking-wider">Switch Store</div>
+             {stores.length > 0 ? (
+                stores.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => { setActiveStore(s.id); setShowStoreSwitcher(false); }}
+                    className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-[#1E1E26]"
+                    style={{ color: s.id === activeStoreId ? "#F5C842" : "#9090A8" }}
+                  >
+                    {s.name}
+                  </button>
+                ))
+             ) : (
+                <div className="px-3 py-2 text-xs text-[#4A4A5A]">No stores found</div>
+             )}
+             {isAdmin && (
+                <button
+                  onClick={() => { setScreen("stores"); setShowStoreSwitcher(false); }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-colors border-t border-[#1E1E26] mt-1 pt-2 hover:text-[#F5C842]"
+                  style={{ color: "#4A4A5A" }}
+                >
+                  + Add/Manage Stores
+                </button>
+             )}
+          </div>
+        )}
       </div>
       <div className="mb-4 text-center px-1">
         <div style={{ fontSize: 9, fontWeight: 600, color: "#F5C842" }}>

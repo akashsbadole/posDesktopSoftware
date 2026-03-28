@@ -2,10 +2,12 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2, DollarSign, Calendar, Filter, Download, TrendingDown, Settings } from "lucide-react";
 import { getExpenses, getExpensesByRange, saveExpense, deleteExpense, getExpenseCategories, saveExpenseCategory } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
 
 interface Expense {
   id: string;
+  store_id: string;
   category: string;
   amount: number;
   description: string;
@@ -15,6 +17,7 @@ interface Expense {
 
 interface ExpenseCategory {
   id: string;
+  store_id: string;
   name: string;
   icon: string;
 }
@@ -31,8 +34,9 @@ const defaultCategories = [
 ];
 
 export default function ExpenseScreen() {
+  const { settings, activeStoreId } = useSettingsStore();
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [categories] = useState<ExpenseCategory[]>(defaultCategories);
+  const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
@@ -50,31 +54,48 @@ export default function ExpenseScreen() {
   const [showCatForm, setShowCatForm] = useState(false);
   const [catForm, setCatForm] = useState({ name: "", icon: "📝" });
 
+  const curr = settings?.currency_symbol ?? "₹";
+
   useEffect(() => {
     loadExpenses();
-  }, [selectedDate, viewMode, dateRange]);
+    loadCategories();
+  }, [selectedDate, viewMode, dateRange, activeStoreId]);
+
+  const loadCategories = async () => {
+    try {
+      const cats = await getExpenseCategories(activeStoreId);
+      setCategories(cats as any);
+    } catch (e) {
+      console.error("Failed to load categories", e);
+    }
+  };
 
   const loadExpenses = async () => {
     let data: Expense[];
-    if (viewMode === "day") {
-      data = await getExpenses(selectedDate);
-    } else {
-      data = await getExpensesByRange(dateRange.start, dateRange.end);
+    try {
+      if (viewMode === "day") {
+        data = await getExpenses(selectedDate, activeStoreId);
+      } else {
+        data = await getExpensesByRange(dateRange.start, dateRange.end, activeStoreId);
+      }
+      setExpenses(data as any);
+      setTotalExpenses(data.reduce((sum, e) => sum + e.amount, 0));
+    } catch (e) {
+      console.error("Failed to load expenses", e);
     }
-    setExpenses(data);
-    setTotalExpenses(data.reduce((sum, e) => sum + e.amount, 0));
   };
 
   const handleSave = async () => {
     const expense: Expense = {
       id: uuid(),
+      store_id: activeStoreId,
       category: formData.category,
       amount: formData.amount,
       description: formData.description,
       date: viewMode === "day" ? selectedDate : new Date().toISOString().split("T")[0],
       payment_method: formData.payment_method,
     };
-    await saveExpense(expense);
+    await saveExpense(expense, activeStoreId);
     setShowForm(false);
     setFormData({ category: "Miscellaneous", amount: 0, description: "", payment_method: "cash" });
     loadExpenses();
@@ -82,15 +103,15 @@ export default function ExpenseScreen() {
 
   const handleSaveCategory = async () => {
     if (!catForm.name.trim()) return;
-    await saveExpenseCategory({ id: uuid(), name: catForm.name.trim(), icon: catForm.icon });
+    await saveExpenseCategory({ id: uuid(), store_id: activeStoreId, name: catForm.name.trim(), icon: catForm.icon }, activeStoreId);
     setShowCatForm(false);
     setCatForm({ name: "", icon: "📝" });
-    loadExpenses();
+    loadCategories();
   };
 
   const handleDelete = async (id: string) => {
     if (confirm("Delete this expense?")) {
-      await deleteExpense(id);
+      await deleteExpense(id, activeStoreId);
       loadExpenses();
     }
   };
@@ -131,7 +152,7 @@ export default function ExpenseScreen() {
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Total Expenses</div>
-          <div className="text-lg font-bold font-display text-red-400">₹{totalExpenses.toFixed(2)}</div>
+          <div className="text-lg font-bold font-display text-red-400">{curr}{totalExpenses.toFixed(2)}</div>
         </div>
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Transactions</div>
@@ -139,7 +160,7 @@ export default function ExpenseScreen() {
         </div>
         <div className="card p-4">
           <div className="text-gray-400 text-sm">Avg per Transaction</div>
-          <div className="text-lg font-bold font-display">₹{expenses.length > 0 ? (totalExpenses / expenses.length).toFixed(2) : "0.00"}</div>
+          <div className="text-lg font-bold font-display">{curr}{expenses.length > 0 ? (totalExpenses / expenses.length).toFixed(2) : "0.00"}</div>
         </div>
       </div>
 
@@ -177,7 +198,7 @@ export default function ExpenseScreen() {
                 </div>
               </div>
               <div className="flex items-center gap-4">
-                <div className="font-bold text-red-400">₹{expense.amount.toFixed(2)}</div>
+                <div className="font-bold text-red-400">{curr}{expense.amount.toFixed(2)}</div>
                 <button onClick={() => handleDelete(expense.id)} className="btn-ghost p-2 text-red-400"><Trash2 size={18} /></button>
               </div>
             </div>
@@ -196,7 +217,7 @@ export default function ExpenseScreen() {
                <div>
                  <label className="block text-sm text-gray-400 mb-1">Category</label>
                  <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="w-full">
-                   {categories.map((c) => (<option key={c.id} value={c.name}>{c.icon} {c.name}</option>))}
+                   {categories.length > 0 ? categories.map((c) => (<option key={c.id} value={c.name}>{c.icon} {c.name}</option>)) : defaultCategories.map(c => (<option key={c.id} value={c.name}>{c.icon} {c.name}</option>))}
                  </select>
                </div>
                <div>
@@ -232,7 +253,7 @@ export default function ExpenseScreen() {
            <div className="card p-6 w-96 fade-in">
              <h2 className="text-base font-semibold mb-4">Manage Categories</h2>
              <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
-               {categories.map((cat) => (
+               {(categories.length > 0 ? categories : defaultCategories).map((cat) => (
                 <div key={cat.id} className="flex items-center gap-2 p-2 rounded-lg" style={{ background: "#1E1E26" }}>
                   <span>{cat.icon}</span>
                   <span className="text-sm">{cat.name}</span>

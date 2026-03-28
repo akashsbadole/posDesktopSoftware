@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react";
 import { Plus, Trash2, RefreshCw, Calendar, Clock, Users, Phone } from "lucide-react";
 import { getReservations, saveReservation, deleteReservation, dbGetTables, Reservation, Table } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
 
 export default function ReservationsScreen() {
+  const { activeStoreId } = useSettingsStore();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,8 +25,8 @@ export default function ReservationsScreen() {
   const fetchData = async () => {
     try {
       const [resData, tableData] = await Promise.all([
-        getReservations(selectedDate),
-        dbGetTables(),
+        getReservations(selectedDate, activeStoreId),
+        dbGetTables(activeStoreId),
       ]);
       setReservations(resData);
       setTables(tableData);
@@ -35,13 +37,14 @@ export default function ReservationsScreen() {
     }
   };
 
-  useEffect(() => { fetchData(); }, [selectedDate]);
+  useEffect(() => { fetchData(); }, [selectedDate, activeStoreId]);
 
   const handleSave = async () => {
     if (!form.table_id || !form.customer_name || !form.date || !form.time) return;
     try {
       const reservation: Reservation = {
         id: uuid(),
+        store_id: activeStoreId,
         table_id: form.table_id,
         table_name: tables.find(t => t.id === form.table_id)?.name || "",
         customer_name: form.customer_name,
@@ -52,7 +55,7 @@ export default function ReservationsScreen() {
         status: "confirmed",
         notes: form.notes,
       };
-      await saveReservation(reservation);
+      await saveReservation(reservation, activeStoreId);
       setShowForm(false);
       setForm({
         table_id: "", customer_name: "", phone: "",
@@ -68,7 +71,7 @@ export default function ReservationsScreen() {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this reservation?")) return;
     try {
-      await deleteReservation(id);
+      await deleteReservation(id, activeStoreId);
       await fetchData();
     } catch (err) {
       console.error("Failed to delete reservation:", err);
