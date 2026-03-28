@@ -1,0 +1,17 @@
+
+> pos-tauri@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.2:3000
+✓ Ready in 532ms
+
+○ Compiling / ...
+ GET / 200 in 6.9s (next.js: 6.4s, application-code: 566ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1238:15)
+Persisting failed: Unable to write SST file 00000034.sst
+
+Caused by:
+    No such file or directory (os error 2)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)

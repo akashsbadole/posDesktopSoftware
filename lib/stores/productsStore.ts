@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { dbGetProducts, dbSaveProduct, dbDeleteProduct, dbUpdateStock, Product } from '@/lib/db';
+import { dbGetProducts, dbSaveProduct, dbDeleteProduct, dbUpdateStock, Product, exportProductsCsv, importProductsCsv } from '@/lib/db';
 import { useSettingsStore } from './settingsStore';
 
 interface ProductsState {
@@ -18,6 +18,8 @@ interface ProductsState {
   setSearchQuery: (query: string) => void;
   getFilteredProducts: () => Product[];
   getProductById: (id: string) => Product | undefined;
+  exportProducts: () => Promise<string>;
+  importProducts: (csvData: string) => Promise<{ imported: number; errors: number }>;
 }
 
 export const useProductsStore = create<ProductsState>((set, get) => ({
@@ -110,4 +112,16 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
   },
 
   getProductById: (id: string) => get().products.find((p) => p.id === id),
+
+  exportProducts: async () => {
+    const storeId = useSettingsStore.getState().activeStoreId;
+    return exportProductsCsv(storeId);
+  },
+
+  importProducts: async (csvData: string) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
+    const result = await importProductsCsv(csvData, storeId);
+    await get().fetchProducts();
+    return result;
+  },
 }));
