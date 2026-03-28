@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { dbGetOrders, dbSaveOrder, dbRefundOrder, updateDeliveryStatus, dbGetDailySummary, dbGetWeeklyRevenue, dbGetTopProducts, dbGetLowStock, Order } from '@/lib/db';
+import { useSettingsStore } from './settingsStore';
 
 interface DashboardData {
   revenue: number;
@@ -54,9 +55,10 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
   lowStock: [],
 
   fetchOrders: async () => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     set({ isLoading: true, error: null });
     try {
-      const orders = await dbGetOrders();
+      const orders = await dbGetOrders(storeId);
       set({ orders, isLoading: false });
     } catch (err) {
       set({ error: (err as Error).message, isLoading: false });
@@ -64,8 +66,9 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
   },
 
   saveOrder: async (order: Order) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     try {
-      await dbSaveOrder(order);
+      await dbSaveOrder(order, storeId);
       await get().fetchOrders();
     } catch (err) {
       set({ error: (err as Error).message });
@@ -74,8 +77,9 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
   },
 
   refundOrder: async (id: string, userId?: string, userName?: string) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     try {
-      await dbRefundOrder(id, userId, userName);
+      await dbRefundOrder(id, storeId, userId || "system", userName || "System");
       await get().fetchOrders();
     } catch (err) {
       set({ error: (err as Error).message });
@@ -84,8 +88,9 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
   },
 
   updateDeliveryStatus: async (id: string, status: Order['delivery_status']) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     try {
-      await updateDeliveryStatus(id, status);
+      await updateDeliveryStatus(id, status, storeId);
       set((state) => ({
         orders: state.orders.map((o) =>
           o.id === id ? { ...o, delivery_status: status } : o
@@ -98,8 +103,9 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
   },
 
   updateOrder: async (order: Order) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     try {
-      await dbSaveOrder(order);
+      await dbSaveOrder(order, storeId);
       set((state) => ({
         orders: state.orders.map((o) => o.id === order.id ? order : o)
       }));
@@ -110,13 +116,14 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
   },
 
   fetchDashboardData: async () => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     set({ isLoading: true, error: null });
     try {
       const [dashboardData, weeklyRevenue, topProducts, lowStock] = await Promise.all([
-        dbGetDailySummary(),
-        dbGetWeeklyRevenue(),
-        dbGetTopProducts(),
-        dbGetLowStock()
+        dbGetDailySummary(storeId),
+        dbGetWeeklyRevenue(storeId),
+        dbGetTopProducts(storeId),
+        dbGetLowStock(storeId)
       ]);
       set({ dashboardData, weeklyRevenue, topProducts, lowStock, isLoading: false });
     } catch (err) {

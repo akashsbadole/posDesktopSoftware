@@ -1,14 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Wallet, Plus, Minus, Search, User, CreditCard, ArrowUpRight, ArrowDownLeft } from "lucide-react";
-import { dbGetCustomers, getCustomerWallet, addWalletBalance, getWalletTransactions } from "@/lib/db";
-
-interface Customer {
-  id: string;
-  name: string;
-  phone: string;
-  loyalty_points: number;
-}
+import { dbGetCustomers, getCustomerWallet, addWalletBalance, getWalletTransactions, Customer } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 
 interface WalletData {
   customer_id: string;
@@ -27,6 +21,7 @@ interface Transaction {
 }
 
 export default function WalletScreen() {
+  const { activeStoreId } = useSettingsStore();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -37,10 +32,10 @@ export default function WalletScreen() {
 
   useEffect(() => {
     loadCustomers();
-  }, []);
+  }, [activeStoreId]);
 
   const loadCustomers = async () => {
-    const data = await dbGetCustomers();
+    const data = await dbGetCustomers(activeStoreId);
     setCustomers(data);
   };
 

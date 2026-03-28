@@ -2,10 +2,12 @@
 import { useEffect, useState } from "react";
 import { Tag, Plus, Trash2, Edit, Copy, Check, X, Percent, Calendar } from "lucide-react";
 import { getCoupons, saveCoupon, deleteCoupon } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
 
 interface Coupon {
   id: string;
+  store_id: string;
   code: string;
   discount_type: string;
   discount_value: number;
@@ -18,6 +20,7 @@ interface Coupon {
 }
 
 export default function CouponsScreen() {
+  const { settings, activeStoreId } = useSettingsStore();
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
@@ -33,18 +36,21 @@ export default function CouponsScreen() {
   });
   const [copied, setCopied] = useState("");
 
+  const curr = settings?.currency_symbol ?? "₹";
+
   useEffect(() => {
     loadCoupons();
-  }, []);
+  }, [activeStoreId]);
 
   const loadCoupons = async () => {
-    const data = await getCoupons();
-    setCoupons(data);
+    const data = await getCoupons(activeStoreId);
+    setCoupons(data as any);
   };
 
   const handleSave = async () => {
     const coupon: Coupon = {
       id: editingCoupon?.id || uuid(),
+      store_id: activeStoreId,
       code: formData.code.toUpperCase(),
       discount_type: formData.discount_type,
       discount_value: formData.discount_value,
@@ -55,7 +61,7 @@ export default function CouponsScreen() {
       valid_until: formData.valid_until,
       active: formData.active,
     };
-    await saveCoupon(coupon);
+    await saveCoupon(coupon, activeStoreId);
     setShowForm(false);
     setEditingCoupon(null);
     setFormData({
@@ -73,7 +79,7 @@ export default function CouponsScreen() {
 
   const handleDelete = async (id: string) => {
     if (confirm("Delete this coupon?")) {
-      await deleteCoupon(id);
+      await deleteCoupon(id, activeStoreId);
       loadCoupons();
     }
   };
@@ -141,13 +147,13 @@ export default function CouponsScreen() {
                   {coupon.discount_type === "percentage" ? (
                     <span className="text-green-400">{coupon.discount_value}% OFF</span>
                   ) : (
-                    <span className="text-green-400">₹{coupon.discount_value} OFF</span>
+                    <span className="text-green-400">{curr}{coupon.discount_value} OFF</span>
                   )}
                 </div>
                 <div className="space-y-1 text-sm text-gray-400 mb-3">
                   <div className="flex justify-between">
                     <span>Min Order:</span>
-                    <span>₹{coupon.min_order_amount}</span>
+                    <span>{curr}{coupon.min_order_amount}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Used:</span>
@@ -199,7 +205,7 @@ export default function CouponsScreen() {
                     className="w-full"
                   >
                     <option value="percentage">Percentage (%)</option>
-                    <option value="fixed">Fixed Amount (₹)</option>
+                    <option value="fixed">Fixed Amount ({curr})</option>
                   </select>
                 </div>
                 <div>
@@ -214,7 +220,7 @@ export default function CouponsScreen() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">Min Order (₹)</label>
+                  <label className="block text-sm text-gray-400 mb-1">Min Order ({curr})</label>
                   <input
                     type="number"
                     value={formData.min_order_amount}

@@ -3,17 +3,24 @@ import { useEffect, useState } from "react";
 import { Table } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 import { Plus, Trash2, Users, X, Check, GripVertical } from "lucide-react";
-import { useTablesStore } from "@/lib/stores";
+import { useTablesStore, useSettingsStore, useStoresStore } from "@/lib/stores";
 
 interface TableManagerProps {
   onClose?: () => void;
   isOpen?: boolean;
 }
 
+import { getIndustryLabels } from "@/lib/industry";
+
 export default function TableManager({ onClose, isOpen = true }: TableManagerProps) {
+  const { activeStoreId } = useSettingsStore();
+  const { stores } = useStoresStore();
   const { tables, isLoading, fetchTables, addTable, deleteTable, setTableStatus, updateTable } = useTablesStore();
   const [editingTable, setEditingTable] = useState<Table | null>(null);
   const [showModal, setShowModal] = useState(isOpen);
+
+  const activeStore = stores.find(s => s.id === activeStoreId);
+  const labels = getIndustryLabels(activeStore?.industry || 'food');
 
   useEffect(() => {
     setShowModal(isOpen);
@@ -21,7 +28,7 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
 
   useEffect(() => {
     fetchTables();
-  }, []);
+  }, [activeStoreId]);
 
   const handleClose = () => {
     setShowModal(false);
@@ -50,6 +57,7 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
   const addNewTable = () => {
     const newTable: Table = {
       id: uuid(),
+      store_id: activeStoreId,
       name: `Table ${tables.length + 1}`,
       capacity: 4,
       status: "available",
@@ -97,7 +105,7 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
        <div className="card w-[700px] max-h-[80vh] overflow-hidden flex flex-col fade-in" role="dialog" aria-modal="true" aria-labelledby="table-manager-title">
          <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--border)" }}>
            <h2 id="table-manager-title" className="font-display text-base font-semibold flex items-center gap-2">
-             <Users size={20} style={{ color: "#F5C842" }} /> Table Manager
+             <Users size={20} style={{ color: "#F5C842" }} /> {labels.table} Manager
            </h2>
               <button onClick={handleClose} className="btn-ghost py-1 px-3"><X size={18} /></button>
          </div>
@@ -119,7 +127,7 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
                   </div>
                   <div className="flex gap-1">
                     <button onClick={() => setEditingTable({ ...table })} className="btn-ghost text-xs py-1 px-2 flex-1">Edit</button>
-                    <button onClick={() => handleDelete(table.id)} className="btn-ghost text-xs py-1 px-2" style={{ color: "#E74C3C" }}><Trash2 size={12} /></button>
+                    <button onClick={() => handleDelete(table.id)} className="btn-ghost text-xs py-1 px-2" title={`Delete ${labels.table}`} style={{ color: "#E74C3C" }}><Trash2 size={12} /></button>
                   </div>
                   {table.status === "available" && (
                     <button onClick={() => handleStatusChange(table.id, "occupied")} className="mt-2 w-full btn-ghost text-xs py-1" style={{ color: "#E74C3C" }}>Mark Occupied</button>
@@ -131,7 +139,7 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
               ))}
               <button onClick={addNewTable} className="card p-3 border-dashed flex flex-col items-center justify-center" style={{ borderColor: "var(--border)" }}>
                 <Plus size={24} style={{ color: "#4A4A5A" }} />
-                <span className="text-xs mt-1" style={{ color: "#4A4A5A" }}>Add Table</span>
+                <span className="text-xs mt-1" style={{ color: "#4A4A5A" }}>Add {labels.table}</span>
               </button>
             </div>
           )}
@@ -139,7 +147,7 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
 
         {editingTable && (
           <div className="p-4 border-t" style={{ borderColor: "var(--border)" }}>
-            <h3 className="font-semibold mb-3">{tables.find(t => t.id === editingTable.id) ? "Edit" : "Add"} Table</h3>
+            <h3 className="font-semibold mb-3">{tables.find(t => t.id === editingTable.id) ? "Edit" : "Add"} {labels.table}</h3>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Name</label>

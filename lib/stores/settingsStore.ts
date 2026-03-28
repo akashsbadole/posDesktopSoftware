@@ -4,6 +4,7 @@ import { dbGetSettings, dbSaveSettings, Settings } from '@/lib/db';
 
 interface SettingsState {
   settings: Settings;
+  activeStoreId: string;
   isLoading: boolean;
   error: string | null;
   isDarkMode: boolean;
@@ -11,10 +12,11 @@ interface SettingsState {
   saveSettings: (settings: Partial<Settings>) => Promise<void>;
   setDarkMode: (isDarkMode: boolean) => void;
   updateCurrency: (currency: string, currencySymbol: string) => Promise<void>;
+  setActiveStore: (id: string) => void;
 }
 
 const defaultSettings: Settings = {
-  store_name: 'My POS Store',
+  store_name: process.env.NEXT_PUBLIC_DEFAULT_STORE_NAME || 'My POS Store',
   currency: 'USD',
   currency_symbol: '$',
   country: 'US',
@@ -25,14 +27,14 @@ const defaultSettings: Settings = {
   tax_id: '',
   address: '123 Main Street, City',
   phone: '+1 234 567 890',
-  neon_url: '',
+  neon_url: process.env.NEXT_PUBLIC_NEON_URL || '',
   business_name: '',
   receipt_save_path: '',
   language: 'en',
   dark_mode: false,
   offline_mode: true,
   whatsapp_enabled: false,
-  whatsapp_api_url: '',
+  whatsapp_api_url: process.env.NEXT_PUBLIC_WHATSAPP_API || '',
   twilio_sid: '',
   twilio_token: '',
   twilio_phone: '',
@@ -59,6 +61,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
       settings: defaultSettings,
+      activeStoreId: process.env.NEXT_PUBLIC_DEFAULT_STORE_ID || 'default',
       isLoading: false,
       error: null,
       isDarkMode: false,
@@ -66,7 +69,7 @@ export const useSettingsStore = create<SettingsState>()(
       fetchSettings: async () => {
         set({ isLoading: true, error: null });
         try {
-          const settings = await dbGetSettings();
+          const settings = await dbGetSettings(get().activeStoreId);
           set({ settings, isLoading: false });
         } catch (err) {
           set({ error: (err as Error).message, isLoading: false });
@@ -75,9 +78,9 @@ export const useSettingsStore = create<SettingsState>()(
 
       saveSettings: async (newSettings: Partial<Settings>) => {
         const updated = { ...get().settings, ...newSettings };
-        await dbSaveSettings(updated);
+        await dbSaveSettings(updated, get().activeStoreId);
         // Fetch fresh settings from database to ensure consistency
-        const freshSettings = await dbGetSettings();
+        const freshSettings = await dbGetSettings(get().activeStoreId);
         set({ settings: freshSettings });
       },
 
@@ -89,15 +92,23 @@ export const useSettingsStore = create<SettingsState>()(
           currency, 
           currency_symbol: currencySymbol 
         };
-        await dbSaveSettings(updated);
+        await dbSaveSettings(updated, get().activeStoreId);
         // Fetch fresh settings from database to ensure consistency
-        const freshSettings = await dbGetSettings();
+        const freshSettings = await dbGetSettings(get().activeStoreId);
         set({ settings: freshSettings });
+      },
+
+      setActiveStore: (id) => {
+        set({ activeStoreId: id });
+        get().fetchSettings();
       },
     }),
     {
-      name: 'pos-settings',
-      partialize: (state) => ({ isDarkMode: state.isDarkMode }),
+      name: 'pos-settings-v2',
+      partialize: (state) => ({
+        isDarkMode: state.isDarkMode,
+        activeStoreId: state.activeStoreId
+      }),
     }
   )
 );

@@ -2,8 +2,10 @@
 import { useState, useEffect } from "react";
 import { FileText, Clock, User, RefreshCw } from "lucide-react";
 import { getActivityLogs, ActivityLog as ActivityLogType } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 
 export default function ActivityLogsScreen() {
+  const { activeStoreId } = useSettingsStore();
   const [logs, setLogs] = useState<ActivityLogType[]>([]);
   const [loading, setLoading] = useState(true);
   const [limit, setLimit] = useState(50);
@@ -11,7 +13,7 @@ export default function ActivityLogsScreen() {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await getActivityLogs(limit);
+      const data = await getActivityLogs(activeStoreId, limit);
       setLogs(data);
     } catch (e) {
       console.error("Failed to load logs", e);
@@ -19,7 +21,7 @@ export default function ActivityLogsScreen() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [limit]);
+  useEffect(() => { load(); }, [limit, activeStoreId]);
 
   const getActionColor = (action: string) => {
     switch (action.toLowerCase()) {

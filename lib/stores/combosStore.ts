@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { dbGetCombos, dbSaveCombo, dbDeleteCombo, dbToggleCombo, Combo } from '@/lib/db';
+import { useSettingsStore } from './settingsStore';
 
 interface CombosState {
   combos: Combo[];
@@ -18,9 +19,10 @@ export const useCombosStore = create<CombosState>((set, get) => ({
   error: null,
 
   fetchCombos: async () => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     set({ isLoading: true, error: null });
     try {
-      const combos = await dbGetCombos();
+      const combos = await dbGetCombos(storeId);
       set({ combos, isLoading: false });
     } catch (err) {
       set({ error: (err as Error).message, isLoading: false });
@@ -28,8 +30,9 @@ export const useCombosStore = create<CombosState>((set, get) => ({
   },
 
   saveCombo: async (combo: Combo) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     try {
-      await dbSaveCombo(combo);
+      await dbSaveCombo(combo, storeId);
       await get().fetchCombos();
     } catch (err) {
       set({ error: (err as Error).message });
@@ -38,8 +41,9 @@ export const useCombosStore = create<CombosState>((set, get) => ({
   },
 
   deleteCombo: async (id: string) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     try {
-      await dbDeleteCombo(id);
+      await dbDeleteCombo(id, storeId);
       await get().fetchCombos();
     } catch (err) {
       set({ error: (err as Error).message });
@@ -48,8 +52,9 @@ export const useCombosStore = create<CombosState>((set, get) => ({
   },
 
   toggleCombo: async (id: string, isActive: boolean) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     try {
-      await dbToggleCombo(id, isActive);
+      await dbToggleCombo(id, isActive, storeId);
       await get().fetchCombos();
     } catch (err) {
       set({ error: (err as Error).message });

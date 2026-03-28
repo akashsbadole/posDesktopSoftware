@@ -7,3 +7,4 @@ export { useAlertsStore } from './alertsStore';
 export { useSettingsStore } from './settingsStore';
 export { useStaffStore } from './staffStore';
 export { useCombosStore } from './combosStore';
+export { useStoresStore } from './storesStore';

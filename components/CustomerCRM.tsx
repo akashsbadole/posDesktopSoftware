@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { dbGetCustomers, dbSaveCustomer, dbGetCustomerOrders, dbAddLoyaltyPoints, Customer, Order } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
 import { X, Users, Star, History, Plus, Search, Phone, Mail } from "lucide-react";
 
@@ -10,6 +11,7 @@ interface CustomerCRMProps {
 }
 
 export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps) {
+  const { settings, activeStoreId } = useSettingsStore();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
@@ -26,6 +28,8 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
     visits: 0,
   });
 
+  const curr = settings?.currency_symbol ?? "₹";
+
   useEffect(() => {
     setShowModal(isOpen);
   }, [isOpen]);
@@ -37,12 +41,12 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
 
   useEffect(() => {
     loadCustomers();
-  }, []);
+  }, [activeStoreId]);
 
   const loadCustomers = async () => {
     setLoading(true);
     try {
-      const data = await dbGetCustomers();
+      const data = await dbGetCustomers(activeStoreId);
       setCustomers(data);
     } catch (err) {
       console.error("Failed to load customers:", err);
@@ -53,7 +57,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
   const handleSelectCustomer = async (customer: Customer) => {
     setSelectedCustomer(customer);
     try {
-      const orders = await dbGetCustomerOrders(customer.phone);
+      const orders = await dbGetCustomerOrders(customer.phone, activeStoreId);
       setCustomerOrders(orders);
     } catch (err) {
       console.error("Failed to load customer orders:", err);
@@ -65,6 +69,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
     try {
       const customer: Customer = {
         id: uuid(),
+        store_id: activeStoreId,
         name: newCustomer.name!,
         phone: newCustomer.phone!,
         email: newCustomer.email || "",
@@ -73,7 +78,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
         visits: 0,
         created_at: new Date().toISOString(),
       };
-      await dbSaveCustomer(customer);
+      await dbSaveCustomer(customer, activeStoreId);
       await loadCustomers();
       setShowAddForm(false);
       setNewCustomer({ name: "", phone: "", email: "", loyalty_points: 0, total_spent: 0, visits: 0 });
@@ -141,7 +146,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                       </div>
                     </div>
                     <div className="text-xs mt-1" style={{ color: "#4A4A5A" }}>
-                      {customer.phone} • {customer.visits} visits • ₹{customer.total_spent.toFixed(0)}
+                      {customer.phone} • {customer.visits} visits • {curr}{customer.total_spent.toFixed(0)}
                     </div>
                   </div>
                 ))}
@@ -173,7 +178,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                     <div className="text-xs" style={{ color: "#4A4A5A" }}>Visits</div>
                   </div>
                   <div className="p-3 rounded-lg text-center" style={{ background: "#1E1E26" }}>
-                    <div className="text-lg font-bold font-display">₹{selectedCustomer.total_spent.toFixed(0)}</div>
+                    <div className="text-lg font-bold font-display">{curr}{selectedCustomer.total_spent.toFixed(0)}</div>
                     <div className="text-xs" style={{ color: "#4A4A5A" }}>Total Spent</div>
                   </div>
                 </div>
@@ -189,11 +194,11 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                       <div key={order.id} className="flex items-center justify-between p-2 rounded text-sm" style={{ background: "#141418" }}>
                         <div>
                           <div className="text-xs" style={{ color: "#4A4A5A" }}>
-                            {new Date(order.created_at).toLocaleDateString("en-IN")}
+                            {new Date(order.created_at).toLocaleDateString()}
                           </div>
                           <div>{order.items.length} items</div>
                         </div>
-                        <div className="font-medium" style={{ color: "#2ECC71" }}>₹{order.total.toFixed(0)}</div>
+                        <div className="font-medium" style={{ color: "#2ECC71" }}>{curr}{order.total.toFixed(0)}</div>
                       </div>
                     ))}
                   </div>

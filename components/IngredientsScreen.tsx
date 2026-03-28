@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react";
 import { Plus, Trash2, RefreshCw, Wheat, AlertTriangle } from "lucide-react";
 import { getIngredients, saveIngredient, deleteIngredient, getRecipes, saveRecipe, dbGetProducts, Ingredient, Recipe, Product } from "@/lib/db";
+import { useSettingsStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
 
 export default function IngredientsScreen() {
+  const { activeStoreId } = useSettingsStore();
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -13,15 +15,15 @@ export default function IngredientsScreen() {
   const [activeTab, setActiveTab] = useState<"ingredients" | "recipes">("ingredients");
   const [showIngForm, setShowIngForm] = useState(false);
   const [showRecipeForm, setShowRecipeForm] = useState(false);
-  const [ingForm, setIngForm] = useState<Ingredient>({ id: "", name: "", stock: 0, unit: "kg", reorder_level: 0 });
-  const [recipeForm, setRecipeForm] = useState<Recipe>({ id: "", product_id: "", ingredient_id: "", quantity: 0 });
+  const [ingForm, setIngForm] = useState<Ingredient>({ id: "", store_id: activeStoreId, name: "", stock: 0, unit: "kg", reorder_level: 0 });
+  const [recipeForm, setRecipeForm] = useState<Recipe>({ id: "", store_id: activeStoreId, product_id: "", ingredient_id: "", quantity: 0 });
 
   const fetchData = async () => {
     try {
       const [ingData, recipeData, prodData] = await Promise.all([
-        getIngredients(),
-        getRecipes(),
-        dbGetProducts(),
+        getIngredients(activeStoreId),
+        getRecipes(activeStoreId),
+        dbGetProducts(activeStoreId),
       ]);
       setIngredients(ingData);
       setRecipes(recipeData);
@@ -33,15 +35,15 @@ export default function IngredientsScreen() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [activeStoreId]);
 
   const handleSaveIngredient = async () => {
     if (!ingForm.name.trim()) return;
     try {
-      const ing = { ...ingForm, id: ingForm.id || uuid() };
-      await saveIngredient(ing);
+      const ing = { ...ingForm, id: ingForm.id || uuid(), store_id: activeStoreId };
+      await saveIngredient(ing, activeStoreId);
       setShowIngForm(false);
-      setIngForm({ id: "", name: "", stock: 0, unit: "kg", reorder_level: 0 });
+      setIngForm({ id: "", store_id: activeStoreId, name: "", stock: 0, unit: "kg", reorder_level: 0 });
       await fetchData();
     } catch (err) {
       console.error("Failed to save ingredient:", err);
@@ -51,7 +53,7 @@ export default function IngredientsScreen() {
   const handleDeleteIngredient = async (id: string) => {
     if (!confirm("Delete this ingredient?")) return;
     try {
-      await deleteIngredient(id);
+      await deleteIngredient(id, activeStoreId);
       await fetchData();
     } catch (err) {
       console.error("Failed to delete ingredient:", err);
@@ -61,10 +63,10 @@ export default function IngredientsScreen() {
   const handleSaveRecipe = async () => {
     if (!recipeForm.product_id || !recipeForm.ingredient_id || recipeForm.quantity <= 0) return;
     try {
-      const recipe = { ...recipeForm, id: recipeForm.id || uuid() };
-      await saveRecipe(recipe);
+      const recipe = { ...recipeForm, id: recipeForm.id || uuid(), store_id: activeStoreId };
+      await saveRecipe(recipe, activeStoreId);
       setShowRecipeForm(false);
-      setRecipeForm({ id: "", product_id: "", ingredient_id: "", quantity: 0 });
+      setRecipeForm({ id: "", store_id: activeStoreId, product_id: "", ingredient_id: "", quantity: 0 });
       await fetchData();
     } catch (err) {
       console.error("Failed to save recipe:", err);
@@ -116,7 +118,7 @@ export default function IngredientsScreen() {
       {activeTab === "ingredients" && (
         <>
           <div className="flex justify-end mb-4">
-            <button onClick={() => { setIngForm({ id: "", name: "", stock: 0, unit: "kg", reorder_level: 0 }); setShowIngForm(true); }} className="btn-accent py-2 px-4 flex items-center gap-2 text-sm">
+            <button onClick={() => { setIngForm({ id: "", store_id: activeStoreId, name: "", stock: 0, unit: "kg", reorder_level: 0 }); setShowIngForm(true); }} className="btn-accent py-2 px-4 flex items-center gap-2 text-sm">
               <Plus size={16} /> Add Ingredient
             </button>
           </div>
@@ -208,7 +210,7 @@ export default function IngredientsScreen() {
       {activeTab === "recipes" && (
         <>
           <div className="flex justify-end mb-4">
-            <button onClick={() => { setRecipeForm({ id: "", product_id: "", ingredient_id: "", quantity: 0 }); setShowRecipeForm(true); }} className="btn-accent py-2 px-4 flex items-center gap-2 text-sm">
+            <button onClick={() => { setRecipeForm({ id: "", store_id: activeStoreId, product_id: "", ingredient_id: "", quantity: 0 }); setShowRecipeForm(true); }} className="btn-accent py-2 px-4 flex items-center gap-2 text-sm">
               <Plus size={16} /> Add Recipe Link
             </button>
           </div>

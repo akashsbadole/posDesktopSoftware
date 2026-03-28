@@ -9,19 +9,19 @@ interface CrashRecoveryProps {
 }
 
 export default function CrashRecovery({ onComplete }: CrashRecoveryProps) {
+  const { settings, activeStoreId } = useSettingsStore();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const { settings } = useSettingsStore();
   const curr = settings?.currency_symbol ?? "₹";
 
   useEffect(() => {
     loadPendingOrders();
-  }, []);
+  }, [activeStoreId]);
 
   const loadPendingOrders = async () => {
     setLoading(true);
     try {
-      const data = await dbGetPendingOrders();
+      const data = await dbGetPendingOrders(activeStoreId);
       setOrders(data);
     } catch (err) {
       console.error("Failed to load pending orders:", err);
@@ -32,7 +32,7 @@ export default function CrashRecovery({ onComplete }: CrashRecoveryProps) {
   const handleDiscardOrder = async (id: string) => {
     if (!confirm("Are you sure you want to discard this order?")) return;
     try {
-      await dbDeletePendingOrder(id);
+      await dbDeletePendingOrder(id, activeStoreId);
       const updated = orders.filter(o => o.id !== id);
       setOrders(updated);
        if (updated.length === 0) onComplete?.();
@@ -45,7 +45,7 @@ export default function CrashRecovery({ onComplete }: CrashRecoveryProps) {
     if (!confirm("Discard all pending orders? This cannot be undone.")) return;
      try {
        for (const order of orders) {
-         await dbDeletePendingOrder(order.id);
+         await dbDeletePendingOrder(order.id, activeStoreId);
        }
        setOrders([]);
      } catch (err) {

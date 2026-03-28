@@ -1,11 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, X, Check, Search, RefreshCw, Package, Image, Tag, Star, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, Search, RefreshCw, Package, Image, Tag, Star, GripVertical, Clock, ShieldCheck, Calendar } from "lucide-react";
 import { dbSaveProduct, dbDeleteProduct, Product, dbGetCombos, dbSaveCombo, dbDeleteCombo, dbToggleCombo, Combo, ComboItem } from "@/lib/db";
-import { useProductsStore, useSettingsStore } from "@/lib/stores";
+import { useProductsStore, useSettingsStore, useStoresStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
 
-const EMPTY_PRODUCT: Product = { id: "", name: "", price: 0, category: "Food", stock: 0, barcode: "", tax: 18, image_url: "", is_combo: false };
+const EMPTY_PRODUCT: Product = { id: "", store_id: "", name: "", price: 0, category: "Food", stock: 0, barcode: "", tax: 18, image_url: "" };
 const CATEGORIES = ["Beverages", "Food", "Snacks", "Bakery", "Electronics", "Other"];
 const ITEMS_PER_PAGE = 30;
 
@@ -33,6 +33,7 @@ const validateProduct = (product: Product): Record<string, string> => {
 
 const EMPTY_COMBO: Combo = {
   id: "",
+  store_id: "",
   name: "",
   description: "",
   items: [],
@@ -43,8 +44,12 @@ const EMPTY_COMBO: Combo = {
 };
 
 export default function ProductsScreen() {
+  const { activeStoreId } = useSettingsStore();
+  const { stores } = useStoresStore();
   const { products, isLoading, fetchProducts, addProduct, updateProduct, deleteProduct } = useProductsStore();
   const { settings, fetchSettings } = useSettingsStore();
+
+  const activeStore = stores.find(s => s.id === activeStoreId);
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Product | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -58,11 +63,11 @@ export default function ProductsScreen() {
     fetchProducts(); 
     fetchSettings();
     fetchCombos();
-  }, []);
+  }, [activeStoreId]);
 
   const fetchCombos = async () => {
     try {
-      const data = await dbGetCombos();
+      const data = await dbGetCombos(activeStoreId);
       setCombos(data);
     } catch (err) {
       console.error("Failed to fetch combos:", err);
@@ -88,7 +93,7 @@ export default function ProductsScreen() {
       return;
     }
     try {
-      const product = { ...editing, id: editing.id || uuid() };
+      const product = { ...editing, id: editing.id || uuid(), store_id: activeStoreId };
       if (editing.id) {
         await updateProduct(product);
       } else {
@@ -125,12 +130,13 @@ export default function ProductsScreen() {
     const combo: Combo = {
       ...editingCombo,
       id: editingCombo.id || uuid(),
+      store_id: activeStoreId,
       items: comboItems,
       discount_amount: discount,
       discount_percent: discountPercent,
     };
     
-    await dbSaveCombo(combo);
+    await dbSaveCombo(combo, activeStoreId);
     await fetchCombos();
     setEditingCombo(null);
     setComboItems([]);
@@ -138,12 +144,12 @@ export default function ProductsScreen() {
 
   const handleDeleteCombo = async (id: string) => {
     if (!confirm("Delete this combo?")) return;
-    await dbDeleteCombo(id);
+    await dbDeleteCombo(id, activeStoreId);
     await fetchCombos();
   };
 
   const handleToggleCombo = async (id: string, currentActive: boolean) => {
-    await dbToggleCombo(id, !currentActive);
+    await dbToggleCombo(id, !currentActive, activeStoreId);
     await fetchCombos();
   };
 
@@ -209,12 +215,12 @@ export default function ProductsScreen() {
             </div>
             <button onClick={() => fetchProducts()} className="btn-ghost py-2 px-3"><RefreshCw size={14} className={isLoading ? "spin" : ""} /></button>
             {view === "products" && (
-              <button className="btn-accent flex items-center gap-2 text-sm" onClick={() => setEditing({ ...EMPTY_PRODUCT })}>
+              <button className="btn-accent flex items-center gap-2 text-sm" onClick={() => setEditing({ ...EMPTY_PRODUCT, store_id: activeStoreId })}>
                 <Plus size={15} /> Add Product
               </button>
             )}
             {view === "combos" && (
-              <button className="btn-accent flex items-center gap-2 text-sm" onClick={() => { setEditingCombo({ ...EMPTY_COMBO }); setComboItems([]); }}>
+              <button className="btn-accent flex items-center gap-2 text-sm" onClick={() => { setEditingCombo({ ...EMPTY_COMBO, store_id: activeStoreId }); setComboItems([]); }}>
                 <Plus size={15} /> Create Combo
               </button>
             )}
@@ -269,11 +275,21 @@ export default function ProductsScreen() {
                         </td>
                         <td className="text-right pr-3">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => setEditing({ ...p })} className="p-1.5 rounded-lg" style={{ color: "#9090A8" }}
+                            <button
+                              onClick={() => setEditing({ ...p })}
+                              className="p-1.5 rounded-lg"
+                              style={{ color: "#9090A8" }}
+                              title="Edit product"
+                              aria-label="Edit product"
                               onMouseEnter={(e) => (e.currentTarget.style.color = "#F5C842")} onMouseLeave={(e) => (e.currentTarget.style.color = "#9090A8")}>
                               <Pencil size={14} />
                             </button>
-                            <button onClick={() => handleDelete(p.id)} className="p-1.5 rounded-lg" style={{ color: "#9090A8" }}
+                            <button
+                              onClick={() => handleDelete(p.id)}
+                              className="p-1.5 rounded-lg"
+                              style={{ color: "#9090A8" }}
+                              title="Delete product"
+                              aria-label="Delete product"
                               onMouseEnter={(e) => (e.currentTarget.style.color = "#E74C3C")} onMouseLeave={(e) => (e.currentTarget.style.color = "#9090A8")}>
                               <Trash2 size={14} />
                             </button>
@@ -301,7 +317,7 @@ export default function ProductsScreen() {
                   <Tag size={48} className="mb-4 opacity-50" />
                   <p className="text-base mb-2">No Combos Yet</p>
                   <p className="text-sm">Create combo deals to boost sales</p>
-                  <button onClick={() => { setEditingCombo({ ...EMPTY_COMBO }); setComboItems([]); }} className="btn-accent mt-4">
+                  <button onClick={() => { setEditingCombo({ ...EMPTY_COMBO, store_id: activeStoreId }); setComboItems([]); }} className="btn-accent mt-4">
                     <Plus size={15} className="inline mr-2" /> Create Combo
                   </button>
                 </div>
@@ -380,7 +396,7 @@ export default function ProductsScreen() {
           <div className="space-y-4">
             <div>
               <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Name *</label>
-              <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Product name" />
+              <input name="name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Product name" />
               {errors.name && <p className="text-xs mt-1" style={{ color: "#E74C3C" }}>{errors.name}</p>}
             </div>
             
@@ -388,6 +404,7 @@ export default function ProductsScreen() {
               <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Image URL</label>
               <div className="flex gap-2">
                 <input 
+                  name="image_url"
                   value={editing.image_url || ""} 
                   onChange={(e) => setEditing({ ...editing, image_url: e.target.value })} 
                   placeholder="https://example.com/image.jpg"
@@ -411,25 +428,66 @@ export default function ProductsScreen() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Price ({curr})</label>
-                <input type="number" value={editing.price} onChange={(e) => setEditing({ ...editing, price: parseFloat(e.target.value) || 0 })} min={0} />
+                <input name="price" type="number" value={editing.price} onChange={(e) => setEditing({ ...editing, price: parseFloat(e.target.value) || 0 })} min={0} />
                 {errors.price && <p className="text-xs mt-1" style={{ color: "#E74C3C" }}>{errors.price}</p>}
               </div>
               <div>
                 <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Tax %</label>
-                <input type="number" value={editing.tax} onChange={(e) => setEditing({ ...editing, tax: parseFloat(e.target.value) || 0 })} min={0} max={100} />
+                <input name="tax" type="number" value={editing.tax} onChange={(e) => setEditing({ ...editing, tax: parseFloat(e.target.value) || 0 })} min={0} max={100} />
               </div>
             </div>
             
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Stock</label>
-                <input type="number" value={editing.stock} onChange={(e) => setEditing({ ...editing, stock: parseInt(e.target.value) || 0 })} min={0} />
+                <input name="stock" type="number" value={editing.stock} onChange={(e) => setEditing({ ...editing, stock: parseInt(e.target.value) || 0 })} min={0} />
                 {errors.stock && <p className="text-xs mt-1" style={{ color: "#E74C3C" }}>{errors.stock}</p>}
               </div>
               <div>
                 <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Barcode</label>
-                <input value={editing.barcode || ""} onChange={(e) => setEditing({ ...editing, barcode: e.target.value })} placeholder="Optional" />
+                <input name="barcode" value={editing.barcode || ""} onChange={(e) => setEditing({ ...editing, barcode: e.target.value })} placeholder="Optional" />
               </div>
+            </div>
+
+            {/* Industry Specific Metadata */}
+            <div className="pt-4 border-t border-[#1E1E26] space-y-4">
+               <h3 className="text-xs font-bold uppercase tracking-wider text-[#4A4A5A]">Industry Specific Info</h3>
+
+               {activeStore?.industry === 'salon_spa' && (
+                 <div>
+                   <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}><Clock size={12} className="inline mr-1" /> Duration (minutes)</label>
+                   <input
+                     type="number"
+                     value={editing.metadata?.duration || ""}
+                     onChange={(e) => setEditing({ ...editing, metadata: { ...editing.metadata, duration: parseInt(e.target.value) || 0 } })}
+                     placeholder="e.g., 45"
+                   />
+                 </div>
+               )}
+
+               {(activeStore?.industry === 'retail' || activeStore?.industry === 'repair_shop') && (
+                 <label className="flex items-center gap-2 cursor-pointer">
+                   <input
+                     type="checkbox"
+                     checked={editing.metadata?.track_serial || false}
+                     onChange={(e) => setEditing({ ...editing, metadata: { ...editing.metadata, track_serial: e.target.checked } })}
+                     className="w-4 h-4 rounded"
+                   />
+                   <span className="text-sm"><ShieldCheck size={12} className="inline mr-1" /> Track IMEI / Serial Number</span>
+                 </label>
+               )}
+
+               {activeStore?.industry === 'pharmacy' && (
+                 <div>
+                   <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}><Calendar size={12} className="inline mr-1" /> Default Expiry Months</label>
+                   <input
+                     type="number"
+                     value={editing.metadata?.expiry_months || ""}
+                     onChange={(e) => setEditing({ ...editing, metadata: { ...editing.metadata, expiry_months: parseInt(e.target.value) || 0 } })}
+                     placeholder="e.g., 24"
+                   />
+                 </div>
+               )}
             </div>
 
             <div className="flex gap-2 pt-4">

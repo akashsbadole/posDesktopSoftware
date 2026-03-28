@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getUsers, dbClockIn, dbClockOut, dbGetTodayAttendance, dbIsClockedIn, User, StaffAttendance } from '@/lib/db';
+import { useSettingsStore } from './settingsStore';
 
 interface StaffState {
   users: User[];
@@ -34,8 +35,9 @@ export const useStaffStore = create<StaffState>((set, get) => ({
   },
 
   fetchTodayAttendance: async () => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     try {
-      const todayAttendance = await dbGetTodayAttendance();
+      const todayAttendance = await dbGetTodayAttendance(storeId);
       set({ todayAttendance });
     } catch (err) {
       console.error('Failed to fetch attendance:', err);
@@ -43,19 +45,22 @@ export const useStaffStore = create<StaffState>((set, get) => ({
   },
 
   clockIn: async (userId: string, userName: string) => {
-    await dbClockIn(userId, userName);
+    const storeId = useSettingsStore.getState().activeStoreId;
+    await dbClockIn(userId, userName, storeId);
     set({ currentUserClockedIn: true });
     await get().fetchTodayAttendance();
   },
 
   clockOut: async (userId: string) => {
-    await dbClockOut(userId);
+    const storeId = useSettingsStore.getState().activeStoreId;
+    await dbClockOut(userId, storeId);
     set({ currentUserClockedIn: false });
     await get().fetchTodayAttendance();
   },
 
   checkClockedIn: async (userId: string) => {
-    const isClockedIn = await dbIsClockedIn(userId);
+    const storeId = useSettingsStore.getState().activeStoreId;
+    const isClockedIn = await dbIsClockedIn(userId, storeId);
     set({ currentUserClockedIn: isClockedIn });
   },
 

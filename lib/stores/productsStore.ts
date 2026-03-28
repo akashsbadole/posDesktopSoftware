@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { dbGetProducts, dbSaveProduct, dbDeleteProduct, dbUpdateStock, Product } from '@/lib/db';
+import { useSettingsStore } from './settingsStore';
 
 interface ProductsState {
   products: Product[];
@@ -28,9 +29,10 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
   searchQuery: '',
 
   fetchProducts: async () => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     set({ isLoading: true, error: null });
     try {
-      const products = await dbGetProducts();
+      const products = await dbGetProducts(storeId);
       const categories = Array.from(new Set(products.map((p) => p.category))).sort();
       set({ products, categories, isLoading: false });
     } catch (err) {
@@ -39,8 +41,9 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
   },
 
   addProduct: async (product: Product) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     try {
-      await dbSaveProduct(product);
+      await dbSaveProduct(product, storeId);
       await get().fetchProducts();
     } catch (err) {
       set({ error: (err as Error).message });
@@ -49,8 +52,9 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
   },
 
   updateProduct: async (product: Product) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     try {
-      await dbSaveProduct(product);
+      await dbSaveProduct(product, storeId);
       await get().fetchProducts();
     } catch (err) {
       set({ error: (err as Error).message });
@@ -59,8 +63,9 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
   },
 
   deleteProduct: async (id: string) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     try {
-      await dbDeleteProduct(id);
+      await dbDeleteProduct(id, storeId);
       await get().fetchProducts();
     } catch (err) {
       set({ error: (err as Error).message });
@@ -69,6 +74,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
   },
 
   updateStock: async (id: string, delta: number) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
     const previousProducts = get().products;
     set((state) => ({
       products: state.products.map((p) =>
@@ -76,7 +82,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
       ),
     }));
     try {
-      await dbUpdateStock(id, delta);
+      await dbUpdateStock(id, delta, storeId);
     } catch (err) {
       set({ products: previousProducts, error: (err as Error).message });
       throw err;

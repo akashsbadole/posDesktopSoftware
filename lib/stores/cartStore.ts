@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Product, Order, OrderItem, calcCart } from '@/lib/db';
 import { v4 as uuid } from 'uuid';
+import { useSettingsStore } from './settingsStore';
 
 export type OrderType = 'dine_in' | 'takeaway' | 'delivery';
 export type PaymentMethod = 'cash' | 'card' | 'upi';
@@ -138,6 +139,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     const totals = calcCart(state.items, state.globalDiscount);
     return {
       id: orderId,
+      store_id: useSettingsStore.getState().activeStoreId,
       items: state.items.map((i): OrderItem => ({
         product_id: i.product.id,
         product_name: i.product.name,
