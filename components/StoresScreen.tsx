@@ -42,7 +42,7 @@ const industries = [
 
 export default function StoresScreen() {
   const { stores, fetchStores, addStore, updateStore, deleteStore, isLoading } = useStoresStore();
-  const { activeStoreId } = useSettingsStore();
+  const { activeStoreId, setActiveStore } = useSettingsStore();
   const { products, fetchProducts } = useProductsStore();
   const [isAdding, setIsAdding] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
@@ -209,9 +209,19 @@ export default function StoresScreen() {
                       <Activity size={12} />
                       {store.is_active ? 'Active' : 'Inactive'}
                     </div>
-                    <span className="text-[10px] text-muted-foreground">
-                      Added {new Date(store.created_at).toLocaleDateString()}
-                    </span>
+                    {store.id !== activeStoreId && (
+                      <button
+                        onClick={() => { setActiveStore(store.id); window.location.reload(); }}
+                        className="text-xs text-[#F5C842] hover:underline font-medium"
+                      >
+                        Switch to this store
+                      </button>
+                    )}
+                    {store.id === activeStoreId && (
+                      <span className="text-xs text-green-500 font-medium">
+                        Currently active
+                      </span>
+                    )}
                   </div>
                 </div>
               );

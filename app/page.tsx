@@ -122,6 +122,7 @@ export default function Home() {
 
   const checkPendingOrders = async () => {
     try {
+      if (!activeStoreId) return;
       const count = await dbGetPendingOrdersCount(activeStoreId);
       setPendingOrdersCount(count);
       if (count > 0) {

@@ -193,7 +193,8 @@ pub struct SyncFromResult {
     pub orders: Option<Vec<Order>>,
 }
 
-pub async fn sync_from_neon(connection_string: &str) -> SyncFromResult {
+
+pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFromResult {
     if let Err(e) = ensure_neon_schema(connection_string).await {
         return SyncFromResult { synced: 0, error: Some(e), orders: None };
     }
@@ -242,6 +243,7 @@ pub async fn sync_from_neon(connection_string: &str) -> SyncFromResult {
                     let user_name = row.get("user_name").and_then(|v| v.as_str());
                     orders.push(Order {
                         id: id.to_string(),
+                        store_id: store_id.to_string(),
                         items,
                         subtotal,
                         tax_amount,

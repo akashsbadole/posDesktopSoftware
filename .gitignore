@@ -40,3 +40,4 @@ src-tauri/icons/*.png
 
 # OS
 Thumbs.db
+nul

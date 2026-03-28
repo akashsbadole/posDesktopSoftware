@@ -126,7 +126,7 @@ export default function ProductsScreen() {
     const totalItemsPrice = comboItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     const discount = totalItemsPrice - editingCombo.combo_price;
     const discountPercent = totalItemsPrice > 0 ? (discount / totalItemsPrice) * 100 : 0;
-    
+
     const combo: Combo = {
       ...editingCombo,
       id: editingCombo.id || uuid(),
@@ -135,22 +135,37 @@ export default function ProductsScreen() {
       discount_amount: discount,
       discount_percent: discountPercent,
     };
-    
-    await dbSaveCombo(combo, activeStoreId);
-    await fetchCombos();
-    setEditingCombo(null);
-    setComboItems([]);
+
+    try {
+      await dbSaveCombo(combo, activeStoreId);
+      await fetchCombos();
+      setEditingCombo(null);
+      setComboItems([]);
+    } catch (err) {
+      console.error("Failed to save combo:", err);
+      alert("Failed to save combo. Please try again.");
+    }
   };
 
   const handleDeleteCombo = async (id: string) => {
     if (!confirm("Delete this combo?")) return;
-    await dbDeleteCombo(id, activeStoreId);
-    await fetchCombos();
+    try {
+      await dbDeleteCombo(id, activeStoreId);
+      await fetchCombos();
+    } catch (err) {
+      console.error("Failed to delete combo:", err);
+      alert("Failed to delete combo. Please try again.");
+    }
   };
 
   const handleToggleCombo = async (id: string, currentActive: boolean) => {
-    await dbToggleCombo(id, !currentActive, activeStoreId);
-    await fetchCombos();
+    try {
+      await dbToggleCombo(id, !currentActive, activeStoreId);
+      await fetchCombos();
+    } catch (err) {
+      console.error("Failed to toggle combo:", err);
+      alert("Failed to toggle combo. Please try again.");
+    }
   };
 
   const addItemToCombo = (product: Product) => {
@@ -195,8 +210,8 @@ export default function ProductsScreen() {
     <div className="h-full flex overflow-hidden">
       <div className="flex-1 flex flex-col p-5 overflow-hidden">
         <div className="flex items-center justify-between mb-5">
-          <h1 className="font-display text-xl font-bold font-display">Products</h1>
-          <div className="flex gap-2">
+           <h1 className="font-display text-xl font-bold">Products</h1>
+           <div className="flex gap-2">
             <div className="flex rounded-lg overflow-hidden" style={{ background: "#1E1E26" }}>
               <button
                 onClick={() => setView("products")}
@@ -356,7 +371,7 @@ export default function ProductsScreen() {
                       <div className="flex items-center justify-between pt-3 border-t" style={{ borderColor: "#1E1E26" }}>
                         <div>
                           <div className="text-xs line-through" style={{ color: "#4A4A5A" }}>
-                            {curr}{((combo.items.reduce((s, i) => s + i.price * i.quantity, 0) + combo.discount_amount)).toFixed(2)}
+                            {curr}{(combo.items.reduce((s, i) => s + i.price * i.quantity, 0)).toFixed(2)}
                           </div>
                           <div className="font-bold text-base" style={{ color: "#2ECC71" }}>{curr}{combo.combo_price.toFixed(2)}</div>
                           {combo.discount_percent > 0 && (

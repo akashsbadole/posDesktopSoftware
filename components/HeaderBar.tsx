@@ -1,7 +1,8 @@
 "use client";
-import { Lock, Keyboard, User, LogOut } from "lucide-react";
-import { User as UserType } from "@/lib/db";
-import { useAuthStore } from "@/lib/stores";
+import { Lock, Keyboard, User, LogOut, Building2, ChevronDown } from "lucide-react";
+import { User as UserType, Store } from "@/lib/db";
+import { useAuthStore, useSettingsStore, useStoresStore } from "@/lib/stores";
+import { useState } from "react";
 
 interface HeaderBarProps {
   user?: UserType | null;
@@ -12,6 +13,17 @@ interface HeaderBarProps {
 
 export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen }: HeaderBarProps) {
   const { logout } = useAuthStore();
+  const { activeStoreId, setActiveStore } = useSettingsStore();
+  const { stores, fetchStores } = useStoresStore();
+  const [showStoreDropdown, setShowStoreDropdown] = useState(false);
+
+  const activeStore = stores.find(s => s.id === activeStoreId);
+
+  const handleStoreChange = async (store: Store) => {
+    setActiveStore(store.id);
+    setShowStoreDropdown(false);
+    window.location.reload();
+  };
 
   const handleLogout = () => {
     logout();
@@ -66,6 +78,37 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
               ?
             </kbd>
           </span>
+        </div>
+
+        <div className="relative">
+          <button
+            onClick={() => { fetchStores(); setShowStoreDropdown(!showStoreDropdown); }}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border hover:border-[#F5C842] transition-colors"
+          >
+            <Building2 size={14} className="text-[#F5C842]" />
+            <span className="text-xs font-medium">{activeStore?.name || 'Select Store'}</span>
+            <ChevronDown size={12} />
+          </button>
+          
+          {showStoreDropdown && (
+            <div className="absolute top-full right-0 mt-1 w-48 bg-surface border border-border rounded-lg shadow-lg z-50 py-1">
+              {stores.map((store) => (
+                <button
+                  key={store.id}
+                  onClick={() => handleStoreChange(store)}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center justify-between ${
+                    store.id === activeStoreId ? 'bg-[#F5C842]/10 text-[#F5C842]' : ''
+                  }`}
+                >
+                  <span>{store.name}</span>
+                  {store.id === activeStoreId && <span className="text-xs">✓</span>}
+                </button>
+              ))}
+              {stores.length === 0 && (
+                <div className="px-3 py-2 text-sm text-muted-foreground">No stores</div>
+              )}
+            </div>
+          )}
         </div>
 
         <button

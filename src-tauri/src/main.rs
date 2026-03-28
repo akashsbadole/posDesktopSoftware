@@ -16,6 +16,14 @@ fn get_db() -> &'static Mutex<Database> {
     DB.get().expect("DB not initialized")
 }
 
+// ─── Seed Command ──────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn seed_database() -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.seed_all().map_err(|e| e.to_string())
+}
+
 // ─── Product Commands ────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -77,9 +85,9 @@ fn toggle_combo(id: String, active: bool, store_id: String) -> Result<(), String
 // ─── Order Commands ───────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn get_orders(store_id: String) -> Result<Vec<db::Order>, String> {
+fn get_orders(store_id: String, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<db::Order>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_orders(&store_id).map_err(|e| e.to_string())
+    db.get_orders(&store_id, limit, offset).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -899,7 +907,7 @@ async fn sync_from_neon(store_id: String) -> Result<neon::SyncResult, String> {
         });
     }
 
-    let result = neon::sync_from_neon(&neon_url).await;
+    let result = neon::sync_from_neon(&neon_url, &store_id).await;
 
     if let Some(orders) = &result.orders {
         let db = get_db().lock().map_err(|e| e.to_string())?;
@@ -970,11 +978,6 @@ fn main() {
             get_activity_logs,
             sync_to_neon,
             sync_from_neon,
-            save_receipt_to_file,
-            get_receipt_share_text,
-            open_whatsapp_share,
-            open_email_share,
-            print_receipt,
             get_tables,
             save_table,
             delete_table,
@@ -1010,8 +1013,6 @@ fn main() {
             get_stores,
             upsert_store,
             delete_store,
-            print_to_printer,
-            open_cash_drawer,
             open_kds_window,
             get_kds_orders,
             mark_kds_item_done,
@@ -1061,6 +1062,7 @@ fn main() {
             export_to_quickbooks,
             create_compressed_backup,
             send_whatsapp_message,
+            seed_database,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

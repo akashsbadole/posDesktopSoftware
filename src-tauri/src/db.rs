@@ -3,18 +3,28 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
+use bcrypt;
 use rand::Rng;
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::path::Path;
 
-const ENCRYPTION_KEY: &[u8; 32] = b"POS_BILLING_SECURE_KEY_32BYTES!!";
+fn get_encryption_key() -> [u8; 32] {
+    let key_str = env::var("TAURI_ENCRYPTION_KEY")
+        .unwrap_or_else(|_| "POS_BILLING_SECURE_KEY_32BYTES!!".to_string());
+    let mut key = [0u8; 32];
+    let bytes = key_str.as_bytes();
+    let len = bytes.len().min(32);
+    key[..len].copy_from_slice(&bytes[..len]);
+    key
+}
 
 fn encrypt_value(value: &str) -> String {
     if value.is_empty() {
         return String::new();
     }
-    let cipher = Aes256Gcm::new(ENCRYPTION_KEY.into());
+    let cipher = Aes256Gcm::new(&get_encryption_key().into());
     let nonce_bytes: [u8; 12] = rand::thread_rng().gen();
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher
@@ -34,7 +44,7 @@ fn decrypt_value(encrypted: &str) -> String {
     if data.len() < 12 {
         return encrypted.to_string();
     }
-    let cipher = Aes256Gcm::new(ENCRYPTION_KEY.into());
+    let cipher = Aes256Gcm::new(&get_encryption_key().into());
     let nonce = Nonce::from_slice(&data[..12]);
     let ciphertext = &data[12..];
     String::from_utf8(
@@ -577,6 +587,7 @@ impl Database {
         let db = Database { conn };
         db.init_schema()?;
         db.migrate_schema()?;
+        db.create_indexes()?;
         db.seed_if_empty()?;
         db.init_users()?;
 
@@ -633,6 +644,7 @@ impl Database {
             CREATE TABLE IF NOT EXISTS order_items (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 order_id     TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+                store_id     TEXT NOT NULL DEFAULT 'default',
                 product_id   TEXT NOT NULL,
                 product_name TEXT NOT NULL,
                 price        REAL NOT NULL,
@@ -767,6 +779,7 @@ impl Database {
             CREATE TABLE IF NOT EXISTS purchase_order_items (
                 id TEXT PRIMARY KEY,
                 po_id TEXT NOT NULL,
+                store_id TEXT NOT NULL DEFAULT 'default',
                 ingredient_id TEXT NOT NULL,
                 quantity REAL NOT NULL,
                 unit_cost REAL NOT NULL,
@@ -888,12 +901,77 @@ impl Database {
                 is_active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+        ",
+        )?;
+        Ok(())
+    }
+
+    fn create_indexes(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            CREATE INDEX IF NOT EXISTS idx_products_store_id ON products(store_id);
+            CREATE INDEX IF NOT EXISTS idx_products_store_id_created_at ON products(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_orders_store_id ON orders(store_id);
+            CREATE INDEX IF NOT EXISTS idx_orders_store_id_created_at ON orders(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
+            CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id);
+            CREATE INDEX IF NOT EXISTS idx_order_items_store_id ON order_items(store_id);
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_store_id ON activity_logs(store_id);
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_store_id_created_at ON activity_logs(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_order_id ON activity_logs(order_id);
+            CREATE INDEX IF NOT EXISTS idx_tables_store_id ON tables(store_id);
+            CREATE INDEX IF NOT EXISTS idx_staff_attendance_store_id ON staff_attendance(store_id);
+            CREATE INDEX IF NOT EXISTS idx_customers_store_id ON customers(store_id);
+            CREATE INDEX IF NOT EXISTS idx_customers_store_id_created_at ON customers(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_inventory_alerts_store_id ON inventory_alerts(store_id);
+            CREATE INDEX IF NOT EXISTS idx_inventory_alerts_product_id ON inventory_alerts(product_id);
+            CREATE INDEX IF NOT EXISTS idx_inventory_alerts_store_id_created_at ON inventory_alerts(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_refund_requests_store_id ON refund_requests(store_id);
+            CREATE INDEX IF NOT EXISTS idx_refund_requests_order_id ON refund_requests(order_id);
+            CREATE INDEX IF NOT EXISTS idx_refund_requests_store_id_created_at ON refund_requests(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_ingredients_store_id ON ingredients(store_id);
+            CREATE INDEX IF NOT EXISTS idx_ingredients_store_id_created_at ON ingredients(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_recipes_store_id ON recipes(store_id);
+            CREATE INDEX IF NOT EXISTS idx_recipes_product_id ON recipes(product_id);
+            CREATE INDEX IF NOT EXISTS idx_recipes_ingredient_id ON recipes(ingredient_id);
+            CREATE INDEX IF NOT EXISTS idx_suppliers_store_id ON suppliers(store_id);
+            CREATE INDEX IF NOT EXISTS idx_suppliers_store_id_created_at ON suppliers(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_purchase_orders_store_id ON purchase_orders(store_id);
+            CREATE INDEX IF NOT EXISTS idx_purchase_orders_store_id_created_at ON purchase_orders(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_purchase_order_items_po_id ON purchase_order_items(po_id);
+            CREATE INDEX IF NOT EXISTS idx_purchase_order_items_ingredient_id ON purchase_order_items(ingredient_id);
+            CREATE INDEX IF NOT EXISTS idx_purchase_order_items_store_id ON purchase_order_items(store_id);
+            CREATE INDEX IF NOT EXISTS idx_reservations_store_id ON reservations(store_id);
+            CREATE INDEX IF NOT EXISTS idx_reservations_table_id ON reservations(table_id);
+            CREATE INDEX IF NOT EXISTS idx_reservations_store_id_created_at ON reservations(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_shifts_store_id ON shifts(store_id);
+            CREATE INDEX IF NOT EXISTS idx_shifts_store_id_created_at ON shifts(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_expenses_store_id ON expenses(store_id);
+            CREATE INDEX IF NOT EXISTS idx_expenses_store_id_created_at ON expenses(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_expense_categories_store_id ON expense_categories(store_id);
+            CREATE INDEX IF NOT EXISTS idx_tax_rates_store_id ON tax_rates(store_id);
+            CREATE INDEX IF NOT EXISTS idx_tax_rates_store_id_created_at ON tax_rates(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_wallet_transactions_store_id ON wallet_transactions(store_id);
+            CREATE INDEX IF NOT EXISTS idx_wallet_transactions_customer_id ON wallet_transactions(customer_id);
+            CREATE INDEX IF NOT EXISTS idx_wallet_transactions_store_id_created_at ON wallet_transactions(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_coupons_store_id ON coupons(store_id);
+            CREATE INDEX IF NOT EXISTS idx_coupons_store_id_created_at ON coupons(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_day_end_reconciliations_store_id ON day_end_reconciliations(store_id);
+            CREATE INDEX IF NOT EXISTS idx_day_end_reconciliations_store_id_date ON day_end_reconciliations(store_id, date);
+            CREATE INDEX IF NOT EXISTS idx_combos_store_id ON combos(store_id);
+            CREATE INDEX IF NOT EXISTS idx_combos_store_id_created_at ON combos(store_id, created_at);
         "
         )?;
         Ok(())
     }
 
-    pub fn transfer_stock(&self, id: &str, from_store: &str, to_store: &str, qty: i64) -> Result<()> {
+    pub fn transfer_stock(
+        &self,
+        id: &str,
+        from_store: &str,
+        to_store: &str,
+        qty: i64,
+    ) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
             "UPDATE products SET stock = MAX(0, stock - ?1) WHERE id = ?2 AND store_id=?3",
@@ -908,22 +986,40 @@ impl Database {
     }
 
     fn migrate_schema(&self) -> Result<()> {
-        // Simple migration to ensure 'default' store exists
-        self.conn.execute(
-            "INSERT OR IGNORE INTO stores (id, name, industry, is_active) VALUES ('default', 'Main Store', 'food', 1)",
-            [],
-        )?;
+        let store_name = "Main Store";
+        let sql = format!(
+            "INSERT OR IGNORE INTO stores (id, name, industry, is_active) VALUES ('default', '{}', 'food', 1)",
+            store_name
+        );
+        self.conn.execute(&sql, [])?;
 
-        // Add metadata column to products if not exists
-        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN metadata TEXT", []);
-        // Add metadata column to order_items if not exists
-        let _ = self.conn.execute("ALTER TABLE order_items ADD COLUMN metadata TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE products ADD COLUMN metadata TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE order_items ADD COLUMN metadata TEXT", []);
+        let _ = self.conn.execute(
+            "ALTER TABLE order_items ADD COLUMN store_id TEXT NOT NULL DEFAULT 'default'",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE purchase_order_items ADD COLUMN store_id TEXT NOT NULL DEFAULT 'default'",
+            [],
+        );
 
         Ok(())
     }
 
+    pub fn seed_all(&self) -> Result<()> {
+        self.seed_if_empty()?;
+        Ok(())
+    }
+
     fn seed_if_empty(&self) -> Result<()> {
-        let count: i64 = self.conn.query_row("SELECT COUNT(*) FROM products", [], |r| r.get(0))?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM products", [], |r| r.get(0))?;
         if count == 0 {
             // No seeding for now to keep it clean
         }
@@ -931,7 +1027,9 @@ impl Database {
     }
 
     fn init_users(&self) -> Result<()> {
-        let count: i64 = self.conn.query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0))?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0))?;
         if count == 0 {
             let admin_pin = bcrypt::hash("1234", bcrypt::DEFAULT_COST).unwrap();
             let cashier_pin = bcrypt::hash("0000", bcrypt::DEFAULT_COST).unwrap();
@@ -951,17 +1049,440 @@ impl Database {
     // ─── Stores ───────────────────────────────────────────────────────────────────
 
     pub fn get_stores(&self) -> Result<Vec<Store>> {
-        let mut stmt = self.conn.prepare("SELECT id, name, industry, is_active, created_at FROM stores")?;
-        let stores = stmt.query_map([], |row| {
-            Ok(Store {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                industry: row.get(2)?,
-                is_active: row.get::<_, i32>(3)? == 1,
-                created_at: row.get(4)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name, industry, is_active, created_at FROM stores")?;
+        let stores = stmt
+            .query_map([], |row| {
+                Ok(Store {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    industry: row.get(2)?,
+                    is_active: row.get::<_, i32>(3)? == 1,
+                    created_at: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(stores)
+    }
+
+    pub fn verify_pin(&self, pin: &str) -> Result<Option<User>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, pin, name, role, store_id FROM users")?;
+        let user_iter = stmt.query_map([], |row| {
+            Ok((
+                User {
+                    id: row.get(0)?,
+                    name: row.get(2)?,
+                    role: row.get(3)?,
+                    store_id: row.get(4)?,
+                },
+                row.get::<_, String>(1)?,
+            ))
+        })?;
+
+        for user_res in user_iter {
+            if let Ok((user, hashed_pin)) = user_res {
+                if let Ok(verified) = bcrypt::verify(pin, &hashed_pin) {
+                    if verified {
+                        return Ok(Some(user));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn change_pin(&self, user_id: &str, new_pin: &str) -> Result<()> {
+        let hashed = bcrypt::hash(new_pin, bcrypt::DEFAULT_COST)
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        self.conn.execute(
+            "UPDATE users SET pin = ?1 WHERE id = ?2",
+            params![hashed, user_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_users(&self) -> Result<Vec<User>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name, role, store_id FROM users")?;
+        let users = stmt
+            .query_map([], |row| {
+                Ok(User {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    role: row.get(2)?,
+                    store_id: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(users)
+    }
+
+    pub fn get_pending_orders_count(&self, store_id: &str) -> Result<i64> {
+        self.conn.query_row(
+            "SELECT COUNT(*) FROM orders WHERE store_id = ?1 AND status = 'pending'",
+            params![store_id],
+            |r| r.get(0),
+        )
+    }
+
+    pub fn get_pending_orders(&self, store_id: &str) -> Result<Vec<Order>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id FROM orders WHERE store_id = ?1 AND status = 'pending' ORDER BY created_at DESC"
+        )?;
+        let ids: Vec<String> = stmt
+            .query_map(params![store_id], |r| r.get(0))?
+            .collect::<Result<Vec<_>>>()?;
+        let mut res = Vec::new();
+        for id in ids {
+            if let Ok(o) = self.get_order_by_id(&id, store_id) {
+                res.push(o);
+            }
+        }
+        Ok(res)
+    }
+
+    pub fn delete_pending_order(&self, id: &str, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM orders WHERE id = ?1 AND store_id = ?2 AND status = 'pending'",
+            params![id, store_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_kds_orders(&self, store_id: &str) -> Result<Vec<KdsOrder>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, order_type, customer_name, created_at FROM orders
+             WHERE store_id = ?1 AND status IN ('completed', 'pending', 'processing')
+             AND created_at >= date('now', '-1 day')
+             ORDER BY created_at ASC",
+        )?;
+        let mut orders = stmt
+            .query_map(params![store_id], |row| {
+                Ok(KdsOrder {
+                    id: row.get(0)?,
+                    order_type: row.get(1)?,
+                    customer_name: row.get(2)?,
+                    created_at: row.get(3)?,
+                    items: vec![],
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        for order in &mut orders {
+            let mut item_stmt = self.conn.prepare(
+                "SELECT product_name, quantity, done FROM order_items WHERE order_id = ?1",
+            )?;
+            order.items = item_stmt
+                .query_map(params![order.id], |row| {
+                    Ok(KdsItem {
+                        product_name: row.get(0)?,
+                        quantity: row.get(1)?,
+                        done: row.get::<_, i32>(2)? == 1,
+                    })
+                })?
+                .collect::<Result<Vec<_>>>()?;
+        }
+        Ok(orders)
+    }
+
+    pub fn mark_kds_item_done(
+        &self,
+        order_id: &str,
+        item_index: usize,
+        _store_id: &str,
+    ) -> Result<()> {
+        let items: Vec<i64> = self
+            .conn
+            .prepare("SELECT id FROM order_items WHERE order_id = ?1 ORDER BY id")?
+            .query_map(params![order_id], |r| r.get(0))?
+            .collect::<Result<Vec<_>>>()?;
+
+        if let Some(item_id) = items.get(item_index) {
+            self.conn.execute(
+                "UPDATE order_items SET done = 1 WHERE id = ?1",
+                params![item_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn get_coupons(&self, store_id: &str) -> Result<Vec<Coupon>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, store_id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active, created_at
+             FROM coupons WHERE store_id = ?1"
+        )?;
+        let coupons = stmt
+            .query_map(params![store_id], |row| {
+                Ok(Coupon {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    code: row.get(2)?,
+                    discount_type: row.get(3)?,
+                    discount_value: row.get(4)?,
+                    min_order_amount: row.get(5)?,
+                    max_uses: row.get(6)?,
+                    used_count: row.get(7)?,
+                    valid_from: row.get(8)?,
+                    valid_until: row.get(9)?,
+                    active: row.get::<_, i32>(10)? == 1,
+                    created_at: row.get(11)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(coupons)
+    }
+
+    pub fn save_coupon(&self, c: &Coupon, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO coupons (id, store_id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+             ON CONFLICT(id) DO UPDATE SET
+                code=excluded.code, discount_type=excluded.discount_type, discount_value=excluded.discount_value,
+                min_order_amount=excluded.min_order_amount, max_uses=excluded.max_uses,
+                valid_from=excluded.valid_from, valid_until=excluded.valid_until, active=excluded.active",
+            params![c.id, store_id, c.code, c.discount_type, c.discount_value, c.min_order_amount, c.max_uses, c.used_count, c.valid_from, c.valid_until, if c.active { 1 } else { 0 }],
+        )?;
+        Ok(())
+    }
+
+    pub fn validate_coupon(&self, code: &str, order_amount: f64, store_id: &str) -> Result<Coupon> {
+        let coupon: Coupon = self.conn.query_row(
+            "SELECT id, store_id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active, created_at
+             FROM coupons WHERE code = ?1 AND store_id = ?2 AND active = 1",
+            params![code, store_id],
+            |row| {
+                Ok(Coupon {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    code: row.get(2)?,
+                    discount_type: row.get(3)?,
+                    discount_value: row.get(4)?,
+                    min_order_amount: row.get(5)?,
+                    max_uses: row.get(6)?,
+                    used_count: row.get(7)?,
+                    valid_from: row.get(8)?,
+                    valid_until: row.get(9)?,
+                    active: row.get::<_, i32>(10)? == 1,
+                    created_at: row.get(11)?,
+                })
+            }
+        )?;
+
+        if order_amount < coupon.min_order_amount {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        if coupon.used_count >= coupon.max_uses {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        Ok(coupon)
+    }
+
+    pub fn use_coupon(&self, code: &str, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE coupons SET used_count = used_count + 1 WHERE code = ?1 AND store_id = ?2",
+            params![code, store_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_coupon(&self, id: &str, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM coupons WHERE id = ?1 AND store_id = ?2",
+            params![id, store_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_reservations(&self, date: &str, store_id: &str) -> Result<Vec<Reservation>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT r.id, r.store_id, r.table_id, t.name, r.customer_name, r.phone, r.date, r.time, r.party_size, r.status, r.notes, r.created_at
+             FROM reservations r JOIN tables t ON r.table_id = t.id
+             WHERE r.store_id = ?1 AND r.date = ?2 ORDER BY r.time ASC"
+        )?;
+        let reservations = stmt
+            .query_map(params![store_id, date], |row| {
+                Ok(Reservation {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    table_id: row.get(2)?,
+                    table_name: row.get(3)?,
+                    customer_name: row.get(4)?,
+                    phone: row.get(5)?,
+                    date: row.get(6)?,
+                    time: row.get(7)?,
+                    party_size: row.get(8)?,
+                    status: row.get(9)?,
+                    notes: row.get(10)?,
+                    created_at: row.get(11)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(reservations)
+    }
+
+    pub fn save_reservation(&self, r: &Reservation, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO reservations (id, store_id, table_id, customer_name, phone, date, time, party_size, status, notes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(id) DO UPDATE SET
+                table_id=excluded.table_id, customer_name=excluded.customer_name, phone=excluded.phone,
+                date=excluded.date, time=excluded.time, party_size=excluded.party_size,
+                status=excluded.status, notes=excluded.notes",
+            params![r.id, store_id, r.table_id, r.customer_name, r.phone, r.date, r.time, r.party_size, r.status, r.notes],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_reservation(&self, id: &str, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM reservations WHERE id = ?1 AND store_id = ?2",
+            params![id, store_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_expenses(&self, date: &str, store_id: &str) -> Result<Vec<Expense>> {
+        let mut stmt = self.conn.prepare("SELECT id, store_id, category, amount, description, date, payment_method, created_at FROM expenses WHERE store_id = ?1 AND date = ?2")?;
+        let expenses = stmt
+            .query_map(params![store_id, date], |row| {
+                Ok(Expense {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    category: row.get(2)?,
+                    amount: row.get(3)?,
+                    description: row.get(4)?,
+                    date: row.get(5)?,
+                    payment_method: row.get(6)?,
+                    created_at: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(expenses)
+    }
+
+    pub fn get_expenses_by_range(
+        &self,
+        start_date: &str,
+        end_date: &str,
+        store_id: &str,
+    ) -> Result<Vec<Expense>> {
+        let mut stmt = self.conn.prepare("SELECT id, store_id, category, amount, description, date, payment_method, created_at FROM expenses WHERE store_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date DESC")?;
+        let expenses = stmt
+            .query_map(params![store_id, start_date, end_date], |row| {
+                Ok(Expense {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    category: row.get(2)?,
+                    amount: row.get(3)?,
+                    description: row.get(4)?,
+                    date: row.get(5)?,
+                    payment_method: row.get(6)?,
+                    created_at: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(expenses)
+    }
+
+    pub fn save_expense(&self, e: &Expense, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO expenses (id, store_id, category, amount, description, date, payment_method)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(id) DO UPDATE SET
+                category=excluded.category, amount=excluded.amount, description=excluded.description,
+                date=excluded.date, payment_method=excluded.payment_method",
+            params![e.id, store_id, e.category, e.amount, e.description, e.date, e.payment_method],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_expense(&self, id: &str, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM expenses WHERE id = ?1 AND store_id = ?2",
+            params![id, store_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_expense_categories(&self, store_id: &str) -> Result<Vec<ExpenseCategory>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, store_id, name, icon FROM expense_categories WHERE store_id = ?1",
+        )?;
+        let items = stmt
+            .query_map(params![store_id], |row| {
+                Ok(ExpenseCategory {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    name: row.get(2)?,
+                    icon: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    pub fn save_expense_category(&self, c: &ExpenseCategory, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO expense_categories (id, store_id, name, icon) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(id) DO UPDATE SET name=excluded.name, icon=excluded.icon",
+            params![c.id, store_id, c.name, c.icon],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_day_end_reconciliation(
+        &self,
+        date: &str,
+        store_id: &str,
+    ) -> Result<Option<DayEndReconciliation>> {
+        let res = self.conn.query_row(
+            "SELECT id, store_id, date, opening_cash, expected_cash, actual_cash, difference, cash_sales, upi_sales, card_sales, total_expenses, notes, created_by, created_at
+             FROM day_end_reconciliations WHERE store_id = ?1 AND date = ?2",
+            params![store_id, date],
+            |row| {
+                Ok(DayEndReconciliation {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    date: row.get(2)?,
+                    opening_cash: row.get(3)?,
+                    expected_cash: row.get(4)?,
+                    actual_cash: row.get(5)?,
+                    difference: row.get(6)?,
+                    cash_sales: row.get(7)?,
+                    upi_sales: row.get(8)?,
+                    card_sales: row.get(9)?,
+                    total_expenses: row.get(10)?,
+                    notes: row.get(11)?,
+                    created_by: row.get(12)?,
+                    created_at: row.get(13)?,
+                })
+            }
+        );
+        match res {
+            Ok(r) => Ok(Some(r)),
+            Err(_) => Ok(None),
+        }
+    }
+
+    pub fn save_day_end_reconciliation(
+        &self,
+        r: &DayEndReconciliation,
+        store_id: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO day_end_reconciliations (id, store_id, date, opening_cash, expected_cash, actual_cash, difference, cash_sales, upi_sales, card_sales, total_expenses, notes, created_by)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+             ON CONFLICT(store_id, date) DO UPDATE SET
+                opening_cash=excluded.opening_cash, expected_cash=excluded.expected_cash, actual_cash=excluded.actual_cash,
+                difference=excluded.difference, cash_sales=excluded.cash_sales, upi_sales=excluded.upi_sales,
+                card_sales=excluded.card_sales, total_expenses=excluded.total_expenses, notes=excluded.notes, created_by=excluded.created_by",
+            params![r.id, store_id, r.date, r.opening_cash, r.expected_cash, r.actual_cash, r.difference, r.cash_sales, r.upi_sales, r.card_sales, r.total_expenses, r.notes, r.created_by],
+        )?;
+        Ok(())
     }
 
     pub fn upsert_store(&self, s: &Store) -> Result<()> {
@@ -974,7 +1495,8 @@ impl Database {
     }
 
     pub fn delete_store(&self, id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM stores WHERE id=?1", params![id])?;
+        self.conn
+            .execute("DELETE FROM stores WHERE id=?1", params![id])?;
         Ok(())
     }
 
@@ -984,28 +1506,33 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT id, store_id, name, price, category, stock, barcode, tax, image_url, metadata, created_at FROM products WHERE store_id=?1 ORDER BY name"
         )?;
-        let products = stmt.query_map(params![store_id], |row| {
-            let metadata_str: Option<String> = row.get(9)?;
-            let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
-            Ok(Product {
-                id: row.get(0)?,
-                store_id: row.get(1)?,
-                name: row.get(2)?,
-                price: row.get(3)?,
-                category: row.get(4)?,
-                stock: row.get(5)?,
-                barcode: row.get(6)?,
-                tax: row.get(7)?,
-                image_url: row.get(8)?,
-                metadata,
-                created_at: row.get(10)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let products = stmt
+            .query_map(params![store_id], |row| {
+                let metadata_str: Option<String> = row.get(9)?;
+                let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
+                Ok(Product {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    name: row.get(2)?,
+                    price: row.get(3)?,
+                    category: row.get(4)?,
+                    stock: row.get(5)?,
+                    barcode: row.get(6)?,
+                    tax: row.get(7)?,
+                    image_url: row.get(8)?,
+                    metadata,
+                    created_at: row.get(10)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(products)
     }
 
     pub fn upsert_product(&self, p: &Product, store_id: &str) -> Result<()> {
-        let metadata_str = p.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok());
+        let metadata_str = p
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::to_string(m).ok());
         self.conn.execute(
             "INSERT INTO products (id, store_id, name, price, category, stock, barcode, tax, image_url, metadata)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
@@ -1018,7 +1545,10 @@ impl Database {
     }
 
     pub fn delete_product(&self, id: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM products WHERE id=?1 AND store_id=?2", params![id, store_id])?;
+        self.conn.execute(
+            "DELETE FROM products WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
         Ok(())
     }
 
@@ -1036,22 +1566,24 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT id, store_id, name, description, items, combo_price, discount_amount, discount_percent, is_active, created_at FROM combos WHERE store_id=?1 ORDER BY name"
         )?;
-        let combos = stmt.query_map(params![store_id], |row| {
-            let items_json: String = row.get(4)?;
-            let items: Vec<ComboItem> = serde_json::from_str(&items_json).unwrap_or_default();
-            Ok(Combo {
-                id: row.get(0)?,
-                store_id: row.get(1)?,
-                name: row.get(2)?,
-                description: row.get(3)?,
-                items,
-                combo_price: row.get(5)?,
-                discount_amount: row.get(6)?,
-                discount_percent: row.get(7)?,
-                is_active: row.get::<_, i32>(8)? == 1,
-                created_at: row.get(9)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let combos = stmt
+            .query_map(params![store_id], |row| {
+                let items_json: String = row.get(4)?;
+                let items: Vec<ComboItem> = serde_json::from_str(&items_json).unwrap_or_default();
+                Ok(Combo {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    name: row.get(2)?,
+                    description: row.get(3)?,
+                    items,
+                    combo_price: row.get(5)?,
+                    discount_amount: row.get(6)?,
+                    discount_percent: row.get(7)?,
+                    is_active: row.get::<_, i32>(8)? == 1,
+                    created_at: row.get(9)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(combos)
     }
 
@@ -1070,7 +1602,10 @@ impl Database {
     }
 
     pub fn delete_combo(&self, id: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM combos WHERE id=?1 AND store_id=?2", params![id, store_id])?;
+        self.conn.execute(
+            "DELETE FROM combos WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
         Ok(())
     }
 
@@ -1084,54 +1619,65 @@ impl Database {
 
     // ─── Orders ───────────────────────────────────────────────────────────────
 
-    pub fn get_orders(&self, store_id: &str) -> Result<Vec<Order>> {
+    pub fn get_orders(
+        &self,
+        store_id: &str,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> Result<Vec<Order>> {
+        let limit_val = limit.unwrap_or(500);
+        let offset_val = offset.unwrap_or(0);
         let mut stmt = self.conn.prepare(
             "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, created_at
-             FROM orders WHERE store_id=?1 ORDER BY created_at DESC LIMIT 500"
+             FROM orders WHERE store_id=?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
         )?;
 
-        let mut orders: Vec<Order> = stmt.query_map(params![store_id], |row| {
-            Ok(Order {
-                id: row.get(0)?,
-                store_id: row.get(1)?,
-                items: vec![],
-                subtotal: row.get(2)?,
-                tax_amount: row.get(3)?,
-                discount_amount: row.get(4)?,
-                total: row.get(5)?,
-                payment_method: row.get(6)?,
-                amount_paid: row.get(7)?,
-                change_amount: row.get(8)?,
-                customer_name: row.get(9)?,
-                status: row.get(10)?,
-                order_type: row.get(11)?,
-                delivery_status: row.get(12)?,
-                delivery_address: row.get(13)?,
-                delivery_phone: row.get(14)?,
-                user_id: row.get(15)?,
-                user_name: row.get(16)?,
-                synced: Some(row.get::<_, i32>(17)? == 1),
-                created_at: row.get(18)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let mut orders: Vec<Order> = stmt
+            .query_map(params![store_id, limit_val, offset_val], |row| {
+                Ok(Order {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    items: vec![],
+                    subtotal: row.get(2)?,
+                    tax_amount: row.get(3)?,
+                    discount_amount: row.get(4)?,
+                    total: row.get(5)?,
+                    payment_method: row.get(6)?,
+                    amount_paid: row.get(7)?,
+                    change_amount: row.get(8)?,
+                    customer_name: row.get(9)?,
+                    status: row.get(10)?,
+                    order_type: row.get(11)?,
+                    delivery_status: row.get(12)?,
+                    delivery_address: row.get(13)?,
+                    delivery_phone: row.get(14)?,
+                    user_id: row.get(15)?,
+                    user_name: row.get(16)?,
+                    synced: Some(row.get::<_, i32>(17)? == 1),
+                    created_at: row.get(18)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
 
         for order in &mut orders {
             let mut item_stmt = self.conn.prepare(
                 "SELECT product_id, product_name, price, quantity, discount, tax, metadata FROM order_items WHERE order_id=?1"
             )?;
-            order.items = item_stmt.query_map(params![order.id], |row| {
-                let metadata_str: Option<String> = row.get(6)?;
-                let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
-                Ok(OrderItem {
-                    product_id: row.get(0)?,
-                    product_name: row.get(1)?,
-                    price: row.get(2)?,
-                    quantity: row.get(3)?,
-                    discount: row.get(4)?,
-                    tax: row.get(5)?,
-                    metadata,
-                })
-            })?.collect::<Result<Vec<_>>>()?;
+            order.items = item_stmt
+                .query_map(params![order.id], |row| {
+                    let metadata_str: Option<String> = row.get(6)?;
+                    let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
+                    Ok(OrderItem {
+                        product_id: row.get(0)?,
+                        product_name: row.get(1)?,
+                        price: row.get(2)?,
+                        quantity: row.get(3)?,
+                        discount: row.get(4)?,
+                        tax: row.get(5)?,
+                        metadata,
+                    })
+                })?
+                .collect::<Result<Vec<_>>>()?;
         }
 
         Ok(orders)
@@ -1155,11 +1701,14 @@ impl Database {
         tx.execute("DELETE FROM order_items WHERE order_id=?1", params![o.id])?;
 
         for item in &o.items {
-            let metadata_str = item.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok());
+            let metadata_str = item
+                .metadata
+                .as_ref()
+                .and_then(|m| serde_json::to_string(m).ok());
             tx.execute(
-                "INSERT INTO order_items (order_id, product_id, product_name, price, quantity, discount, tax, metadata)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-                params![o.id, item.product_id, item.product_name, item.price, item.quantity, item.discount, item.tax, metadata_str],
+                "INSERT INTO order_items (order_id, store_id, product_id, product_name, price, quantity, discount, tax, metadata)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                params![o.id, o.store_id, item.product_id, item.product_name, item.price, item.quantity, item.discount, item.tax, metadata_str],
             )?;
 
             if o.status == "completed" {
@@ -1174,42 +1723,65 @@ impl Database {
         Ok(())
     }
 
-    pub fn refund_order(&self, id: &str, store_id: &str, _user_id: &str, _user_name: &str) -> Result<()> {
+    pub fn refund_order(
+        &self,
+        id: &str,
+        store_id: &str,
+        _user_id: &str,
+        _user_name: &str,
+    ) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
 
-        let items: Vec<(String, i64)> = tx.prepare("SELECT product_id, quantity FROM order_items WHERE order_id=?1")?
+        let items: Vec<(String, i64)> = tx
+            .prepare("SELECT product_id, quantity FROM order_items WHERE order_id=?1")?
             .query_map(params![id], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<Vec<_>>>()?;
 
         for (product_id, qty) in items {
-            tx.execute("UPDATE products SET stock = stock + ?1 WHERE id = ?2 AND store_id = ?3", params![qty, product_id, store_id])?;
+            tx.execute(
+                "UPDATE products SET stock = stock + ?1 WHERE id = ?2 AND store_id = ?3",
+                params![qty, product_id, store_id],
+            )?;
         }
 
-        tx.execute("UPDATE orders SET status='refunded' WHERE id=?1 AND store_id=?2", params![id, store_id])?;
+        tx.execute(
+            "UPDATE orders SET status='refunded' WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
         tx.commit()?;
         Ok(())
     }
 
     pub fn update_delivery_status(&self, id: &str, status: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("UPDATE orders SET delivery_status=?1 WHERE id=?2 AND store_id=?3", params![status, id, store_id])?;
+        self.conn.execute(
+            "UPDATE orders SET delivery_status=?1 WHERE id=?2 AND store_id=?3",
+            params![status, id, store_id],
+        )?;
         Ok(())
     }
 
     pub fn update_order_status(&self, id: &str, status: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("UPDATE orders SET status=?1 WHERE id=?2 AND store_id=?3", params![status, id, store_id])?;
+        self.conn.execute(
+            "UPDATE orders SET status=?1 WHERE id=?2 AND store_id=?3",
+            params![status, id, store_id],
+        )?;
         Ok(())
     }
 
     // ─── Settings ─────────────────────────────────────────────────────────────
 
     pub fn get_settings(&self, store_id: &str) -> Result<Settings> {
-        let value: String = self.conn.query_row(
-            "SELECT value FROM settings_multi WHERE store_id=?1",
-            params![store_id],
-            |r| r.get(0),
-        ).unwrap_or_else(|_| "{}".to_string());
+        let value: String = self
+            .conn
+            .query_row(
+                "SELECT value FROM settings_multi WHERE store_id=?1",
+                params![store_id],
+                |r| r.get(0),
+            )
+            .unwrap_or_else(|_| "{}".to_string());
 
-        let mut s: Settings = serde_json::from_str(&value).unwrap_or_else(|_| self.default_settings());
+        let mut s: Settings =
+            serde_json::from_str(&value).unwrap_or_else(|_| self.default_settings());
         s.neon_url = decrypt_value(&s.neon_url);
         s.twilio_sid = decrypt_value(&s.twilio_sid);
         s.twilio_token = decrypt_value(&s.twilio_token);
@@ -1283,14 +1855,15 @@ impl Database {
     pub fn get_daily_summary(&self, store_id: &str) -> Result<DailySummary> {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         self.conn.query_row(
-            "SELECT COALESCE(SUM(total),0), COUNT(*), COALESCE(AVG(total),0)
-             FROM orders WHERE store_id=?1 AND status='completed' AND DATE(created_at, 'localtime')=?2",
+            "SELECT COALESCE(SUM(o.total),0), COUNT(*), COALESCE(AVG(o.total),0), COALESCE(SUM(oi.quantity),0)
+             FROM orders o LEFT JOIN order_items oi ON o.id = oi.order_id
+             WHERE o.store_id=?1 AND o.status='completed' AND DATE(o.created_at, 'localtime')=?2",
             params![store_id, today],
             |r| Ok(DailySummary {
                 revenue: r.get(0)?,
                 transactions: r.get(1)?,
                 avg_order: r.get(2)?,
-                items_sold: 0,
+                items_sold: r.get(3)?,
             })
         )
     }
@@ -1298,8 +1871,12 @@ impl Database {
     pub fn get_weekly_revenue(&self, store_id: &str) -> Result<Vec<DayRevenue>> {
         let mut days = Vec::new();
         for i in (0..7).rev() {
-            let date = (chrono::Local::now() - chrono::Duration::days(i)).format("%Y-%m-%d").to_string();
-            let label = (chrono::Local::now() - chrono::Duration::days(i)).format("%a").to_string();
+            let date = (chrono::Local::now() - chrono::Duration::days(i))
+                .format("%Y-%m-%d")
+                .to_string();
+            let label = (chrono::Local::now() - chrono::Duration::days(i))
+                .format("%a")
+                .to_string();
             let revenue: f64 = self.conn.query_row(
                 "SELECT COALESCE(SUM(total),0) FROM orders WHERE store_id=?1 AND status='completed' AND DATE(created_at, 'localtime')=?2",
                 params![store_id, date],
@@ -1315,23 +1892,38 @@ impl Database {
             "SELECT oi.product_name, SUM(oi.quantity) as qty, SUM(oi.price*oi.quantity) as revenue
              FROM order_items oi JOIN orders o ON o.id=oi.order_id
              WHERE o.store_id=?1 AND o.status='completed'
-             GROUP BY oi.product_name ORDER BY revenue DESC LIMIT 5"
+             GROUP BY oi.product_name ORDER BY revenue DESC LIMIT 5",
         )?;
-        let items = stmt.query_map(params![store_id], |r| {
-            Ok(TopProduct { name: r.get(0)?, qty: r.get(1)?, revenue: r.get(2)? })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id], |r| {
+                Ok(TopProduct {
+                    name: r.get(0)?,
+                    qty: r.get(1)?,
+                    revenue: r.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
     pub fn get_low_stock(&self, store_id: &str) -> Result<Vec<LowStockItem>> {
         let mut stmt = self.conn.prepare("SELECT name, stock FROM products WHERE store_id=?1 AND stock <= 10 ORDER BY stock ASC LIMIT 10")?;
-        let items = stmt.query_map(params![store_id], |r| {
-            Ok(LowStockItem { name: r.get(0)?, stock: r.get(1)? })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id], |r| {
+                Ok(LowStockItem {
+                    name: r.get(0)?,
+                    stock: r.get(1)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
-    pub fn get_sales_by_payment_method(&self, date: &str, store_id: &str) -> Result<(f64, f64, f64)> {
+    pub fn get_sales_by_payment_method(
+        &self,
+        date: &str,
+        store_id: &str,
+    ) -> Result<(f64, f64, f64)> {
         let get = |m: &str| -> f64 {
             self.conn.query_row(
                 "SELECT COALESCE(SUM(total), 0) FROM orders WHERE store_id=?1 AND status='completed' AND payment_method=?2 AND DATE(created_at, 'localtime')=?3",
@@ -1348,16 +1940,22 @@ impl Database {
         let products = self.get_products(store_id)?;
         let mut csv = "id,name,price,category,stock,barcode,tax\n".to_string();
         for p in products {
-            csv.push_str(&format!("{},{},{},{},{},{},{}\n", p.id, p.name, p.price, p.category, p.stock, p.barcode, p.tax));
+            csv.push_str(&format!(
+                "{},{},{},{},{},{},{}\n",
+                p.id, p.name, p.price, p.category, p.stock, p.barcode, p.tax
+            ));
         }
         Ok(csv)
     }
 
     pub fn export_orders_csv(&self, store_id: &str) -> Result<String> {
-        let orders = self.get_orders(store_id)?;
+        let orders = self.get_orders(store_id, None, None)?;
         let mut csv = "id,total,payment_method,customer,created_at\n".to_string();
         for o in orders {
-            csv.push_str(&format!("{},{},{},{},{}\n", o.id, o.total, o.payment_method, o.customer_name, o.created_at));
+            csv.push_str(&format!(
+                "{},{},{},{},{}\n",
+                o.id, o.total, o.payment_method, o.customer_name, o.created_at
+            ));
         }
         Ok(csv)
     }
@@ -1367,9 +1965,14 @@ impl Database {
         let mut errors = 0;
         let lines: Vec<&str> = csv_data.split('\n').collect();
         for line in lines.iter().skip(1) {
-            if line.trim().is_empty() { continue; }
+            if line.trim().is_empty() {
+                continue;
+            }
             let parts: Vec<&str> = line.split(',').collect();
-            if parts.len() < 7 { errors += 1; continue; }
+            if parts.len() < 7 {
+                errors += 1;
+                continue;
+            }
             let p = Product {
                 id: parts[0].to_string(),
                 store_id: store_id.to_string(),
@@ -1381,8 +1984,13 @@ impl Database {
                 tax: parts[6].parse().unwrap_or(0.0),
                 image_url: None,
                 created_at: None,
+                metadata: None,
             };
-            if self.upsert_product(&p, store_id).is_ok() { imported += 1; } else { errors += 1; }
+            if self.upsert_product(&p, store_id).is_ok() {
+                imported += 1;
+            } else {
+                errors += 1;
+            }
         }
         Ok((imported, errors))
     }
@@ -1406,17 +2014,19 @@ impl Database {
 
     pub fn get_tables(&self, store_id: &str) -> Result<Vec<Table>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, name, capacity, status, position_x, position_y FROM tables WHERE store_id=?1 ORDER BY name")?;
-        let tables = stmt.query_map(params![store_id], |row| {
-            Ok(Table {
-                id: row.get(0)?,
-                store_id: row.get(1)?,
-                name: row.get(2)?,
-                capacity: row.get(3)?,
-                status: row.get(4)?,
-                position_x: row.get(5)?,
-                position_y: row.get(6)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let tables = stmt
+            .query_map(params![store_id], |row| {
+                Ok(Table {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    name: row.get(2)?,
+                    capacity: row.get(3)?,
+                    status: row.get(4)?,
+                    position_x: row.get(5)?,
+                    position_y: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(tables)
     }
 
@@ -1431,12 +2041,18 @@ impl Database {
     }
 
     pub fn delete_table(&self, id: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM tables WHERE id=?1 AND store_id=?2", params![id, store_id])?;
+        self.conn.execute(
+            "DELETE FROM tables WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
         Ok(())
     }
 
     pub fn update_table_status(&self, id: &str, status: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("UPDATE tables SET status=?1 WHERE id=?2 AND store_id=?3", params![status, id, store_id])?;
+        self.conn.execute(
+            "UPDATE tables SET status=?1 WHERE id=?2 AND store_id=?3",
+            params![status, id, store_id],
+        )?;
         Ok(())
     }
 
@@ -1444,12 +2060,21 @@ impl Database {
 
     pub fn get_customers(&self, store_id: &str) -> Result<Vec<Customer>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, created_at FROM customers WHERE store_id=?1")?;
-        let items = stmt.query_map(params![store_id], |row| {
-            Ok(Customer {
-                id: row.get(0)?, store_id: row.get(1)?, name: row.get(2)?, phone: row.get(3)?, email: row.get(4)?,
-                loyalty_points: row.get(5)?, total_spent: row.get(6)?, visits: row.get(7)?, created_at: row.get(8)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id], |row| {
+                Ok(Customer {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    name: row.get(2)?,
+                    phone: row.get(3)?,
+                    email: row.get(4)?,
+                    loyalty_points: row.get(5)?,
+                    total_spent: row.get(6)?,
+                    visits: row.get(7)?,
+                    created_at: row.get(8)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
@@ -1465,14 +2090,30 @@ impl Database {
         let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, created_at FROM customers WHERE phone=?1 AND store_id=?2")?;
         let res = stmt.query_row(params![phone, store_id], |row| {
             Ok(Customer {
-                id: row.get(0)?, store_id: row.get(1)?, name: row.get(2)?, phone: row.get(3)?, email: row.get(4)?,
-                loyalty_points: row.get(5)?, total_spent: row.get(6)?, visits: row.get(7)?, created_at: row.get(8)?,
+                id: row.get(0)?,
+                store_id: row.get(1)?,
+                name: row.get(2)?,
+                phone: row.get(3)?,
+                email: row.get(4)?,
+                loyalty_points: row.get(5)?,
+                total_spent: row.get(6)?,
+                visits: row.get(7)?,
+                created_at: row.get(8)?,
             })
         });
-        match res { Ok(c) => Ok(Some(c)), Err(_) => Ok(None) }
+        match res {
+            Ok(c) => Ok(Some(c)),
+            Err(_) => Ok(None),
+        }
     }
 
-    pub fn add_loyalty_points(&self, id: &str, points: i32, spent: f64, store_id: &str) -> Result<()> {
+    pub fn add_loyalty_points(
+        &self,
+        id: &str,
+        points: i32,
+        spent: f64,
+        store_id: &str,
+    ) -> Result<()> {
         self.conn.execute(
             "UPDATE customers SET loyalty_points = loyalty_points + ?1, total_spent = total_spent + ?2, visits = visits + 1 WHERE id=?3 AND store_id=?4",
             params![points, spent, id, store_id],
@@ -1481,11 +2122,15 @@ impl Database {
     }
 
     pub fn get_customer_orders(&self, phone: &str, store_id: &str) -> Result<Vec<Order>> {
-        let mut stmt = self.conn.prepare("SELECT id FROM orders WHERE delivery_phone=?1 AND store_id=?2")?;
-        let ids: Vec<String> = stmt.query_map(params![phone, store_id], |r| r.get(0))?.collect::<Result<Vec<_>>>()?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id FROM orders WHERE delivery_phone=?1 AND store_id=?2")?;
+        let ids: Vec<String> = stmt
+            .query_map(params![phone, store_id], |r| r.get(0))?
+            .collect::<Result<Vec<_>>>()?;
         let mut res = Vec::new();
         for id in ids {
-            if let Ok(mut o) = self.get_order_by_id(&id, store_id) {
+            if let Ok(o) = self.get_order_by_id(&id, store_id) {
                 res.push(o);
             }
         }
@@ -1546,12 +2191,19 @@ impl Database {
     pub fn get_today_attendance(&self, store_id: &str) -> Result<Vec<StaffAttendance>> {
         let date = chrono::Local::now().format("%Y-%m-%d").to_string();
         let mut stmt = self.conn.prepare("SELECT id, store_id, user_id, user_name, clock_in, clock_out, date FROM staff_attendance WHERE store_id=?1 AND date=?2")?;
-        let items = stmt.query_map(params![store_id, date], |row| {
-            Ok(StaffAttendance {
-                id: row.get(0)?, store_id: row.get(1)?, user_id: row.get(2)?, user_name: row.get(3)?,
-                clock_in: row.get(4)?, clock_out: row.get(5)?, date: row.get(6)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id, date], |row| {
+                Ok(StaffAttendance {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    user_id: row.get(2)?,
+                    user_name: row.get(3)?,
+                    clock_in: row.get(4)?,
+                    clock_out: row.get(5)?,
+                    date: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
@@ -1566,29 +2218,51 @@ impl Database {
 
     pub fn get_activity_logs(&self, store_id: &str, limit: i64) -> Result<Vec<ActivityLog>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, order_id, action, previous_data, new_data, reason, user_id, user_name, created_at FROM activity_logs WHERE store_id=?1 ORDER BY created_at DESC LIMIT ?2")?;
-        let items = stmt.query_map(params![store_id, limit], |row| {
-            Ok(ActivityLog {
-                id: row.get(0)?, store_id: row.get(1)?, order_id: row.get(2)?, action: row.get(3)?,
-                previous_data: row.get(4)?, new_data: row.get(5)?, reason: row.get(6)?,
-                user_id: row.get(7)?, user_name: row.get(8)?, created_at: row.get(9)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id, limit], |row| {
+                Ok(ActivityLog {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    order_id: row.get(2)?,
+                    action: row.get(3)?,
+                    previous_data: row.get(4)?,
+                    new_data: row.get(5)?,
+                    reason: row.get(6)?,
+                    user_id: row.get(7)?,
+                    user_name: row.get(8)?,
+                    created_at: row.get(9)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
     pub fn export_backup(&self, store_id: &str) -> Result<String> {
         let products = self.get_products(store_id)?;
-        let orders = self.get_orders(store_id)?;
+        let orders = self.get_orders(store_id, None, None)?;
         let settings = self.get_settings(store_id)?;
-        let data = BackupData { products, orders, settings, exported_at: chrono::Local::now().to_rfc3339() };
+        let data = BackupData {
+            products,
+            orders,
+            settings,
+            exported_at: chrono::Local::now().to_rfc3339(),
+        };
         Ok(serde_json::to_string(&data).unwrap_or_default())
     }
 
     pub fn import_backup(&self, backup: &str, store_id: &str) -> Result<ImportResult> {
-        let data: BackupData = serde_json::from_str(backup).map_err(|_| rusqlite::Error::InvalidQuery)?;
-        for p in data.products { let _ = self.upsert_product(&p, store_id); }
-        for o in data.orders { let _ = self.save_order(&o, store_id); }
-        Ok(ImportResult { products_imported: 0, orders_imported: 0 })
+        let data: BackupData =
+            serde_json::from_str(backup).map_err(|_| rusqlite::Error::InvalidQuery)?;
+        for p in data.products {
+            let _ = self.upsert_product(&p, store_id);
+        }
+        for o in data.orders {
+            let _ = self.save_order(&o, store_id);
+        }
+        Ok(ImportResult {
+            products_imported: 0,
+            orders_imported: 0,
+        })
     }
 
     pub fn add_order_note(&self, order_id: &str, note: &str, store_id: &str) -> Result<()> {
@@ -1601,20 +2275,36 @@ impl Database {
 
     pub fn get_order_notes(&self, order_id: &str, store_id: &str) -> Result<Vec<OrderNote>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, order_id, reason, created_at FROM activity_logs WHERE order_id=?1 AND store_id=?2 AND action='note'")?;
-        let items = stmt.query_map(params![order_id, store_id], |row| {
-            Ok(OrderNote { id: row.get(0)?, store_id: row.get(1)?, order_id: row.get(2)?, note: row.get(3)?, created_at: row.get(4)? })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![order_id, store_id], |row| {
+                Ok(OrderNote {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    order_id: row.get(2)?,
+                    note: row.get(3)?,
+                    created_at: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
     pub fn get_inventory_alerts(&self, store_id: &str) -> Result<Vec<InventoryAlert>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, product_id, product_name, current_stock, threshold, alert_type, created_at FROM inventory_alerts WHERE store_id=?1")?;
-        let items = stmt.query_map(params![store_id], |row| {
-            Ok(InventoryAlert {
-                id: row.get(0)?, store_id: row.get(1)?, product_id: row.get(2)?, product_name: row.get(3)?,
-                current_stock: row.get(4)?, threshold: row.get(5)?, alert_type: row.get(6)?, created_at: row.get(7)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id], |row| {
+                Ok(InventoryAlert {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    product_id: row.get(2)?,
+                    product_name: row.get(3)?,
+                    current_stock: row.get(4)?,
+                    threshold: row.get(5)?,
+                    alert_type: row.get(6)?,
+                    created_at: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
@@ -1624,9 +2314,14 @@ impl Database {
         for p in products {
             if p.stock <= 10 {
                 let alert = InventoryAlert {
-                    id: uuid::Uuid::new_v4().to_string(), store_id: store_id.into(), product_id: p.id,
-                    product_name: p.name, current_stock: p.stock as i32, threshold: 10,
-                    alert_type: "low_stock".into(), created_at: chrono::Local::now().to_rfc3339(),
+                    id: uuid::Uuid::new_v4().to_string(),
+                    store_id: store_id.into(),
+                    product_id: p.id,
+                    product_name: p.name,
+                    current_stock: p.stock as i32,
+                    threshold: 10,
+                    alert_type: "low_stock".into(),
+                    created_at: chrono::Local::now().to_rfc3339(),
                 };
                 let _ = self.create_inventory_alert(&alert, store_id);
                 alerts.push(alert);
@@ -1644,7 +2339,10 @@ impl Database {
     }
 
     pub fn clear_inventory_alert(&self, id: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM inventory_alerts WHERE id=?1 AND store_id=?2", params![id, store_id])?;
+        self.conn.execute(
+            "DELETE FROM inventory_alerts WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
         Ok(())
     }
 
@@ -1653,33 +2351,63 @@ impl Database {
             "SELECT strftime('%H', created_at) as hour, SUM(total) as revenue, COUNT(*) as orders
              FROM orders WHERE store_id=?1 AND status='completed' AND DATE(created_at) = ?2 GROUP BY hour"
         )?;
-        let items = stmt.query_map(params![store_id, date], |row| {
-            Ok(HourlySales { hour: row.get::<_, String>(0)?.parse().unwrap_or(0), revenue: row.get(1)?, orders: row.get(2)? })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id, date], |row| {
+                Ok(HourlySales {
+                    hour: row.get::<_, String>(0)?.parse().unwrap_or(0),
+                    revenue: row.get(1)?,
+                    orders: row.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
-    pub fn get_staff_performance(&self, start: &str, end: &str, store_id: &str) -> Result<Vec<StaffPerformance>> {
+    pub fn get_staff_performance(
+        &self,
+        start: &str,
+        end: &str,
+        store_id: &str,
+    ) -> Result<Vec<StaffPerformance>> {
         let mut stmt = self.conn.prepare(
             "SELECT user_id, user_name, COUNT(*) as orders, SUM(total) as revenue
              FROM orders WHERE store_id=?1 AND status='completed' AND DATE(created_at) BETWEEN ?2 AND ?3 GROUP BY user_id"
         )?;
-        let items = stmt.query_map(params![store_id, start, end], |row| {
-            Ok(StaffPerformance { user_id: row.get(0)?, user_name: row.get(1)?, total_orders: row.get(2)?, total_revenue: row.get(3)? })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id, start, end], |row| {
+                Ok(StaffPerformance {
+                    user_id: row.get(0)?,
+                    user_name: row.get(1)?,
+                    total_orders: row.get(2)?,
+                    total_revenue: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
-    pub fn get_sales_by_item(&self, start: &str, end: &str, store_id: &str) -> Result<Vec<SalesByItem>> {
+    pub fn get_sales_by_item(
+        &self,
+        start: &str,
+        end: &str,
+        store_id: &str,
+    ) -> Result<Vec<SalesByItem>> {
         let mut stmt = self.conn.prepare(
             "SELECT oi.product_id, oi.product_name, SUM(oi.quantity), SUM(oi.price*oi.quantity)
              FROM order_items oi JOIN orders o ON o.id=oi.order_id
              WHERE o.store_id=?1 AND o.status='completed' AND DATE(o.created_at) BETWEEN ?2 AND ?3
-             GROUP BY oi.product_id"
+             GROUP BY oi.product_id",
         )?;
-        let items = stmt.query_map(params![store_id, start, end], |row| {
-            Ok(SalesByItem { product_id: row.get(0)?, product_name: row.get(1)?, quantity: row.get(2)?, revenue: row.get(3)? })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id, start, end], |row| {
+                Ok(SalesByItem {
+                    product_id: row.get(0)?,
+                    product_name: row.get(1)?,
+                    quantity: row.get(2)?,
+                    revenue: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
@@ -1690,13 +2418,23 @@ impl Database {
     }
 
     pub fn get_held_orders(&self, store_id: &str) -> Result<Vec<Order>> {
-        let all = self.get_orders(store_id)?;
+        let all = self.get_orders(store_id, None, None)?;
         Ok(all.into_iter().filter(|o| o.status == "hold").collect())
     }
 
-    pub fn cancel_order(&self, id: &str, reason: &str, user_id: &str, user_name: &str, store_id: &str) -> Result<()> {
+    pub fn cancel_order(
+        &self,
+        id: &str,
+        reason: &str,
+        user_id: &str,
+        user_name: &str,
+        store_id: &str,
+    ) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
-        tx.execute("UPDATE orders SET status='cancelled' WHERE id=?1 AND store_id=?2", params![id, store_id])?;
+        tx.execute(
+            "UPDATE orders SET status='cancelled' WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
         tx.execute(
             "INSERT INTO activity_logs (id, store_id, order_id, action, reason, user_id, user_name) VALUES (?1,?2,?3,?4,?5,?6,?7)",
             params![uuid::Uuid::new_v4().to_string(), store_id, id, "cancel", reason, user_id, user_name],
@@ -1705,7 +2443,13 @@ impl Database {
         Ok(())
     }
 
-    pub fn create_refund_request(&self, order_id: &str, amount: f64, reason: &str, store_id: &str) -> Result<String> {
+    pub fn create_refund_request(
+        &self,
+        order_id: &str,
+        amount: f64,
+        reason: &str,
+        store_id: &str,
+    ) -> Result<String> {
         let id = uuid::Uuid::new_v4().to_string();
         self.conn.execute(
             "INSERT INTO refund_requests (id, store_id, order_id, amount, reason) VALUES (?1,?2,?3,?4,?5)",
@@ -1716,50 +2460,89 @@ impl Database {
 
     pub fn get_refund_requests(&self, store_id: &str) -> Result<Vec<RefundRequest>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, order_id, amount, reason, status, created_at FROM refund_requests WHERE store_id=?1")?;
-        let items = stmt.query_map(params![store_id], |row| {
-            Ok(RefundRequest {
-                id: row.get(0)?, store_id: row.get(1)?, order_id: row.get(2)?, amount: row.get(3)?,
-                reason: row.get(4)?, status: row.get(5)?, created_at: row.get(6)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id], |row| {
+                Ok(RefundRequest {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    order_id: row.get(2)?,
+                    amount: row.get(3)?,
+                    reason: row.get(4)?,
+                    status: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
-    pub fn approve_refund(&self, id: &str, user_id: &str, user_name: &str, store_id: &str) -> Result<()> {
-        let order_id: String = self.conn.query_row("SELECT order_id FROM refund_requests WHERE id=?1", params![id], |r| r.get(0))?;
+    pub fn approve_refund(
+        &self,
+        id: &str,
+        user_id: &str,
+        user_name: &str,
+        store_id: &str,
+    ) -> Result<()> {
+        let order_id: String = self.conn.query_row(
+            "SELECT order_id FROM refund_requests WHERE id=?1",
+            params![id],
+            |r| r.get(0),
+        )?;
         self.refund_order(&order_id, store_id, user_id, user_name)?;
-        self.conn.execute("UPDATE refund_requests SET status='approved' WHERE id=?1", params![id])?;
+        self.conn.execute(
+            "UPDATE refund_requests SET status='approved' WHERE id=?1",
+            params![id],
+        )?;
         Ok(())
     }
 
     pub fn reject_refund(&self, id: &str, _store_id: &str) -> Result<()> {
-        self.conn.execute("UPDATE refund_requests SET status='rejected' WHERE id=?1", params![id])?;
+        self.conn.execute(
+            "UPDATE refund_requests SET status='rejected' WHERE id=?1",
+            params![id],
+        )?;
         Ok(())
     }
 
     pub fn get_unsynced_orders(&self, store_id: &str) -> Result<Vec<Order>> {
-        let mut stmt = self.conn.prepare("SELECT id FROM orders WHERE store_id=?1 AND synced=0")?;
-        let ids: Vec<String> = stmt.query_map(params![store_id], |r| r.get(0))?.collect::<Result<Vec<_>>>()?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id FROM orders WHERE store_id=?1 AND synced=0")?;
+        let ids: Vec<String> = stmt
+            .query_map(params![store_id], |r| r.get(0))?
+            .collect::<Result<Vec<_>>>()?;
         let mut res = Vec::new();
         for id in ids {
-            if let Ok(o) = self.get_order_by_id(&id, store_id) { res.push(o); }
+            if let Ok(o) = self.get_order_by_id(&id, store_id) {
+                res.push(o);
+            }
         }
         Ok(res)
     }
 
     pub fn mark_orders_synced(&self, store_id: &str) -> Result<()> {
-        self.conn.execute("UPDATE orders SET synced=1 WHERE store_id=?1", params![store_id])?;
+        self.conn.execute(
+            "UPDATE orders SET synced=1 WHERE store_id=?1",
+            params![store_id],
+        )?;
         Ok(())
     }
 
     pub fn get_ingredients(&self, store_id: &str) -> Result<Vec<Ingredient>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, name, stock, unit, reorder_level, created_at FROM ingredients WHERE store_id=?1")?;
-        let items = stmt.query_map(params![store_id], |row| {
-            Ok(Ingredient {
-                id: row.get(0)?, store_id: row.get(1)?, name: row.get(2)?, stock: row.get(3)?,
-                unit: row.get(4)?, reorder_level: row.get(5)?, created_at: row.get(6)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id], |row| {
+                Ok(Ingredient {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    name: row.get(2)?,
+                    stock: row.get(3)?,
+                    unit: row.get(4)?,
+                    reorder_level: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
@@ -1772,17 +2555,26 @@ impl Database {
     }
 
     pub fn delete_ingredient(&self, id: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM ingredients WHERE id=?1 AND store_id=?2", params![id, store_id])?;
+        self.conn.execute(
+            "DELETE FROM ingredients WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
         Ok(())
     }
 
     pub fn get_recipes(&self, store_id: &str) -> Result<Vec<Recipe>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, product_id, ingredient_id, quantity FROM recipes WHERE store_id=?1")?;
-        let items = stmt.query_map(params![store_id], |row| {
-            Ok(Recipe {
-                id: row.get(0)?, store_id: row.get(1)?, product_id: row.get(2)?, ingredient_id: row.get(3)?, quantity: row.get(4)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id], |row| {
+                Ok(Recipe {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    product_id: row.get(2)?,
+                    ingredient_id: row.get(3)?,
+                    quantity: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
@@ -1796,11 +2588,19 @@ impl Database {
 
     pub fn get_suppliers(&self, store_id: &str) -> Result<Vec<Supplier>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, address, created_at FROM suppliers WHERE store_id=?1")?;
-        let items = stmt.query_map(params![store_id], |row| {
-            Ok(Supplier {
-                id: row.get(0)?, store_id: row.get(1)?, name: row.get(2)?, phone: row.get(3)?, email: row.get(4)?, address: row.get(5)?, created_at: row.get(6)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id], |row| {
+                Ok(Supplier {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    name: row.get(2)?,
+                    phone: row.get(3)?,
+                    email: row.get(4)?,
+                    address: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
@@ -1813,17 +2613,30 @@ impl Database {
     }
 
     pub fn delete_supplier(&self, id: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM suppliers WHERE id=?1 AND store_id=?2", params![id, store_id])?;
+        self.conn.execute(
+            "DELETE FROM suppliers WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
         Ok(())
     }
 
     pub fn get_purchase_orders(&self, store_id: &str) -> Result<Vec<PurchaseOrder>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, supplier_id, status, total, notes, created_at FROM purchase_orders WHERE store_id=?1")?;
-        let items = stmt.query_map(params![store_id], |row| {
-            Ok(PurchaseOrder {
-                id: row.get(0)?, store_id: row.get(1)?, supplier_id: row.get(2)?, supplier_name: "".into(), status: row.get(3)?, total: row.get(4)?, notes: row.get(5)?, created_at: row.get(6)?, items: vec![],
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id], |row| {
+                Ok(PurchaseOrder {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    supplier_id: row.get(2)?,
+                    supplier_name: "".into(),
+                    status: row.get(3)?,
+                    total: row.get(4)?,
+                    notes: row.get(5)?,
+                    created_at: row.get(6)?,
+                    items: vec![],
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
@@ -1833,11 +2646,14 @@ impl Database {
             "INSERT INTO purchase_orders (id, store_id, supplier_id, status, total, notes) VALUES (?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET status=excluded.status, total=excluded.total, notes=excluded.notes",
             params![po.id, store_id, po.supplier_id, po.status, po.total, po.notes],
         )?;
-        tx.execute("DELETE FROM purchase_order_items WHERE po_id=?1", params![po.id])?;
+        tx.execute(
+            "DELETE FROM purchase_order_items WHERE po_id=?1",
+            params![po.id],
+        )?;
         for item in &po.items {
             tx.execute(
-                "INSERT INTO purchase_order_items (id, po_id, ingredient_id, quantity, unit_cost) VALUES (?1,?2,?3,?4,?5)",
-                params![uuid::Uuid::new_v4().to_string(), po.id, item.ingredient_id, item.quantity, item.unit_cost],
+                "INSERT INTO purchase_order_items (id, po_id, store_id, ingredient_id, quantity, unit_cost) VALUES (?1,?2,?3,?4,?5,?6)",
+                params![uuid::Uuid::new_v4().to_string(), po.id, po.store_id, item.ingredient_id, item.quantity, item.unit_cost],
             )?;
         }
         tx.commit()?;
@@ -1845,31 +2661,51 @@ impl Database {
     }
 
     pub fn update_po_status(&self, id: &str, status: &str, _store_id: &str) -> Result<()> {
-        self.conn.execute("UPDATE purchase_orders SET status=?1 WHERE id=?2", params![status, id])?;
+        self.conn.execute(
+            "UPDATE purchase_orders SET status=?1 WHERE id=?2",
+            params![status, id],
+        )?;
         Ok(())
     }
 
     pub fn receive_purchase_order(&self, id: &str, store_id: &str) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
-        let items: Vec<(String, f64)> = tx.prepare("SELECT ingredient_id, quantity FROM purchase_order_items WHERE po_id=?1")?
+        let items: Vec<(String, f64)> = tx
+            .prepare("SELECT ingredient_id, quantity FROM purchase_order_items WHERE po_id=?1")?
             .query_map(params![id], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<Vec<_>>>()?;
         for (ing_id, qty) in items {
-            tx.execute("UPDATE ingredients SET stock = stock + ?1 WHERE id=?2 AND store_id=?3", params![qty, ing_id, store_id])?;
+            tx.execute(
+                "UPDATE ingredients SET stock = stock + ?1 WHERE id=?2 AND store_id=?3",
+                params![qty, ing_id, store_id],
+            )?;
         }
-        tx.execute("UPDATE purchase_orders SET status='received' WHERE id=?1", params![id])?;
+        tx.execute(
+            "UPDATE purchase_orders SET status='received' WHERE id=?1",
+            params![id],
+        )?;
         tx.commit()?;
         Ok(())
     }
 
     pub fn get_shifts(&self, date: &str, store_id: &str) -> Result<Vec<Shift>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, staff_id, staff_name, date, start_time, end_time, role, notes FROM shifts WHERE store_id=?1 AND date=?2")?;
-        let items = stmt.query_map(params![store_id, date], |row| {
-            Ok(Shift {
-                id: row.get(0)?, store_id: row.get(1)?, staff_id: row.get(2)?, staff_name: row.get(3)?,
-                date: row.get(4)?, start_time: row.get(5)?, end_time: row.get(6)?, role: row.get(7)?, notes: row.get(8)?, created_at: None,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id, date], |row| {
+                Ok(Shift {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    staff_id: row.get(2)?,
+                    staff_name: row.get(3)?,
+                    date: row.get(4)?,
+                    start_time: row.get(5)?,
+                    end_time: row.get(6)?,
+                    role: row.get(7)?,
+                    notes: row.get(8)?,
+                    created_at: None,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
@@ -1882,15 +2718,27 @@ impl Database {
     }
 
     pub fn delete_shift(&self, id: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM shifts WHERE id=?1 AND store_id=?2", params![id, store_id])?;
+        self.conn.execute(
+            "DELETE FROM shifts WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
         Ok(())
     }
 
     pub fn get_customer_wallet(&self, customer_id: &str) -> Result<CustomerWallet> {
         let mut stmt = self.conn.prepare("SELECT customer_id, balance, total_loaded, total_spent FROM wallet_transactions WHERE customer_id=?1")?;
         // Simplified: aggregate from wallet_transactions
-        let balance: f64 = self.conn.query_row("SELECT COALESCE(SUM(amount), 0) FROM wallet_transactions WHERE customer_id=?1", params![customer_id], |r| r.get(0))?;
-        Ok(CustomerWallet { customer_id: customer_id.into(), balance, total_loaded: 0.0, total_spent: 0.0 })
+        let balance: f64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(amount), 0) FROM wallet_transactions WHERE customer_id=?1",
+            params![customer_id],
+            |r| r.get(0),
+        )?;
+        Ok(CustomerWallet {
+            customer_id: customer_id.into(),
+            balance,
+            total_loaded: 0.0,
+            total_spent: 0.0,
+        })
     }
 
     pub fn add_wallet_balance(&self, customer_id: &str, amount: f64, notes: &str) -> Result<()> {
@@ -1901,7 +2749,12 @@ impl Database {
         Ok(())
     }
 
-    pub fn deduct_wallet_balance(&self, customer_id: &str, amount: f64, order_id: &str) -> Result<()> {
+    pub fn deduct_wallet_balance(
+        &self,
+        customer_id: &str,
+        amount: f64,
+        order_id: &str,
+    ) -> Result<()> {
         self.conn.execute(
             "INSERT INTO wallet_transactions (id, customer_id, amount, transaction_type, order_id, notes) VALUES (?1,?2,?3,?4,?5,?6)",
             params![uuid::Uuid::new_v4().to_string(), customer_id, -amount, "spent", order_id, "Order payment"],
@@ -1911,30 +2764,59 @@ impl Database {
 
     pub fn get_wallet_transactions(&self, customer_id: &str) -> Result<Vec<WalletTransaction>> {
         let mut stmt = self.conn.prepare("SELECT id, customer_id, amount, transaction_type, order_id, notes, created_at, store_id FROM wallet_transactions WHERE customer_id=?1 ORDER BY created_at DESC")?;
-        let items = stmt.query_map(params![customer_id], |row| {
-            Ok(WalletTransaction {
-                id: row.get(0)?, customer_id: row.get(1)?, amount: row.get(2)?, transaction_type: row.get(3)?, order_id: row.get(4)?, notes: row.get(5)?, created_at: row.get(6)?, store_id: row.get(7)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![customer_id], |row| {
+                Ok(WalletTransaction {
+                    id: row.get(0)?,
+                    customer_id: row.get(1)?,
+                    amount: row.get(2)?,
+                    transaction_type: row.get(3)?,
+                    order_id: row.get(4)?,
+                    notes: row.get(5)?,
+                    created_at: row.get(6)?,
+                    store_id: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
-    pub fn get_gstr1_report(&self, start: &str, end: &str, store_id: &str) -> Result<Vec<GstReport>> {
+    pub fn get_gstr1_report(
+        &self,
+        start: &str,
+        end: &str,
+        store_id: &str,
+    ) -> Result<Vec<GstReport>> {
         let mut stmt = self.conn.prepare(
             "SELECT o.id, o.created_at, o.customer_name, c.email, o.subtotal, 0, 0, 0, o.total, 'Local'
              FROM orders o LEFT JOIN customers c ON o.customer_name = c.name
              WHERE o.store_id=?1 AND o.status='completed' AND DATE(o.created_at) BETWEEN ?2 AND ?3"
         )?;
-        let items = stmt.query_map(params![store_id, start, end], |row| {
-            Ok(GstReport {
-                invoice_no: row.get(0)?, date: row.get(1)?, customer_name: row.get(2)?, customer_gstin: None,
-                taxable_value: row.get(4)?, cgst: row.get(5)?, sgst: row.get(6)?, igst: row.get(7)?, total: row.get(8)?, place_of_supply: row.get(9)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let items = stmt
+            .query_map(params![store_id, start, end], |row| {
+                Ok(GstReport {
+                    invoice_no: row.get(0)?,
+                    date: row.get(1)?,
+                    customer_name: row.get(2)?,
+                    customer_gstin: None,
+                    taxable_value: row.get(4)?,
+                    cgst: row.get(5)?,
+                    sgst: row.get(6)?,
+                    igst: row.get(7)?,
+                    total: row.get(8)?,
+                    place_of_supply: row.get(9)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
-    pub fn get_gstr3b_report(&self, start: &str, end: &str, store_id: &str) -> Result<(f64, f64, f64, f64, f64, f64)> {
+    pub fn get_gstr3b_report(
+        &self,
+        start: &str,
+        end: &str,
+        store_id: &str,
+    ) -> Result<(f64, f64, f64, f64, f64, f64)> {
         self.conn.query_row(
             "SELECT SUM(subtotal), SUM(tax_amount), 0, 0, 0, 0 FROM orders WHERE store_id=?1 AND status='completed' AND DATE(created_at) BETWEEN ?2 AND ?3",
             params![store_id, start, end],
@@ -1942,373 +2824,45 @@ impl Database {
         )
     }
 
-    pub fn get_activity_logs_range(&self, start: &str, end: &str, limit: i32, store_id: &str) -> Result<Vec<ActivityLogEntry>> {
+    pub fn get_activity_logs_range(
+        &self,
+        start: &str,
+        end: &str,
+        limit: i32,
+        store_id: &str,
+    ) -> Result<Vec<ActivityLogEntry>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, action, user_id, user_name, created_at FROM activity_logs WHERE store_id=?1 AND DATE(created_at) BETWEEN ?2 AND ?3 ORDER BY created_at DESC LIMIT ?4")?;
-        let items = stmt.query_map(params![store_id, start, end, limit], |row| {
-            Ok(ActivityLogEntry {
-                id: row.get(0)?, store_id: row.get(1)?, action: row.get(2)?, entity_type: None, entity_id: None, previous_value: None, new_value: None, reason: None, user_id: row.get(3)?, user_name: row.get(4)?, created_at: row.get(5)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
-        Ok(items)
-    }
-
-    pub fn verify_pin(&self, pin: &str) -> Result<Option<User>> {
-        let mut stmt = self.conn.prepare("SELECT id, pin, name, role, store_id FROM users")?;
-        let user_iter = stmt.query_map([], |row| {
-            Ok((
-                User {
+        let items = stmt
+            .query_map(params![store_id, start, end, limit], |row| {
+                Ok(ActivityLogEntry {
                     id: row.get(0)?,
-                    name: row.get(2)?,
-                    role: row.get(3)?,
-                    store_id: row.get(4)?,
-                },
-                row.get::<_, String>(1)?,
-            ))
-        })?;
-
-        for user_res in user_iter {
-            if let Ok((user, hashed_pin)) = user_res {
-                if let Ok(verified) = bcrypt::verify(pin, &hashed_pin) {
-                    if verified {
-                        return Ok(Some(user));
-                    }
-                }
-            }
-        }
-        Ok(None)
-    }
-
-    pub fn change_pin(&self, user_id: &str, new_pin: &str) -> Result<()> {
-        let hashed = bcrypt::hash(new_pin, bcrypt::DEFAULT_COST).map_err(|_| rusqlite::Error::InvalidQuery)?;
-        self.conn.execute(
-            "UPDATE users SET pin = ?1 WHERE id = ?2",
-            params![hashed, user_id],
-        )?;
-        Ok(())
-    }
-
-    pub fn get_users(&self) -> Result<Vec<User>> {
-        let mut stmt = self.conn.prepare("SELECT id, name, role, store_id FROM users")?;
-        let users = stmt.query_map([], |row| {
-            Ok(User {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                role: row.get(2)?,
-                store_id: row.get(3)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
-        Ok(users)
-    }
-
-    pub fn get_pending_orders_count(&self, store_id: &str) -> Result<i64> {
-        self.conn.query_row(
-            "SELECT COUNT(*) FROM orders WHERE store_id = ?1 AND status = 'pending'",
-            params![store_id],
-            |r| r.get(0),
-        )
-    }
-
-    pub fn get_pending_orders(&self, store_id: &str) -> Result<Vec<Order>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id FROM orders WHERE store_id = ?1 AND status = 'pending' ORDER BY created_at DESC"
-        )?;
-        let ids: Vec<String> = stmt.query_map(params![store_id], |r| r.get(0))?.collect::<Result<Vec<_>>>()?;
-        let mut res = Vec::new();
-        for id in ids {
-            if let Ok(o) = self.get_order_by_id(&id, store_id) { res.push(o); }
-        }
-        Ok(res)
-    }
-
-    pub fn delete_pending_order(&self, id: &str, store_id: &str) -> Result<()> {
-        self.conn.execute(
-            "DELETE FROM orders WHERE id = ?1 AND store_id = ?2 AND status = 'pending'",
-            params![id, store_id],
-        )?;
-        Ok(())
-    }
-
-    pub fn get_kds_orders(&self, store_id: &str) -> Result<Vec<KdsOrder>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, order_type, customer_name, created_at FROM orders
-             WHERE store_id = ?1 AND status IN ('completed', 'pending', 'processing')
-             AND created_at >= date('now', '-1 day')
-             ORDER BY created_at ASC"
-        )?;
-        let mut orders = stmt.query_map(params![store_id], |row| {
-            Ok(KdsOrder {
-                id: row.get(0)?,
-                order_type: row.get(1)?,
-                customer_name: row.get(2)?,
-                created_at: row.get(3)?,
-                items: vec![],
-            })
-        })?.collect::<Result<Vec<_>>>()?;
-
-        for order in &mut orders {
-            let mut item_stmt = self.conn.prepare(
-                "SELECT product_name, quantity, done FROM order_items WHERE order_id = ?1"
-            )?;
-            order.items = item_stmt.query_map(params![order.id], |row| {
-                Ok(KdsItem {
-                    product_name: row.get(0)?,
-                    quantity: row.get(1)?,
-                    done: row.get::<_, i32>(2)? == 1,
+                    store_id: row.get(1)?,
+                    action: row.get(2)?,
+                    entity_type: None,
+                    entity_id: None,
+                    previous_value: None,
+                    new_value: None,
+                    reason: None,
+                    user_id: row.get(3)?,
+                    user_name: row.get(4)?,
+                    created_at: row.get(5)?,
                 })
-            })?.collect::<Result<Vec<_>>>()?;
-        }
-        Ok(orders)
-    }
-
-    pub fn mark_kds_item_done(&self, order_id: &str, item_index: usize, _store_id: &str) -> Result<()> {
-        let items: Vec<i64> = self.conn.prepare("SELECT id FROM order_items WHERE order_id = ?1 ORDER BY id")?
-            .query_map(params![order_id], |r| r.get(0))?
+            })?
             .collect::<Result<Vec<_>>>()?;
-
-        if let Some(item_id) = items.get(item_index) {
-            self.conn.execute(
-                "UPDATE order_items SET done = 1 WHERE id = ?1",
-                params![item_id],
-            )?;
-        }
-        Ok(())
-    }
-
-    pub fn get_coupons(&self, store_id: &str) -> Result<Vec<Coupon>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, store_id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active, created_at
-             FROM coupons WHERE store_id = ?1"
-        )?;
-        let coupons = stmt.query_map(params![store_id], |row| {
-            Ok(Coupon {
-                id: row.get(0)?,
-                store_id: row.get(1)?,
-                code: row.get(2)?,
-                discount_type: row.get(3)?,
-                discount_value: row.get(4)?,
-                min_order_amount: row.get(5)?,
-                max_uses: row.get(6)?,
-                used_count: row.get(7)?,
-                valid_from: row.get(8)?,
-                valid_until: row.get(9)?,
-                active: row.get::<_, i32>(10)? == 1,
-                created_at: row.get(11)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
-        Ok(coupons)
-    }
-
-    pub fn save_coupon(&self, c: &Coupon, store_id: &str) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO coupons (id, store_id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-             ON CONFLICT(id) DO UPDATE SET
-                code=excluded.code, discount_type=excluded.discount_type, discount_value=excluded.discount_value,
-                min_order_amount=excluded.min_order_amount, max_uses=excluded.max_uses,
-                valid_from=excluded.valid_from, valid_until=excluded.valid_until, active=excluded.active",
-            params![c.id, store_id, c.code, c.discount_type, c.discount_value, c.min_order_amount, c.max_uses, c.used_count, c.valid_from, c.valid_until, if c.active { 1 } else { 0 }],
-        )?;
-        Ok(())
-    }
-
-    pub fn validate_coupon(&self, code: &str, order_amount: f64, store_id: &str) -> Result<Coupon> {
-        let coupon: Coupon = self.conn.query_row(
-            "SELECT id, store_id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active, created_at
-             FROM coupons WHERE code = ?1 AND store_id = ?2 AND active = 1",
-            params![code, store_id],
-            |row| {
-                Ok(Coupon {
-                    id: row.get(0)?,
-                    store_id: row.get(1)?,
-                    code: row.get(2)?,
-                    discount_type: row.get(3)?,
-                    discount_value: row.get(4)?,
-                    min_order_amount: row.get(5)?,
-                    max_uses: row.get(6)?,
-                    used_count: row.get(7)?,
-                    valid_from: row.get(8)?,
-                    valid_until: row.get(9)?,
-                    active: row.get::<_, i32>(10)? == 1,
-                    created_at: row.get(11)?,
-                })
-            }
-        )?;
-
-        if order_amount < coupon.min_order_amount {
-            return Err(rusqlite::Error::InvalidQuery);
-        }
-        if coupon.used_count >= coupon.max_uses {
-            return Err(rusqlite::Error::InvalidQuery);
-        }
-        Ok(coupon)
-    }
-
-    pub fn use_coupon(&self, code: &str, store_id: &str) -> Result<()> {
-        self.conn.execute(
-            "UPDATE coupons SET used_count = used_count + 1 WHERE code = ?1 AND store_id = ?2",
-            params![code, store_id],
-        )?;
-        Ok(())
-    }
-
-    pub fn delete_coupon(&self, id: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM coupons WHERE id = ?1 AND store_id = ?2", params![id, store_id])?;
-        Ok(())
-    }
-
-    pub fn get_reservations(&self, date: &str, store_id: &str) -> Result<Vec<Reservation>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT r.id, r.store_id, r.table_id, t.name, r.customer_name, r.phone, r.date, r.time, r.party_size, r.status, r.notes, r.created_at
-             FROM reservations r JOIN tables t ON r.table_id = t.id
-             WHERE r.store_id = ?1 AND r.date = ?2 ORDER BY r.time ASC"
-        )?;
-        let reservations = stmt.query_map(params![store_id, date], |row| {
-            Ok(Reservation {
-                id: row.get(0)?,
-                store_id: row.get(1)?,
-                table_id: row.get(2)?,
-                table_name: row.get(3)?,
-                customer_name: row.get(4)?,
-                phone: row.get(5)?,
-                date: row.get(6)?,
-                time: row.get(7)?,
-                party_size: row.get(8)?,
-                status: row.get(9)?,
-                notes: row.get(10)?,
-                created_at: row.get(11)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
-        Ok(reservations)
-    }
-
-    pub fn save_reservation(&self, r: &Reservation, store_id: &str) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO reservations (id, store_id, table_id, customer_name, phone, date, time, party_size, status, notes)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-             ON CONFLICT(id) DO UPDATE SET
-                table_id=excluded.table_id, customer_name=excluded.customer_name, phone=excluded.phone,
-                date=excluded.date, time=excluded.time, party_size=excluded.party_size,
-                status=excluded.status, notes=excluded.notes",
-            params![r.id, store_id, r.table_id, r.customer_name, r.phone, r.date, r.time, r.party_size, r.status, r.notes],
-        )?;
-        Ok(())
-    }
-
-    pub fn delete_reservation(&self, id: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM reservations WHERE id = ?1 AND store_id = ?2", params![id, store_id])?;
-        Ok(())
-    }
-
-    pub fn get_expenses(&self, date: &str, store_id: &str) -> Result<Vec<Expense>> {
-        let mut stmt = self.conn.prepare("SELECT id, store_id, category, amount, description, date, payment_method, created_at FROM expenses WHERE store_id = ?1 AND date = ?2")?;
-        let expenses = stmt.query_map(params![store_id, date], |row| {
-            Ok(Expense {
-                id: row.get(0)?,
-                store_id: row.get(1)?,
-                category: row.get(2)?,
-                amount: row.get(3)?,
-                description: row.get(4)?,
-                date: row.get(5)?,
-                payment_method: row.get(6)?,
-                created_at: row.get(7)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
-        Ok(expenses)
-    }
-
-    pub fn get_expenses_by_range(&self, start_date: &str, end_date: &str, store_id: &str) -> Result<Vec<Expense>> {
-        let mut stmt = self.conn.prepare("SELECT id, store_id, category, amount, description, date, payment_method, created_at FROM expenses WHERE store_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date DESC")?;
-        let expenses = stmt.query_map(params![store_id, start_date, end_date], |row| {
-            Ok(Expense {
-                id: row.get(0)?,
-                store_id: row.get(1)?,
-                category: row.get(2)?,
-                amount: row.get(3)?,
-                description: row.get(4)?,
-                date: row.get(5)?,
-                payment_method: row.get(6)?,
-                created_at: row.get(7)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
-        Ok(expenses)
-    }
-
-    pub fn save_expense(&self, e: &Expense, store_id: &str) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO expenses (id, store_id, category, amount, description, date, payment_method)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(id) DO UPDATE SET
-                category=excluded.category, amount=excluded.amount, description=excluded.description,
-                date=excluded.date, payment_method=excluded.payment_method",
-            params![e.id, store_id, e.category, e.amount, e.description, e.date, e.payment_method],
-        )?;
-        Ok(())
-    }
-
-    pub fn delete_expense(&self, id: &str, store_id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM expenses WHERE id = ?1 AND store_id = ?2", params![id, store_id])?;
-        Ok(())
-    }
-
-    pub fn get_expense_categories(&self, store_id: &str) -> Result<Vec<ExpenseCategory>> {
-        let mut stmt = self.conn.prepare("SELECT id, store_id, name, icon FROM expense_categories WHERE store_id = ?1")?;
-        let items = stmt.query_map(params![store_id], |row| {
-            Ok(ExpenseCategory { id: row.get(0)?, store_id: row.get(1)?, name: row.get(2)?, icon: row.get(3)? })
-        })?.collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
-    pub fn save_expense_category(&self, c: &ExpenseCategory, store_id: &str) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO expense_categories (id, store_id, name, icon) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(id) DO UPDATE SET name=excluded.name, icon=excluded.icon",
-            params![c.id, store_id, c.name, c.icon],
-        )?;
-        Ok(())
+    pub fn export_to_tally(&self, _start: &str, _end: &str, _store_id: &str) -> Result<String> {
+        Ok("Tally XML export placeholder".into())
     }
-
-    pub fn get_day_end_reconciliation(&self, date: &str, store_id: &str) -> Result<Option<DayEndReconciliation>> {
-        let res = self.conn.query_row(
-            "SELECT id, store_id, date, opening_cash, expected_cash, actual_cash, difference, cash_sales, upi_sales, card_sales, total_expenses, notes, created_by, created_at
-             FROM day_end_reconciliations WHERE store_id = ?1 AND date = ?2",
-            params![store_id, date],
-            |row| {
-                Ok(DayEndReconciliation {
-                    id: row.get(0)?,
-                    store_id: row.get(1)?,
-                    date: row.get(2)?,
-                    opening_cash: row.get(3)?,
-                    expected_cash: row.get(4)?,
-                    actual_cash: row.get(5)?,
-                    difference: row.get(6)?,
-                    cash_sales: row.get(7)?,
-                    upi_sales: row.get(8)?,
-                    card_sales: row.get(9)?,
-                    total_expenses: row.get(10)?,
-                    notes: row.get(11)?,
-                    created_by: row.get(12)?,
-                    created_at: row.get(13)?,
-                })
-            }
-        );
-        match res { Ok(r) => Ok(Some(r)), Err(_) => Ok(None) }
+    pub fn export_to_quickbooks(
+        &self,
+        _start: &str,
+        _end: &str,
+        _store_id: &str,
+    ) -> Result<String> {
+        Ok("Quickbooks CSV export placeholder".into())
     }
-
-    pub fn save_day_end_reconciliation(&self, r: &DayEndReconciliation, store_id: &str) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO day_end_reconciliations (id, store_id, date, opening_cash, expected_cash, actual_cash, difference, cash_sales, upi_sales, card_sales, total_expenses, notes, created_by)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
-             ON CONFLICT(store_id, date) DO UPDATE SET
-                opening_cash=excluded.opening_cash, expected_cash=excluded.expected_cash, actual_cash=excluded.actual_cash,
-                difference=excluded.difference, cash_sales=excluded.cash_sales, upi_sales=excluded.upi_sales,
-                card_sales=excluded.card_sales, total_expenses=excluded.total_expenses, notes=excluded.notes, created_by=excluded.created_by",
-            params![r.id, store_id, r.date, r.opening_cash, r.expected_cash, r.actual_cash, r.difference, r.cash_sales, r.upi_sales, r.card_sales, r.total_expenses, r.notes, r.created_by],
-        )?;
-        Ok(())
-    }
-
-    pub fn export_to_tally(&self, _start: &str, _end: &str, _store_id: &str) -> Result<String> { Ok("Tally XML export placeholder".into()) }
-    pub fn export_to_quickbooks(&self, _start: &str, _end: &str, _store_id: &str) -> Result<String> { Ok("Quickbooks CSV export placeholder".into()) }
     pub fn create_compressed_backup(&self, store_id: &str) -> Result<Vec<u8>> {
         let backup = self.export_backup(store_id)?;
         Ok(backup.as_bytes().to_vec())

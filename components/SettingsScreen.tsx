@@ -34,6 +34,7 @@ import {
   importBackup,
 } from "@/lib/db";
 import { useSettingsStore, useAuthStore } from "@/lib/stores";
+import pako from "pako";
 
 const validatePhone = (phone: string): string | null => {
   if (!phone) return null;
@@ -588,18 +589,32 @@ export default function SettingsScreen() {
     setBackingUp(true);
     setBackupMsg(null);
     try {
-      const text = await file.text();
-      const result = await importBackup(text, activeStoreId);
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let jsonString: string;
+
+      try {
+        // Try to decompress as gzip
+        jsonString = pako.ungzip(bytes, { to: 'string' });
+      } catch {
+        // If not gzipped, decode as UTF-8 text
+        jsonString = new TextDecoder().decode(bytes);
+      }
+
+      // Validate JSON
+      JSON.parse(jsonString);
+
+      const result = await importBackup(jsonString, activeStoreId);
       setBackupMsg({
         text: `✓ Imported ${result.products_imported} products and ${result.orders_imported} orders`,
         ok: true,
       });
     } catch (err) {
-      setBackupMsg({ text: `Error: ${err}`, ok: false });
+      setBackupMsg({ text: `Error: Invalid backup file or import failed`, ok: false });
     }
     setBackingUp(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    };
+  };
   
     const handleRestoreBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -607,14 +622,28 @@ export default function SettingsScreen() {
       setRestoring(true);
       setRestoreMsg(null);
       try {
-        const text = await file.text();
-        const result = await importBackup(text, activeStoreId);
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let jsonString: string;
+
+        try {
+          // Try to decompress as gzip
+          jsonString = pako.ungzip(bytes, { to: 'string' });
+        } catch {
+          // If not gzipped, decode as UTF-8 text
+          jsonString = new TextDecoder().decode(bytes);
+        }
+
+        // Validate JSON
+        JSON.parse(jsonString);
+
+        const result = await importBackup(jsonString, activeStoreId);
         setRestoreMsg({
           text: `✓ Restored ${result.products_imported} products and ${result.orders_imported} orders`,
           ok: true,
         });
       } catch (err) {
-        setRestoreMsg({ text: `Error: ${err}`, ok: false });
+        setRestoreMsg({ text: `Error: Invalid backup file or restore failed`, ok: false });
       }
       setRestoring(false);
       if (restoreFileInputRef.current) restoreFileInputRef.current.value = "";
@@ -731,7 +760,7 @@ export default function SettingsScreen() {
 
   return (
     <div className="h-full overflow-y-auto p-5">
-      <h1 className="font-display text-xl font-bold font-display mb-6">Settings</h1>
+      <h1 className="font-display text-xl font-bold mb-6">Settings</h1>
       <div className="space-y-4">
         {/* Store Info */}
         <div className="card p-5">
@@ -1171,7 +1200,7 @@ export default function SettingsScreen() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".json"
+              accept=".json,.gz"
               onChange={handleImportBackup}
               style={{ display: "none" }}
             />
@@ -1219,7 +1248,7 @@ export default function SettingsScreen() {
             <input
               ref={restoreFileInputRef}
               type="file"
-              accept=".json"
+              accept=".json,.gz"
               onChange={handleRestoreBackup}
               style={{ display: "none" }}
             />
