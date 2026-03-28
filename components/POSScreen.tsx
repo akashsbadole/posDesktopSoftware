@@ -78,6 +78,7 @@ export default function POSScreen() {
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [useWallet, setUseWallet] = useState(false);
   const [walletCustomerId, setWalletCustomerId] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { 
     fetchProducts(); 
@@ -105,6 +106,12 @@ export default function POSScreen() {
         if (checkoutBtn && !checkoutBtn.disabled) {
           checkoutBtn.click();
         }
+      }
+      if (e.key === "f" || e.key === "F" || e.key === "/") {
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        setSearchQuery("");
       }
       if (e.key === "1") setOrderType("dine_in");
       if (e.key === "2") setOrderType("takeaway");
@@ -222,7 +229,7 @@ export default function POSScreen() {
   const lookupCustomerWallet = async (phone: string) => {
     if (!phone || phone.length < 7) return;
     try {
-      const customer = await dbGetCustomerByPhone(phone);
+      const customer = await dbGetCustomerByPhone(phone, activeStoreId);
       if (customer) {
         const wallet = await getCustomerWallet(customer.id);
         setWalletBalance(wallet.balance);
@@ -581,6 +588,7 @@ export default function POSScreen() {
             <label htmlFor="product-search" className="sr-only">Search or scan barcode</label>
             <input 
               id="product-search"
+              ref={searchInputRef}
               placeholder="Search or scan barcode..." 
               value={searchQuery} 
               onChange={(e) => setSearchQuery(e.target.value)} 
