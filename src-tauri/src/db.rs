@@ -4,6 +4,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use bcrypt;
+use csv;
 use rand::Rng;
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
@@ -349,6 +350,12 @@ pub struct BackupData {
 pub struct ImportResult {
     pub products_imported: i64,
     pub orders_imported: i64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct CsvImportResult {
+    pub imported: i64,
+    pub errors: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1938,61 +1945,114 @@ impl Database {
 
     pub fn export_products_csv(&self, store_id: &str) -> Result<String> {
         let products = self.get_products(store_id)?;
-        let mut csv = "id,name,price,category,stock,barcode,tax\n".to_string();
+        let mut wtr = csv::Writer::from_writer(vec![]);
+
+        // Header
+        wtr.write_record(&["id", "name", "price", "category", "stock", "barcode", "tax", "image_url", "metadata"])
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+
         for p in products {
-            csv.push_str(&format!(
-                "{},{},{},{},{},{},{}\n",
-                p.id, p.name, p.price, p.category, p.stock, p.barcode, p.tax
-            ));
+            let metadata_str = p.metadata.as_ref()
+                .and_then(|m| serde_json::to_string(m).ok())
+                .unwrap_or_default();
+
+            wtr.write_record(&[
+                &p.id,
+                &p.name,
+                &p.price.to_string(),
+                &p.category,
+                &p.stock.to_string(),
+                &p.barcode,
+                &p.tax.to_string(),
+                p.image_url.as_deref().unwrap_or(""),
+                &metadata_str,
+            ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
         }
-        Ok(csv)
+
+        let data = String::from_utf8(wtr.into_inner().unwrap_or_default())
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        Ok(data)
     }
 
     pub fn export_orders_csv(&self, store_id: &str) -> Result<String> {
         let orders = self.get_orders(store_id, None, None)?;
-        let mut csv = "id,total,payment_method,customer,created_at\n".to_string();
+        let mut wtr = csv::Writer::from_writer(vec![]);
+
+        wtr.write_record(&["id", "total", "payment_method", "customer", "status", "order_type", "created_at"])
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+
         for o in orders {
-            csv.push_str(&format!(
-                "{},{},{},{},{}\n",
-                o.id, o.total, o.payment_method, o.customer_name, o.created_at
-            ));
+            wtr.write_record(&[
+                &o.id,
+                &o.total.to_string(),
+                &o.payment_method,
+                &o.customer_name,
+                &o.status,
+                &o.order_type,
+                &o.created_at,
+            ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
         }
-        Ok(csv)
+
+        let data = String::from_utf8(wtr.into_inner().unwrap_or_default())
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        Ok(data)
     }
 
-    pub fn import_products_csv(&self, csv_data: &str, store_id: &str) -> Result<(i64, i64)> {
+    pub fn import_products_csv(&self, csv_data: &str, store_id: &str) -> Result<CsvImportResult> {
         let mut imported = 0;
         let mut errors = 0;
-        let lines: Vec<&str> = csv_data.split('\n').collect();
-        for line in lines.iter().skip(1) {
-            if line.trim().is_empty() {
-                continue;
-            }
-            let parts: Vec<&str> = line.split(',').collect();
-            if parts.len() < 7 {
+        let mut rdr = csv::Reader::from_reader(csv_data.as_bytes());
+
+        for result in rdr.records() {
+            let record = match result {
+                Ok(r) => r,
+                Err(_) => {
+                    errors += 1;
+                    continue;
+                }
+            };
+
+            if record.len() < 7 {
                 errors += 1;
                 continue;
             }
+
+            let id = record.get(0).unwrap_or("").to_string();
+            let name = record.get(1).unwrap_or("").to_string();
+            if name.is_empty() {
+                errors += 1;
+                continue;
+            }
+
+            let price = record.get(2).unwrap_or("0").parse().unwrap_or(0.0);
+            let category = record.get(3).unwrap_or("General").to_string();
+            let stock = record.get(4).unwrap_or("0").parse().unwrap_or(0);
+            let barcode = record.get(5).unwrap_or("").to_string();
+            let tax = record.get(6).unwrap_or("0").parse().unwrap_or(0.0);
+            let image_url = record.get(7).filter(|s| !s.is_empty()).map(|s| s.to_string());
+            let metadata = record.get(8).and_then(|s| serde_json::from_str(s).ok());
+
             let p = Product {
-                id: parts[0].to_string(),
+                id: if id.is_empty() { uuid::Uuid::new_v4().to_string() } else { id },
                 store_id: store_id.to_string(),
-                name: parts[1].to_string(),
-                price: parts[2].parse().unwrap_or(0.0),
-                category: parts[3].to_string(),
-                stock: parts[4].parse().unwrap_or(0),
-                barcode: parts[5].to_string(),
-                tax: parts[6].parse().unwrap_or(0.0),
-                image_url: None,
+                name,
+                price,
+                category,
+                stock,
+                barcode,
+                tax,
+                image_url,
                 created_at: None,
-                metadata: None,
+                metadata,
             };
+
             if self.upsert_product(&p, store_id).is_ok() {
                 imported += 1;
             } else {
                 errors += 1;
             }
         }
-        Ok((imported, errors))
+        Ok(CsvImportResult { imported, errors })
     }
 
     pub fn get_sales_report(&self, start: &str, end: &str, store_id: &str) -> Result<SalesReport> {

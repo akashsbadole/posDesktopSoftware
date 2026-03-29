@@ -1,8 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, X, Check, Search, RefreshCw, Package, Image, Tag, Star, GripVertical, Clock, ShieldCheck, Calendar } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, Search, RefreshCw, Package, Image, Tag, Star, GripVertical, Clock, ShieldCheck, Calendar, Download, Upload } from "lucide-react";
 import { dbSaveProduct, dbDeleteProduct, Product, dbGetCombos, dbSaveCombo, dbDeleteCombo, dbToggleCombo, Combo, ComboItem } from "@/lib/db";
 import { useProductsStore, useSettingsStore, useStoresStore } from "@/lib/stores";
+import { useRef } from "react";
 import { v4 as uuid } from "uuid";
 
 const EMPTY_PRODUCT: Product = { id: "", store_id: "", name: "", price: 0, category: "Food", stock: 0, barcode: "", tax: 18, image_url: "" };
@@ -46,10 +47,11 @@ const EMPTY_COMBO: Combo = {
 export default function ProductsScreen() {
   const { activeStoreId } = useSettingsStore();
   const { stores } = useStoresStore();
-  const { products, isLoading, fetchProducts, addProduct, updateProduct, deleteProduct } = useProductsStore();
+  const { products, isLoading, fetchProducts, addProduct, updateProduct, deleteProduct, exportProducts, importProducts } = useProductsStore();
   const { settings, fetchSettings } = useSettingsStore();
 
   const activeStore = stores.find(s => s.id === activeStoreId);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Product | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -204,6 +206,45 @@ export default function ProductsScreen() {
     return comboItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   };
 
+  const handleExport = async () => {
+    try {
+      const csv = await exportProducts();
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `products_${activeStoreId}_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to export products:", err);
+      alert("Failed to export products");
+    }
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const csvData = event.target?.result as string;
+      try {
+        const result = await importProducts(csvData);
+        alert(`Import complete! Imported: ${result.imported}, Errors: ${result.errors}`);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      } catch (err) {
+        console.error("Failed to import products:", err);
+        alert("Failed to import products. Please check the CSV format.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const curr = settings?.currency_symbol ?? "₹";
 
   return (
@@ -228,11 +269,27 @@ export default function ProductsScreen() {
                 <Tag size={14} className="inline mr-1" /> Combos
               </button>
             </div>
-            <button onClick={() => fetchProducts()} className="btn-ghost py-2 px-3"><RefreshCw size={14} className={isLoading ? "spin" : ""} /></button>
+            <button onClick={() => fetchProducts()} className="btn-ghost py-2 px-3" title="Refresh"><RefreshCw size={14} className={isLoading ? "spin" : ""} /></button>
+
             {view === "products" && (
-              <button className="btn-accent flex items-center gap-2 text-sm" onClick={() => setEditing({ ...EMPTY_PRODUCT, store_id: activeStoreId })}>
-                <Plus size={15} /> Add Product
-              </button>
+              <>
+                <button onClick={handleExport} className="btn-ghost py-2 px-3" title="Export CSV">
+                  <Download size={14} />
+                </button>
+                <button onClick={handleImportClick} className="btn-ghost py-2 px-3" title="Import CSV">
+                  <Upload size={14} />
+                </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept=".csv"
+                  className="hidden"
+                />
+                <button className="btn-accent flex items-center gap-2 text-sm" onClick={() => setEditing({ ...EMPTY_PRODUCT, store_id: activeStoreId })}>
+                  <Plus size={15} /> Add Product
+                </button>
+              </>
             )}
             {view === "combos" && (
               <button className="btn-accent flex items-center gap-2 text-sm" onClick={() => { setEditingCombo({ ...EMPTY_COMBO, store_id: activeStoreId }); setComboItems([]); }}>

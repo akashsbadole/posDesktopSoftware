@@ -175,7 +175,7 @@ fn export_orders_csv(store_id: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn import_products_csv(csv_data: String, store_id: String) -> Result<(i64, i64), String> {
+fn import_products_csv(csv_data: String, store_id: String) -> Result<db::CsvImportResult, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.import_products_csv(&csv_data, &store_id).map_err(|e| e.to_string())
 }

@@ -1177,6 +1177,85 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       { id: "admin", name: "Administrator", role: "admin" },
       { id: "cashier", name: "Cashier", role: "cashier" }
     ] as T;
+    case "export_products_csv": {
+      const p = lsGet<Product[]>(LS.products) || [];
+      const filtered = p.filter(x => x.store_id === storeId);
+      const header = ["id", "name", "price", "category", "stock", "barcode", "tax", "image_url", "metadata"];
+      const rows = filtered.map(x => [
+        x.id,
+        x.name,
+        x.price.toString(),
+        x.category,
+        x.stock.toString(),
+        x.barcode,
+        x.tax.toString(),
+        x.image_url || "",
+        JSON.stringify(x.metadata || {})
+      ]);
+      const csv = [header, ...rows].map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+      return csv as T;
+    }
+    case "import_products_csv": {
+      const csvData = (args as any).csvData as string;
+      const products = lsGet<Product[]>(LS.products) || [];
+      const lines = csvData.split("\n");
+      let imported = 0;
+      let errors = 0;
+
+      const parseCsvLine = (line: string) => {
+        const result = [];
+        let current = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              current += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (char === "," && !inQuotes) {
+            result.push(current);
+            current = "";
+          } else {
+            current += char;
+          }
+        }
+        result.push(current);
+        return result;
+      };
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const parts = parseCsvLine(line);
+        if (parts.length < 7) {
+          errors++;
+          continue;
+        }
+
+        const p: Product = {
+          id: parts[0] || Math.random().toString(36).substr(2, 9),
+          store_id: storeId,
+          name: parts[1],
+          price: parseFloat(parts[2]) || 0,
+          category: parts[3] || "General",
+          stock: parseInt(parts[4]) || 0,
+          barcode: parts[5] || "",
+          tax: parseFloat(parts[6]) || 0,
+          image_url: parts[7] || "",
+          metadata: parts[8] ? JSON.parse(parts[8]) : {}
+        };
+
+        const idx = products.findIndex(x => x.id === p.id && x.store_id === storeId);
+        if (idx >= 0) products[idx] = p; else products.push(p);
+        imported++;
+      }
+      lsSet(LS.products, products);
+      return { imported, errors } as T;
+    }
     default:
       console.warn(`Browser fallback: Command ${cmd} not fully implemented for store ${storeId}`);
       return [] as any as T;
