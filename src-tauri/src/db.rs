@@ -192,6 +192,8 @@ pub struct Settings {
     pub receipt_header_text: String,
     pub merchant_id: String,
     pub show_tax_breakdown: bool,
+    #[serde(default)]
+    pub onboarding_completed: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1875,6 +1877,7 @@ impl Database {
             receipt_header_text: "".into(),
             merchant_id: "".into(),
             show_tax_breakdown: true,
+            onboarding_completed: false,
         }
     }
 

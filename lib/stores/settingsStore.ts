@@ -55,6 +55,7 @@ const defaultSettings: Settings = {
   receipt_header_text: '',
   merchant_id: '',
   show_tax_breakdown: true,
+  onboarding_completed: false,
 };
 
 export const useSettingsStore = create<SettingsState>()(

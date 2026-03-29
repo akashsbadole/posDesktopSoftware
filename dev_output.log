@@ -1,0 +1,28 @@
+
+> pos-tauri@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.2:3000
+✓ Ready in 901ms
+
+○ Compiling / ...
+ GET / 200 in 8.1s (next.js: 7.5s, application-code: 673ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1265:15)
+ GET / 200 in 173ms (next.js: 9ms, application-code: 164ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1265:15)
+ GET / 200 in 64ms (next.js: 5ms, application-code: 59ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1265:15)
+ GET / 200 in 60ms (next.js: 4ms, application-code: 56ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1265:15)
+ GET / 200 in 88ms (next.js: 6ms, application-code: 82ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1265:15)
+ GET / 200 in 66ms (next.js: 4ms, application-code: 62ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1265:15)
+ GET / 200 in 68ms (next.js: 4ms, application-code: 64ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1265:15)
+ GET / 200 in 63ms (next.js: 5ms, application-code: 59ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1265:15)
+ GET / 200 in 72ms (next.js: 8ms, application-code: 64ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1265:15)
