@@ -457,70 +457,70 @@ export async function dbDeleteStore(id: string): Promise<void> {
 
 // ─── Products ─────────────────────────────────────────────────────────────────
 export async function dbGetProducts(storeId: string): Promise<Product[]> {
-  return sql<Product[]>("get_products", { storeId });
+  return sql<Product[]>("get_products", { store_id: storeId });
 }
 
 export async function dbSaveProduct(product: Product, storeId: string): Promise<void> {
-  return sql("upsert_product", { product, storeId });
+  return sql("upsert_product", { product, store_id: storeId });
 }
 
 export async function dbDeleteProduct(id: string, storeId: string): Promise<void> {
-  return sql("delete_product", { id, storeId });
+  return sql("delete_product", { id, store_id: storeId });
 }
 
 export async function dbUpdateStock(id: string, delta: number, storeId: string): Promise<void> {
-  return sql("update_stock", { id, delta, storeId });
+  return sql("update_stock", { id, delta, store_id: storeId });
 }
 
 export async function dbTransferStock(id: string, fromStore: string, toStore: string, qty: number): Promise<void> {
-  return sql("transfer_stock", { id, fromStore, toStore, qty });
+  return sql("transfer_stock", { id, from_store: fromStore, to_store: toStore, qty });
 }
 
 // ─── Combos ──────────────────────────────────────────────────────────────────
 export async function dbGetCombos(storeId: string): Promise<Combo[]> {
-  return sql<Combo[]>("get_combos", { storeId });
+  return sql<Combo[]>("get_combos", { store_id: storeId });
 }
 
 export async function dbSaveCombo(combo: Combo, storeId: string): Promise<void> {
-  return sql("save_combo", { combo, storeId });
+  return sql("save_combo", { combo, store_id: storeId });
 }
 
 export async function dbDeleteCombo(id: string, storeId: string): Promise<void> {
-  return sql("delete_combo", { id, storeId });
+  return sql("delete_combo", { id, store_id: storeId });
 }
 
 export async function dbToggleCombo(id: string, isActive: boolean, storeId: string): Promise<void> {
-  return sql("toggle_combo", { id, isActive, storeId });
+  return sql("toggle_combo", { id, active: isActive, store_id: storeId });
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
 export async function dbGetOrders(storeId: string, limit?: number, offset?: number): Promise<Order[]> {
-  return sql<Order[]>("get_orders", { storeId, limit, offset });
+  return sql<Order[]>("get_orders", { store_id: storeId, limit, offset });
 }
 
 export async function dbSaveOrder(order: Order, storeId: string): Promise<void> {
-  return sql("save_order", { order, storeId });
+  return sql("save_order", { order, store_id: storeId });
 }
 
 export async function dbRefundOrder(id: string, storeId: string, userId: string = "system", userName: string = "System"): Promise<void> {
-  return sql("refund_order", { id, storeId, userId, userName });
+  return sql("refund_order", { id, store_id: storeId, user_id: userId, user_name: userName });
 }
 
 export async function updateDeliveryStatus(id: string, status: string, storeId: string): Promise<void> {
-  return sql("update_delivery_status", { id, status, storeId });
+  return sql("update_delivery_status", { id, status, store_id: storeId });
 }
 
 export async function dbUpdateOrderStatus(id: string, status: string, storeId: string): Promise<void> {
-  return sql("update_order_status", { id, status, storeId });
+  return sql("update_order_status", { id, status, store_id: storeId });
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 export async function dbGetSettings(storeId: string): Promise<Settings> {
-  return sql<Settings>("get_settings", { storeId });
+  return sql<Settings>("get_settings", { store_id: storeId });
 }
 
 export async function dbSaveSettings(settings: Settings, storeId: string): Promise<void> {
-  return sql("save_settings", { settings, storeId });
+  return sql("save_settings", { settings, store_id: storeId });
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
@@ -530,37 +530,37 @@ export async function dbGetDailySummary(storeId: string) {
     transactions: number;
     avg_order: number;
     items_sold: number;
-  }>("get_daily_summary", { storeId });
+  }>("get_daily_summary", { store_id: storeId });
 }
 
 export async function dbGetWeeklyRevenue(storeId: string) {
-  return sql<{ label: string; revenue: number }[]>("get_weekly_revenue", { storeId });
+  return sql<{ label: string; revenue: number }[]>("get_weekly_revenue", { store_id: storeId });
 }
 
 export async function dbGetTopProducts(storeId: string) {
-  return sql<{ name: string; qty: number; revenue: number }[]>("get_top_products", { storeId });
+  return sql<{ name: string; qty: number; revenue: number }[]>("get_top_products", { store_id: storeId });
 }
 
 export async function dbGetLowStock(storeId: string) {
-  return sql<{ name: string; stock: number }[]>("get_low_stock", { storeId });
+  return sql<{ name: string; stock: number }[]>("get_low_stock", { store_id: storeId });
 }
 
 export async function getSalesByPaymentMethod(date: string, storeId: string): Promise<{ cash: number; upi: number; card: number }> {
-  const result = await sql<[number, number, number]>("get_sales_by_payment_method", { date, storeId });
+  const result = await sql<[number, number, number]>("get_sales_by_payment_method", { date, store_id: storeId });
   return { cash: result[0], upi: result[1], card: result[2] };
 }
 
 // ─── CSV Import/Export ─────────────────────────────────────────────────────
 export async function exportProductsCsv(storeId: string): Promise<string> {
-  return sql<string>("export_products_csv", { storeId });
+  return sql<string>("export_products_csv", { store_id: storeId });
 }
 
 export async function exportOrdersCsv(storeId: string): Promise<string> {
-  return sql<string>("export_orders_csv", { storeId });
+  return sql<string>("export_orders_csv", { store_id: storeId });
 }
 
 export async function importProductsCsv(csvData: string, storeId: string): Promise<{ imported: number; errors: number }> {
-  return sql<{ imported: number; errors: number }>("import_products_csv", { csvData, storeId });
+  return sql<{ imported: number; errors: number }>("import_products_csv", { csv_data: csvData, store_id: storeId });
 }
 
 // ─── Reports ───────────────────────────────────────────────────────────────
@@ -571,7 +571,7 @@ export async function getSalesReport(startDate: string, endDate: string, storeId
     total_revenue: number;
     total_orders: number;
     avg_order: number;
-  }>("get_sales_report", { startDate, endDate, storeId });
+  }>("get_sales_report", { start_date: startDate, end_date: endDate, store_id: storeId });
 }
 
 // ─── Users ─────────────────────────────────────────────────────────────────
@@ -596,7 +596,7 @@ export async function getUsers(): Promise<User[]> {
 
 // ─── Backup ─────────────────────────────────────────────────────────────────
 export async function exportBackup(storeId: string): Promise<string> {
-  return sql<string>("export_backup", { storeId });
+  return sql<string>("export_backup", { store_id: storeId });
 }
 
 export async function importBackup(backupJson: string, storeId: string): Promise<{ products_imported: number; orders_imported: number }> {
@@ -616,7 +616,7 @@ export async function importBackup(backupJson: string, storeId: string): Promise
     // Not gzipped base64, treat as plain JSON string
   }
 
-  return sql<{ products_imported: number; orders_imported: number }>("import_backup", { backupJson: jsonString, storeId });
+  return sql<{ products_imported: number; orders_imported: number }>("import_backup", { backup_json: jsonString, store_id: storeId });
 }
 
 // ─── Activity Logs ─────────────────────────────────────────────────────────
@@ -634,144 +634,144 @@ export interface ActivityLog {
 }
 
 export async function getActivityLogs(storeId: string, limit: number = 100): Promise<ActivityLog[]> {
-  return sql<ActivityLog[]>("get_activity_logs", { storeId, limit });
+  return sql<ActivityLog[]>("get_activity_logs", { store_id: storeId, limit });
 }
 
 // ─── Tables ───────────────────────────────────────────────────────────────────
 export async function dbGetTables(storeId: string): Promise<Table[]> {
-  return sql<Table[]>("get_tables", { storeId });
+  return sql<Table[]>("get_tables", { store_id: storeId });
 }
 
 export async function dbSaveTable(table: Table, storeId: string): Promise<void> {
-  return sql("save_table", { table, storeId });
+  return sql("save_table", { table, store_id: storeId });
 }
 
 export async function dbDeleteTable(id: string, storeId: string): Promise<void> {
-  return sql("delete_table", { id, storeId });
+  return sql("delete_table", { id, store_id: storeId });
 }
 
 export async function dbUpdateTableStatus(id: string, status: string, storeId: string): Promise<void> {
-  return sql("update_table_status", { id, status, storeId });
+  return sql("update_table_status", { id, status, store_id: storeId });
 }
 
 // ─── Staff Attendance ─────────────────────────────────────────────────────────
 export async function dbClockIn(userId: string, userName: string, storeId: string): Promise<void> {
-  return sql("clock_in", { userId, userName, storeId });
+  return sql("clock_in", { user_id: userId, user_name: userName, store_id: storeId });
 }
 
 export async function dbClockOut(userId: string, storeId: string): Promise<void> {
-  return sql("clock_out", { userId, storeId });
+  return sql("clock_out", { user_id: userId, store_id: storeId });
 }
 
 export async function dbGetTodayAttendance(storeId: string): Promise<StaffAttendance[]> {
-  return sql<StaffAttendance[]>("get_today_attendance", { storeId });
+  return sql<StaffAttendance[]>("get_today_attendance", { store_id: storeId });
 }
 
 export async function dbIsClockedIn(userId: string, storeId: string): Promise<boolean> {
-  return sql<boolean>("is_clocked_in", { userId, storeId });
+  return sql<boolean>("is_clocked_in", { user_id: userId, store_id: storeId });
 }
 
 // ─── Customers ──────────────────────────────────────────────────────────────
 export async function dbGetCustomers(storeId: string): Promise<Customer[]> {
-  return sql<Customer[]>("get_customers", { storeId });
+  return sql<Customer[]>("get_customers", { store_id: storeId });
 }
 
 export async function dbSaveCustomer(customer: Customer, storeId: string): Promise<void> {
-  return sql("save_customer", { customer, storeId });
+  return sql("save_customer", { customer, store_id: storeId });
 }
 
 export async function dbGetCustomerByPhone(phone: string, storeId: string): Promise<Customer | null> {
-  return sql<Customer | null>("get_customer_by_phone", { phone, storeId });
+  return sql<Customer | null>("get_customer_by_phone", { phone, store_id: storeId });
 }
 
 export async function dbAddLoyaltyPoints(customerId: string, points: number, spent: number, storeId: string): Promise<void> {
-  return sql("add_loyalty_points", { customerId, points, spent, storeId });
+  return sql("add_loyalty_points", { customer_id: customerId, points, spent, store_id: storeId });
 }
 
 export async function dbGetCustomerOrders(phone: string, storeId: string): Promise<Order[]> {
-  return sql<Order[]>("get_customer_orders", { phone, storeId });
+  return sql<Order[]>("get_customer_orders", { phone, store_id: storeId });
 }
 
 // ─── Order Notes ────────────────────────────────────────────────────────────
 export async function dbAddOrderNote(orderId: string, note: string, storeId: string): Promise<void> {
-  return sql("add_order_note", { orderId, note, storeId });
+  return sql("add_order_note", { order_id: orderId, note, store_id: storeId });
 }
 
 export async function dbGetOrderNotes(orderId: string, storeId: string): Promise<OrderNote[]> {
-  return sql<OrderNote[]>("get_order_notes", { orderId, storeId });
+  return sql<OrderNote[]>("get_order_notes", { order_id: orderId, store_id: storeId });
 }
 
 // ─── Inventory Alerts ───────────────────────────────────────────────────────
 export async function dbGetInventoryAlerts(storeId: string): Promise<InventoryAlert[]> {
-  return sql<InventoryAlert[]>("get_inventory_alerts", { storeId });
+  return sql<InventoryAlert[]>("get_inventory_alerts", { store_id: storeId });
 }
 
 export async function dbCheckInventoryAlerts(storeId: string): Promise<InventoryAlert[]> {
-  return sql<InventoryAlert[]>("check_inventory_alerts", { storeId });
+  return sql<InventoryAlert[]>("check_inventory_alerts", { store_id: storeId });
 }
 
 export async function dbCreateInventoryAlert(alert: InventoryAlert, storeId: string): Promise<void> {
-  return sql("create_inventory_alert", { alert, storeId });
+  return sql("create_inventory_alert", { alert, store_id: storeId });
 }
 
 export async function dbClearInventoryAlert(id: string, storeId: string): Promise<void> {
-  return sql("clear_inventory_alert", { id, storeId });
+  return sql("clear_inventory_alert", { id, store_id: storeId });
 }
 
 // ─── Enhanced Reports ───────────────────────────────────────────────────────
 export async function dbGetHourlySales(date: string, storeId: string): Promise<HourlySales[]> {
-  return sql<HourlySales[]>("get_hourly_sales", { date, storeId });
+  return sql<HourlySales[]>("get_hourly_sales", { date, store_id: storeId });
 }
 
 export async function dbGetStaffPerformance(startDate: string, endDate: string, storeId: string): Promise<StaffPerformance[]> {
-  return sql<StaffPerformance[]>("get_staff_performance", { startDate, endDate, storeId });
+  return sql<StaffPerformance[]>("get_staff_performance", { start_date: startDate, end_date: endDate, store_id: storeId });
 }
 
 export async function dbGetSalesByItem(startDate: string, endDate: string, storeId: string): Promise<SalesByItem[]> {
-  return sql<SalesByItem[]>("get_sales_by_item", { startDate, endDate, storeId });
+  return sql<SalesByItem[]>("get_sales_by_item", { start_date: startDate, end_date: endDate, store_id: storeId });
 }
 
 // ─── Hold & Cancel ──────────────────────────────────────────────────────────
 export async function dbHoldOrder(order: Order, storeId: string): Promise<void> {
-  return sql("hold_order", { order, storeId });
+  return sql("hold_order", { order, store_id: storeId });
 }
 
 export async function dbGetHeldOrders(storeId: string): Promise<Order[]> {
-  return sql<Order[]>("get_held_orders", { storeId });
+  return sql<Order[]>("get_held_orders", { store_id: storeId });
 }
 
 export async function dbCancelOrder(id: string, reason: string, userId: string, userName: string, storeId: string): Promise<void> {
-  return sql("cancel_order", { id, reason, userId, userName, storeId });
+  return sql("cancel_order", { id, reason, user_id: userId, user_name: userName, store_id: storeId });
 }
 
 // ─── Refunds ───────────────────────────────────────────────────────────────
 export async function dbCreateRefundRequest(orderId: string, amount: number, reason: string, storeId: string): Promise<string> {
-  return sql<string>("create_refund_request", { orderId, amount, reason, storeId });
+  return sql<string>("create_refund_request", { order_id: orderId, amount, reason, store_id: storeId });
 }
 
 export async function dbGetRefundRequests(storeId: string): Promise<RefundRequest[]> {
-  return sql<RefundRequest[]>("get_refund_requests", { storeId });
+  return sql<RefundRequest[]>("get_refund_requests", { store_id: storeId });
 }
 
 export async function dbApproveRefund(id: string, userId: string, userName: string, storeId: string): Promise<void> {
-  return sql("approve_refund", { id, userId, userName, storeId });
+  return sql("approve_refund", { id, user_id: userId, user_name: userName, store_id: storeId });
 }
 
 export async function dbRejectRefund(id: string, storeId: string): Promise<void> {
-  return sql("reject_refund", { id, storeId });
+  return sql("reject_refund", { id, store_id: storeId });
 }
 
 // ─── Crash Recovery ─────────────────────────────────────────────────────────
 export async function dbGetPendingOrdersCount(storeId: string): Promise<number> {
-  return sql<number>("get_pending_orders_count", { storeId });
+  return sql<number>("get_pending_orders_count", { store_id: storeId });
 }
 
 export async function dbGetPendingOrders(storeId: string): Promise<Order[]> {
-  return sql<Order[]>("get_pending_orders", { storeId });
+  return sql<Order[]>("get_pending_orders", { store_id: storeId });
 }
 
 export async function dbDeletePendingOrder(id: string, storeId: string): Promise<void> {
-  return sql("delete_pending_order", { id, storeId });
+  return sql("delete_pending_order", { id, store_id: storeId });
 }
 
 // ─── Hardware Integration ───────────────────────────────────────────────────
@@ -830,7 +830,7 @@ async function retryWithBackoff<T>(
 
 export async function syncToNeon(storeId: string): Promise<{ synced: number; error?: string }> {
   try {
-    return await retryWithBackoff(() => sql("sync_to_neon", { storeId }));
+    return await retryWithBackoff(() => sql("sync_to_neon", { store_id: storeId }));
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("Neon sync failed after retries:", errorMsg);
@@ -840,7 +840,7 @@ export async function syncToNeon(storeId: string): Promise<{ synced: number; err
 
 export async function syncFromNeon(storeId: string): Promise<{ imported: number; error?: string }> {
   try {
-    return await retryWithBackoff(() => sql("sync_from_neon", { storeId }));
+    return await retryWithBackoff(() => sql("sync_from_neon", { store_id: storeId }));
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("Neon import failed after retries:", errorMsg);
@@ -1268,98 +1268,98 @@ export async function openKdsWindow(): Promise<void> {
 }
 
 export async function getKdsOrders(storeId: string): Promise<KdsOrder[]> {
-  return sql<KdsOrder[]>("get_kds_orders", { storeId });
+  return sql<KdsOrder[]>("get_kds_orders", { store_id: storeId });
 }
 
 export async function markKdsItemDone(orderId: string, itemIndex: number, storeId: string): Promise<void> {
-  return sql("mark_kds_item_done", { orderId, itemIndex, storeId });
+  return sql("mark_kds_item_done", { order_id: orderId, item_index: itemIndex, store_id: storeId });
 }
 
 export async function startPreparingItem(orderId: string, itemIndex: number, storeId: string): Promise<void> {
-  return sql("start_preparing_item", { orderId, itemIndex, storeId });
+  return sql("start_preparing_item", { order_id: orderId, item_index: itemIndex, store_id: storeId });
 }
 
 export async function cancelKdsItem(orderId: string, itemIndex: number, storeId: string): Promise<void> {
-  return sql("cancel_kds_item", { orderId, itemIndex, storeId });
+  return sql("cancel_kds_item", { order_id: orderId, item_index: itemIndex, store_id: storeId });
 }
 
 export async function recallKdsOrder(orderId: string, storeId: string): Promise<void> {
-  return sql("recall_kds_order", { orderId, storeId });
+  return sql("recall_kds_order", { order_id: orderId, store_id: storeId });
 }
 
 // ─── Ingredient Functions ───────────────────────────────────────────────────
 export async function getIngredients(storeId: string): Promise<Ingredient[]> {
-  return sql<Ingredient[]>("get_ingredients", { storeId });
+  return sql<Ingredient[]>("get_ingredients", { store_id: storeId });
 }
 
 export async function saveIngredient(ingredient: Ingredient, storeId: string): Promise<void> {
-  return sql("save_ingredient", { ingredient, storeId });
+  return sql("save_ingredient", { ingredient, store_id: storeId });
 }
 
 export async function deleteIngredient(id: string, storeId: string): Promise<void> {
-  return sql("delete_ingredient", { id, storeId });
+  return sql("delete_ingredient", { id, store_id: storeId });
 }
 
 // ─── Recipe Functions ───────────────────────────────────────────────────────
 export async function getRecipes(storeId: string): Promise<Recipe[]> {
-  return sql<Recipe[]>("get_recipes", { storeId });
+  return sql<Recipe[]>("get_recipes", { store_id: storeId });
 }
 
 export async function saveRecipe(recipe: Recipe, storeId: string): Promise<void> {
-  return sql("save_recipe", { recipe, storeId });
+  return sql("save_recipe", { recipe, store_id: storeId });
 }
 
 // ─── Supplier Functions ─────────────────────────────────────────────────────
 export async function getSuppliers(storeId: string): Promise<Supplier[]> {
-  return sql<Supplier[]>("get_suppliers", { storeId });
+  return sql<Supplier[]>("get_suppliers", { store_id: storeId });
 }
 
 export async function saveSupplier(supplier: Supplier, storeId: string): Promise<void> {
-  return sql("save_supplier", { supplier, storeId });
+  return sql("save_supplier", { supplier, store_id: storeId });
 }
 
 export async function deleteSupplier(id: string, storeId: string): Promise<void> {
-  return sql("delete_supplier", { id, storeId });
+  return sql("delete_supplier", { id, store_id: storeId });
 }
 
 // ─── Purchase Order Functions ───────────────────────────────────────────────
 export async function getPurchaseOrders(storeId: string): Promise<PurchaseOrder[]> {
-  return sql<PurchaseOrder[]>("get_purchase_orders", { storeId });
+  return sql<PurchaseOrder[]>("get_purchase_orders", { store_id: storeId });
 }
 
 export async function savePurchaseOrder(po: PurchaseOrder, storeId: string): Promise<void> {
-  return sql("save_purchase_order", { po, storeId });
+  return sql("save_purchase_order", { po, store_id: storeId });
 }
 
 export async function updatePoStatus(id: string, status: string, storeId: string): Promise<void> {
-  return sql("update_po_status", { id, status, storeId });
+  return sql("update_po_status", { id, status, store_id: storeId });
 }
 
 export async function receivePurchaseOrder(id: string, storeId: string): Promise<void> {
-  return sql("receive_purchase_order", { id, storeId });
+  return sql("receive_purchase_order", { id, store_id: storeId });
 }
 
 // ─── Reservation Functions ─────────────────────────────────────────────────
 export async function getReservations(date: string, storeId: string): Promise<Reservation[]> {
-  return sql<Reservation[]>("get_reservations", { date, storeId });
+  return sql<Reservation[]>("get_reservations", { date, store_id: storeId });
 }
 
 export async function saveReservation(reservation: Reservation, storeId: string): Promise<void> {
-  return sql("save_reservation", { reservation, storeId });
+  return sql("save_reservation", { reservation, store_id: storeId });
 }
 
 export async function deleteReservation(id: string, storeId: string): Promise<void> {
-  return sql("delete_reservation", { id, storeId });
+  return sql("delete_reservation", { id, store_id: storeId });
 }
 
 // ─── SMS Functions ─────────────────────────────────────────────────────────
-export async function sendSmsNotification(phone: string, message: string): Promise<void> {
-  return sql("send_sms_notification", { phone, message });
+export async function sendSmsNotification(phone: string, message: string, storeId: string): Promise<void> {
+  return sql("send_sms_notification", { phone, message, store_id: storeId });
 }
 
 // ─── LAN Sync Functions ───────────────────────────────────────────────────
-export async function startLanServer(port?: number): Promise<string> {
-  return sql<string>("start_lan_server", { port });
+export async function startLanServer(storeId: string, port?: number): Promise<string> {
+  return sql<string>("start_lan_server", { port, store_id: storeId });
 }
 
 export async function stopLanServer(): Promise<string> {
@@ -1372,117 +1372,117 @@ export async function getLanServerStatus(): Promise<LanServerStatus> {
 
 // ─── Shift Functions ─────────────────────────────────────────────────────────
 export async function getShifts(date: string, storeId: string): Promise<Shift[]> {
-  return sql<Shift[]>("get_shifts", { date, storeId });
+  return sql<Shift[]>("get_shifts", { date, store_id: storeId });
 }
 
 export async function saveShift(shift: Shift, storeId: string): Promise<void> {
-  return sql("save_shift", { shift, storeId });
+  return sql("save_shift", { shift, store_id: storeId });
 }
 
 export async function deleteShift(id: string, storeId: string): Promise<void> {
-  return sql("delete_shift", { id, storeId });
+  return sql("delete_shift", { id, store_id: storeId });
 }
 
 // ─── Expense Functions ───────────────────────────────────────────────────────
 export async function getExpenses(date: string, storeId: string): Promise<Expense[]> {
-  return sql<Expense[]>("get_expenses", { date, storeId });
+  return sql<Expense[]>("get_expenses", { date, store_id: storeId });
 }
 
 export async function getExpensesByRange(startDate: string, endDate: string, storeId: string): Promise<Expense[]> {
-  return sql<Expense[]>("get_expenses_by_range", { startDate, endDate, storeId });
+  return sql<Expense[]>("get_expenses_by_range", { start_date: startDate, end_date: endDate, store_id: storeId });
 }
 
 export async function saveExpense(expense: Expense, storeId: string): Promise<void> {
-  return sql("save_expense", { expense, storeId });
+  return sql("save_expense", { expense, store_id: storeId });
 }
 
 export async function deleteExpense(id: string, storeId: string): Promise<void> {
-  return sql("delete_expense", { id, storeId });
+  return sql("delete_expense", { id, store_id: storeId });
 }
 
 export async function getExpenseCategories(storeId: string): Promise<ExpenseCategory[]> {
-  return sql<ExpenseCategory[]>("get_expense_categories", { storeId });
+  return sql<ExpenseCategory[]>("get_expense_categories", { store_id: storeId });
 }
 
 export async function saveExpenseCategory(category: ExpenseCategory, storeId: string): Promise<void> {
-  return sql("save_expense_category", { category, storeId });
+  return sql("save_expense_category", { category, store_id: storeId });
 }
 
 // ─── Wallet Functions ───────────────────────────────────────────────────────
 export async function getCustomerWallet(customerId: string): Promise<CustomerWallet> {
-  return sql<CustomerWallet>("get_customer_wallet", { customerId });
+  return sql<CustomerWallet>("get_customer_wallet", { customer_id: customerId });
 }
 
 export async function addWalletBalance(customerId: string, amount: number, notes: string): Promise<void> {
-  return sql("add_wallet_balance", { customerId, amount, notes });
+  return sql("add_wallet_balance", { customer_id: customerId, amount, notes });
 }
 
 export async function deductWalletBalance(customerId: string, amount: number, orderId: string): Promise<void> {
-  return sql("deduct_wallet_balance", { customerId, amount, orderId });
+  return sql("deduct_wallet_balance", { customer_id: customerId, amount, order_id: orderId });
 }
 
 export async function getWalletTransactions(customerId: string): Promise<WalletTransaction[]> {
-  return sql<WalletTransaction[]>("get_wallet_transactions", { customerId });
+  return sql<WalletTransaction[]>("get_wallet_transactions", { customer_id: customerId });
 }
 
 // ─── Coupon Functions ───────────────────────────────────────────────────────
 export async function getCoupons(storeId: string): Promise<Coupon[]> {
-  return sql<Coupon[]>("get_coupons", { storeId });
+  return sql<Coupon[]>("get_coupons", { store_id: storeId });
 }
 
 export async function saveCoupon(coupon: Coupon, storeId: string): Promise<void> {
-  return sql("save_coupon", { coupon, storeId });
+  return sql("save_coupon", { coupon, store_id: storeId });
 }
 
 export async function validateCoupon(code: string, orderAmount: number, storeId: string): Promise<Coupon> {
-  return sql<Coupon>("validate_coupon", { code, orderAmount, storeId });
+  return sql<Coupon>("validate_coupon", { code, order_amount: orderAmount, store_id: storeId });
 }
 
 export async function useCoupon(code: string, storeId: string): Promise<void> {
-  return sql("use_coupon", { code, storeId });
+  return sql("use_coupon", { code, store_id: storeId });
 }
 
 export async function deleteCoupon(id: string, storeId: string): Promise<void> {
-  return sql("delete_coupon", { id, storeId });
+  return sql("delete_coupon", { id, store_id: storeId });
 }
 
 // ─── Day End Reconciliation Functions ───────────────────────────────────────
 export async function getDayEndReconciliation(date: string, storeId: string): Promise<DayEndReconciliation | null> {
-  return sql<DayEndReconciliation | null>("get_day_end_reconciliation", { date, storeId });
+  return sql<DayEndReconciliation | null>("get_day_end_reconciliation", { date, store_id: storeId });
 }
 
 export async function saveDayEndReconciliation(reconciliation: DayEndReconciliation, storeId: string): Promise<void> {
-  return sql("save_day_end_reconciliation", { reconciliation, storeId });
+  return sql("save_day_end_reconciliation", { reconciliation, store_id: storeId });
 }
 
 // ─── GST Report Functions ───────────────────────────────────────────────────
 export async function getGstr1Report(startDate: string, endDate: string, storeId: string): Promise<GstReport[]> {
-  return sql<GstReport[]>("get_gstr1_report", { startDate, endDate, storeId });
+  return sql<GstReport[]>("get_gstr1_report", { start_date: startDate, end_date: endDate, store_id: storeId });
 }
 
 export async function getGstr3bReport(startDate: string, endDate: string, storeId: string): Promise<[number, number, number, number, number, number]> {
-  return sql<[number, number, number, number, number, number]>("get_gstr3b_report", { startDate, endDate, storeId });
+  return sql<[number, number, number, number, number, number]>("get_gstr3b_report", { start_date: startDate, end_date: endDate, store_id: storeId });
 }
 
 // ─── Activity Log Functions ────────────────────────────────────────────────
 export async function getActivityLogsDetailed(startDate: string, endDate: string, limit: number, storeId: string): Promise<ActivityLogEntry[]> {
-  return sql<ActivityLogEntry[]>("get_activity_logs_range", { startDate, endDate, limit, storeId });
+  return sql<ActivityLogEntry[]>("get_activity_logs_range", { start_date: startDate, end_date: endDate, limit, store_id: storeId });
 }
 
 // ─── Export Functions ──────────────────────────────────────────────────────
 export async function exportToTally(startDate: string, endDate: string, storeId: string): Promise<string> {
-  return sql<string>("export_to_tally", { startDate, endDate, storeId });
+  return sql<string>("export_to_tally", { start_date: startDate, end_date: endDate, store_id: storeId });
 }
 
 export async function exportToQuickbooks(startDate: string, endDate: string, storeId: string): Promise<string> {
-  return sql<string>("export_to_quickbooks", { startDate, endDate, storeId });
+  return sql<string>("export_to_quickbooks", { start_date: startDate, end_date: endDate, store_id: storeId });
 }
 
 export async function createCompressedBackup(storeId: string): Promise<number[]> {
-  return sql<number[]>("create_compressed_backup", { storeId });
+  return sql<number[]>("create_compressed_backup", { store_id: storeId });
 }
 
 // ─── WhatsApp Functions ───────────────────────────────────────────────────
 export async function sendWhatsAppMessage(phone: string, message: string, storeId: string): Promise<void> {
-  return sql("send_whatsapp_message", { phone, message, storeId });
+  return sql("send_whatsapp_message", { phone, message, store_id: storeId });
 }

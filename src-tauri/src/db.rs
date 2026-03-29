@@ -992,6 +992,49 @@ impl Database {
         Ok(())
     }
 
+    fn adjust_inventory(
+        conn: &rusqlite::Connection,
+        product_id: &str,
+        store_id: &str,
+        qty_delta: i64,
+    ) -> Result<()> {
+        if qty_delta < 0 {
+            conn.execute(
+                "UPDATE products SET stock = MAX(0, stock + ?1) WHERE id = ?2 AND store_id = ?3",
+                params![qty_delta, product_id, store_id],
+            )?;
+        } else {
+            conn.execute(
+                "UPDATE products SET stock = stock + ?1 WHERE id = ?2 AND store_id = ?3",
+                params![qty_delta, product_id, store_id],
+            )?;
+        }
+
+        let mut stmt = conn.prepare(
+            "SELECT ingredient_id, quantity FROM recipes WHERE product_id = ?1 AND store_id = ?2",
+        )?;
+        let recipes = stmt.query_map(params![product_id, store_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+        })?;
+
+        for recipe in recipes {
+            let (ing_id, recipe_qty) = recipe?;
+            let ing_delta = (qty_delta as f64) * recipe_qty;
+            if ing_delta < 0.0 {
+                conn.execute(
+                    "UPDATE ingredients SET stock = MAX(0.0, stock + ?1) WHERE id = ?2 AND store_id = ?3",
+                    params![ing_delta, ing_id, store_id],
+                )?;
+            } else {
+                conn.execute(
+                    "UPDATE ingredients SET stock = stock + ?1 WHERE id = ?2 AND store_id = ?3",
+                    params![ing_delta, ing_id, store_id],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     fn migrate_schema(&self) -> Result<()> {
         let store_name = "Main Store";
         let sql = format!(
@@ -1719,10 +1762,7 @@ impl Database {
             )?;
 
             if o.status == "completed" {
-                tx.execute(
-                    "UPDATE products SET stock = MAX(0, stock - ?1) WHERE id = ?2 AND store_id = ?3",
-                    params![item.quantity, item.product_id, store_id],
-                )?;
+                Self::adjust_inventory(&tx, &item.product_id, store_id, -item.quantity)?;
             }
         }
 
@@ -1745,10 +1785,7 @@ impl Database {
             .collect::<Result<Vec<_>>>()?;
 
         for (product_id, qty) in items {
-            tx.execute(
-                "UPDATE products SET stock = stock + ?1 WHERE id = ?2 AND store_id = ?3",
-                params![qty, product_id, store_id],
-            )?;
+            Self::adjust_inventory(&tx, &product_id, store_id, qty)?;
         }
 
         tx.execute(
@@ -1862,9 +1899,14 @@ impl Database {
     pub fn get_daily_summary(&self, store_id: &str) -> Result<DailySummary> {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         self.conn.query_row(
-            "SELECT COALESCE(SUM(o.total),0), COUNT(*), COALESCE(AVG(o.total),0), COALESCE(SUM(oi.quantity),0)
-             FROM orders o LEFT JOIN order_items oi ON o.id = oi.order_id
-             WHERE o.store_id=?1 AND o.status='completed' AND DATE(o.created_at, 'localtime')=?2",
+            "SELECT
+                COALESCE(SUM(total), 0),
+                COUNT(*),
+                COALESCE(AVG(total), 0),
+                (SELECT COALESCE(SUM(quantity), 0) FROM order_items oi JOIN orders o ON oi.order_id = o.id
+                 WHERE o.store_id=?1 AND o.status='completed' AND DATE(o.created_at, 'localtime')=?2)
+             FROM orders
+             WHERE store_id=?1 AND status='completed' AND DATE(created_at, 'localtime')=?2",
             params![store_id, today],
             |r| Ok(DailySummary {
                 revenue: r.get(0)?,
@@ -2307,21 +2349,42 @@ impl Database {
             settings,
             exported_at: chrono::Local::now().to_rfc3339(),
         };
-        Ok(serde_json::to_string(&data).unwrap_or_default())
+        let json = serde_json::to_string(&data).unwrap_or_default();
+
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(json.as_bytes())
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let compressed = encoder.finish().map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+        use base64::{engine::general_purpose, Engine as _};
+        Ok(general_purpose::STANDARD.encode(compressed))
     }
 
     pub fn import_backup(&self, backup: &str, store_id: &str) -> Result<ImportResult> {
         let data: BackupData =
             serde_json::from_str(backup).map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+        let mut products_imported = 0;
+        let mut orders_imported = 0;
+
         for p in data.products {
-            let _ = self.upsert_product(&p, store_id);
+            if self.upsert_product(&p, store_id).is_ok() {
+                products_imported += 1;
+            }
         }
         for o in data.orders {
-            let _ = self.save_order(&o, store_id);
+            if self.save_order(&o, store_id).is_ok() {
+                orders_imported += 1;
+            }
         }
         Ok(ImportResult {
-            products_imported: 0,
-            orders_imported: 0,
+            products_imported,
+            orders_imported,
         })
     }
 
@@ -2491,6 +2554,26 @@ impl Database {
         store_id: &str,
     ) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
+
+        let current_status: String = tx
+            .query_row(
+                "SELECT status FROM orders WHERE id=?1 AND store_id=?2",
+                params![id, store_id],
+                |r| r.get(0),
+            )
+            .unwrap_or_else(|_| "pending".to_string());
+
+        if current_status == "completed" {
+            let items: Vec<(String, i64)> = tx
+                .prepare("SELECT product_id, quantity FROM order_items WHERE order_id=?1")?
+                .query_map(params![id], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<Result<Vec<_>>>()?;
+
+            for (product_id, qty) in items {
+                Self::adjust_inventory(&tx, &product_id, store_id, qty)?;
+            }
+        }
+
         tx.execute(
             "UPDATE orders SET status='cancelled' WHERE id=?1 AND store_id=?2",
             params![id, store_id],
@@ -2924,7 +3007,26 @@ impl Database {
         Ok("Quickbooks CSV export placeholder".into())
     }
     pub fn create_compressed_backup(&self, store_id: &str) -> Result<Vec<u8>> {
-        let backup = self.export_backup(store_id)?;
-        Ok(backup.as_bytes().to_vec())
+        let products = self.get_products(store_id)?;
+        let orders = self.get_orders(store_id, None, None)?;
+        let settings = self.get_settings(store_id)?;
+        let data = BackupData {
+            products,
+            orders,
+            settings,
+            exported_at: chrono::Local::now().to_rfc3339(),
+        };
+        let json = serde_json::to_string(&data).unwrap_or_default();
+
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(json.as_bytes())
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let compressed = encoder.finish().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        Ok(compressed)
     }
 }

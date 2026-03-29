@@ -657,7 +657,7 @@ export default function SettingsScreen() {
     setSendingSms(true);
     setSmsMsg(null);
     try {
-      await sendSmsNotification(testPhone, testMessage);
+      await sendSmsNotification(testPhone, testMessage, activeStoreId);
       setSmsMsg({ text: "✓ SMS sent successfully!", ok: true });
       setTestPhone("");
       setTestMessage("");
@@ -703,7 +703,7 @@ export default function SettingsScreen() {
   const handleStartLan = async () => {
     setLanLoading(true);
     try {
-      await startLanServer(localSettings.lan_server_port);
+      await startLanServer(activeStoreId, localSettings.lan_server_port);
       await fetchLanStatus();
       updateLocal("lan_sync_enabled", true);
     } catch (err) {
