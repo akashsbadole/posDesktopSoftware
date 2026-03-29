@@ -8,9 +8,17 @@ export type PaymentMethod = 'cash' | 'card' | 'upi';
 export type PriceTier = 'retail' | 'wholesale';
 
 export interface CartItem {
+  cartItemId: string;
   product: Product;
   quantity: number;
   discount: number;
+  discount_type: 'percentage' | 'fixed';
+  override_price?: number;
+}
+
+export interface PaymentEntry {
+  method: PaymentMethod | 'wallet';
+  amount: number;
 }
 
 interface CustomerInfo {
@@ -27,22 +35,28 @@ interface CartState {
   customerInfo: CustomerInfo | null;
   notes: string;
   globalDiscount: number;
-  paymentMethod: PaymentMethod;
-  priceTier: PriceTier;
+  globalDiscountType: 'percentage' | 'fixed';
+  paymentMethod: PaymentMethod | 'split';
+  splitPayments: PaymentEntry[];
   amountPaid: number;
+  tipAmount: number;
   originalOrderId: string | null;
   addItem: (product: Product, quantity?: number) => void;
-  removeItem: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
-  updateItemDiscount: (productId: string, discount: number) => void;
+  addCustomItem: (name: string, price: number) => void;
+  removeItem: (cartItemId: string) => void;
+  updateQuantity: (cartItemId: string, quantity: number) => void;
+  updateItemDiscount: (cartItemId: string, discount: number, type: 'percentage' | 'fixed') => void;
+  overrideItemPrice: (cartItemId: string, price: number) => void;
   setOrderType: (type: OrderType) => void;
   setTable: (id: string | null, name: string | null) => void;
   setCustomerInfo: (info: CustomerInfo | null) => void;
   setNotes: (notes: string) => void;
-  setGlobalDiscount: (discount: number) => void;
   setPriceTier: (tier: PriceTier) => void;
-  setPaymentMethod: (method: PaymentMethod) => void;
+  setGlobalDiscount: (discount: number, type?: 'percentage' | 'fixed') => void;
+  setPaymentMethod: (method: PaymentMethod | 'split') => void;
+  setSplitPayments: (payments: PaymentEntry[]) => void;
   setAmountPaid: (amount: number) => void;
+  setTipAmount: (amount: number) => void;
   setOriginalOrderId: (id: string | null) => void;
   clearCart: () => void;
   getSubtotal: () => number;
@@ -61,9 +75,12 @@ export const useCartStore = create<CartState>((set, get) => ({
   customerInfo: null,
   notes: '',
   globalDiscount: 0,
+  globalDiscountType: 'percentage',
   paymentMethod: 'cash',
   priceTier: 'retail',
+  splitPayments: [],
   amountPaid: 0,
+  tipAmount: 0,
   originalOrderId: null,
 
   setOriginalOrderId: (id) => set({ originalOrderId: id }),
@@ -111,15 +128,27 @@ export const useCartStore = create<CartState>((set, get) => ({
     }
     set((state) => ({
       items: state.items.map((i) =>
-        (i.product as any).cartItemId === cartItemId ? { ...i, quantity } : i
+        i.cartItemId === cartItemId ? { ...i, quantity } : i
       ),
     }));
   },
 
-  updateItemDiscount: (cartItemId: string, discount: number) => {
+  updateItemDiscount: (cartItemId: string, discount: number, type: 'percentage' | 'fixed') => {
     set((state) => ({
       items: state.items.map((i) =>
-        (i.product as any).cartItemId === cartItemId ? { ...i, discount: Math.max(0, Math.min(100, discount)) } : i
+        i.cartItemId === cartItemId ? {
+          ...i,
+          discount: type === 'percentage' ? Math.max(0, Math.min(100, discount)) : Math.max(0, discount),
+          discount_type: type
+        } : i
+      ),
+    }));
+  },
+
+  overrideItemPrice: (cartItemId, price) => {
+    set((state) => ({
+      items: state.items.map((i) =>
+        i.cartItemId === cartItemId ? { ...i, override_price: price } : i
       ),
     }));
   },
@@ -128,7 +157,10 @@ export const useCartStore = create<CartState>((set, get) => ({
   setTable: (tableId, tableName) => set({ tableId, tableName }),
   setCustomerInfo: (customerInfo) => set({ customerInfo }),
   setNotes: (notes) => set({ notes }),
-  setGlobalDiscount: (globalDiscount) => set({ globalDiscount: Math.max(0, Math.min(100, globalDiscount)) }),
+  setGlobalDiscount: (globalDiscount, type) => set((state) => ({
+    globalDiscount: (type || state.globalDiscountType) === 'percentage' ? Math.max(0, Math.min(100, globalDiscount)) : Math.max(0, globalDiscount),
+    globalDiscountType: type || state.globalDiscountType
+  })),
   setPriceTier: (priceTier) => {
     const previousTier = get().priceTier;
     if (previousTier === priceTier) return;
@@ -151,7 +183,9 @@ export const useCartStore = create<CartState>((set, get) => ({
     }));
   },
   setPaymentMethod: (paymentMethod) => set({ paymentMethod }),
+  setSplitPayments: (splitPayments) => set({ splitPayments }),
   setAmountPaid: (amountPaid) => set({ amountPaid }),
+  setTipAmount: (tipAmount) => set({ tipAmount }),
 
   clearCart: () =>
     set({
@@ -162,30 +196,35 @@ export const useCartStore = create<CartState>((set, get) => ({
       customerInfo: null,
       notes: '',
       globalDiscount: 0,
+      globalDiscountType: 'percentage',
       paymentMethod: 'cash',
       priceTier: 'retail',
+      splitPayments: [],
       amountPaid: 0,
+      tipAmount: 0,
       originalOrderId: null,
     }),
 
-  getSubtotal: () => calcCart(get().items, get().globalDiscount).subtotal,
-  getTaxAmount: () => calcCart(get().items, get().globalDiscount).tax_amount,
-  getDiscountAmount: () => calcCart(get().items, get().globalDiscount).discount_amount,
-  getTotal: () => calcCart(get().items, get().globalDiscount).total,
+  getSubtotal: () => calcCart(get().items, get().globalDiscount, get().globalDiscountType).subtotal,
+  getTaxAmount: () => calcCart(get().items, get().globalDiscount, get().globalDiscountType).tax_amount,
+  getDiscountAmount: () => calcCart(get().items, get().globalDiscount, get().globalDiscountType).discount_amount,
+  getTotal: () => calcCart(get().items, get().globalDiscount, get().globalDiscountType).total + get().tipAmount,
   getItemCount: () => get().items.reduce((sum, i) => sum + i.quantity, 0),
 
   toOrder: (orderId, userId, userName) => {
     const state = get();
-    const totals = calcCart(state.items, state.globalDiscount);
+    const totals = calcCart(state.items, state.globalDiscount, state.globalDiscountType);
+    const finalTotal = totals.total + state.tipAmount;
     return {
       id: orderId,
       store_id: useSettingsStore.getState().activeStoreId,
       items: state.items.map((i): OrderItem => ({
         product_id: i.product.id,
         product_name: i.product.name,
-        price: i.product.price,
+        price: i.override_price !== undefined ? i.override_price : i.product.price,
         quantity: i.quantity,
         discount: i.discount,
+        discount_type: i.discount_type,
         tax: i.product.tax,
         status: "pending" as const,
         done: false,
@@ -194,12 +233,15 @@ export const useCartStore = create<CartState>((set, get) => ({
       subtotal: totals.subtotal,
       tax_amount: totals.tax_amount,
       discount_amount: totals.discount_amount,
-      total: totals.total,
-      payment_method: state.paymentMethod,
+      total: finalTotal,
+      payment_method: state.paymentMethod === 'split' ? 'card' : state.paymentMethod, // simplified for DB
       amount_paid: state.amountPaid,
-      change_amount: state.amountPaid - totals.total,
+      change_amount: Math.max(0, state.amountPaid - finalTotal),
       customer_name: state.customerInfo?.name || '',
       status: 'completed' as const,
+      tip_amount: state.tipAmount,
+      discount_type: state.globalDiscountType,
+      metadata: state.paymentMethod === 'split' ? { split_payments: state.splitPayments } : undefined,
       order_type: state.orderType,
       delivery_status: 'pending' as const,
       delivery_address: state.customerInfo?.address || '',

@@ -90,6 +90,7 @@ export interface OrderItem {
   price: number;
   quantity: number;
   discount: number;
+  discount_type?: "percentage" | "fixed";
   tax: number;
   done?: boolean;
   status?: "pending" | "preparing" | "done" | "cancelled";
@@ -123,6 +124,9 @@ export interface Order {
   user_name?: string;
   source_type?: string;
   source_id?: string;
+  tip_amount?: number;
+  discount_type?: "percentage" | "fixed";
+  metadata?: any;
 }
 
 export interface Table {
@@ -154,7 +158,31 @@ export interface Customer {
   loyalty_points: number;
   total_spent: number;
   visits: number;
+  group_name?: string;
+  notes?: string;
+  birthday?: string;
+  anniversary?: string;
+  credit_limit?: number;
+  price_tier?: string;
+  loyalty_tier?: string;
   created_at: string;
+}
+
+export interface CustomerAddress {
+  id: string;
+  customer_id: string;
+  label: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  phone: string;
+}
+
+export interface CustomerStatistics {
+  total_spent: number;
+  visits: number;
+  avg_order_value: number;
 }
 
 export interface OrderNote {
@@ -666,6 +694,10 @@ export interface ActivityLog {
   created_at: string;
 }
 
+export async function dbAddActivityLog(storeId: string, action: string, reason: string, userId: string, userName: string, orderId?: string): Promise<void> {
+  return sql("add_activity_log", { store_id: storeId, action, reason, user_id: userId, user_name: userName, order_id: orderId });
+}
+
 export async function getActivityLogs(storeId: string, limit: number = 100): Promise<ActivityLog[]> {
   return sql<ActivityLog[]>("get_activity_logs", { store_id: storeId, limit });
 }
@@ -711,6 +743,34 @@ export async function dbGetCustomers(storeId: string): Promise<Customer[]> {
 
 export async function dbSaveCustomer(customer: Customer, storeId: string): Promise<void> {
   return sql("save_customer", { customer, store_id: storeId });
+}
+
+export async function dbDeleteCustomer(id: string, storeId: string): Promise<void> {
+  return sql("delete_customer", { id, store_id: storeId });
+}
+
+export async function dbGetCustomerAddresses(customerId: string): Promise<CustomerAddress[]> {
+  return sql<CustomerAddress[]>("get_customer_addresses", { customer_id: customerId });
+}
+
+export async function dbSaveCustomerAddress(address: CustomerAddress): Promise<void> {
+  return sql("save_customer_address", { address });
+}
+
+export async function dbDeleteCustomerAddress(id: string): Promise<void> {
+  return sql("delete_customer_address", { id });
+}
+
+export async function exportCustomersCsv(storeId: string): Promise<string> {
+  return sql<string>("export_customers_csv", { store_id: storeId });
+}
+
+export async function importCustomersCsv(csvData: string, storeId: string): Promise<{ imported: number; errors: number }> {
+  return sql<{ imported: number; errors: number }>("import_customers_csv", { csv_data: csvData, store_id: storeId });
+}
+
+export async function dbGetCustomerStatistics(customerId: string): Promise<CustomerStatistics> {
+  return sql<CustomerStatistics>("get_customer_statistics", { customer_id: customerId });
 }
 
 export async function dbGetCustomerByPhone(phone: string, storeId: string): Promise<Customer | null> {
@@ -882,24 +942,35 @@ export async function syncFromNeon(storeId: string): Promise<{ imported: number;
 }
 
 // ─── Cart Calculation (pure JS, no DB needed) ─────────────────────────────────
-export function calcCart(items: { product: Product; quantity: number; discount: number }[], globalDiscount = 0) {
+export function calcCart(
+  items: { product: Product; quantity: number; discount: number; discount_type?: "percentage" | "fixed"; override_price?: number }[],
+  globalDiscount = 0,
+  globalDiscountType: "percentage" | "fixed" = "percentage"
+) {
   let subtotal = 0;
   let taxAmount = 0;
   let discountAmount = 0;
 
   items.forEach((item) => {
-    const line = item.product.price * item.quantity;
-    const itemDisc = line * (item.discount / 100);
-    const afterDisc = line - itemDisc;
+    const price = item.override_price !== undefined ? item.override_price : item.product.price;
+    const line = price * item.quantity;
+    const itemDisc = item.discount_type === "fixed"
+      ? item.discount
+      : line * (item.discount / 100);
+
+    const afterDisc = Math.max(0, line - itemDisc);
     const tax = afterDisc * (item.product.tax / 100);
     subtotal += afterDisc;
     taxAmount += tax;
     discountAmount += itemDisc;
   });
 
-  const globalDisc = subtotal * (globalDiscount / 100);
+  const globalDisc = globalDiscountType === "fixed"
+    ? globalDiscount
+    : subtotal * (globalDiscount / 100);
+
   discountAmount += globalDisc;
-  const total = subtotal - globalDisc + taxAmount;
+  const total = Math.max(0, subtotal - globalDisc + taxAmount);
 
   return {
     subtotal: r(subtotal),
@@ -938,6 +1009,7 @@ export function generateReceipt(order: Order, settings: Settings): string {
   if (order.delivery_phone) lines.push(`Phone:    ${order.delivery_phone}`);
   if (order.table_id) lines.push(`Table:    ${order.table_id}`);
   lines.push(`Type:     ${order.order_type || "dine_in"}`);
+  if (order.user_name) lines.push(`Staff:    ${order.user_name}`);
   lines.push(`--------------------------------`);
   
   // Items
@@ -957,6 +1029,10 @@ export function generateReceipt(order: Order, settings: Settings): string {
   // Totals
   lines.push(`Subtotal: ${(c + order.subtotal.toFixed(2)).padStart(18)}`);
   
+  if (order.tip_amount && order.tip_amount > 0) {
+    lines.push(`Tip:      ${(c + order.tip_amount.toFixed(2)).padStart(18)}`);
+  }
+
   // Tax breakdown
   if (settings.show_tax_breakdown && order.tax_amount > 0) {
     const taxName = settings.tax_name || "Tax";
@@ -989,6 +1065,13 @@ export function generateReceipt(order: Order, settings: Settings): string {
   if (order.payment_method === "cash") {
     lines.push(`Paid:     ${(c + (order.amount_paid || 0).toFixed(2)).padStart(18)}`);
     lines.push(`Change:   ${(c + (order.change_amount || 0).toFixed(2)).padStart(18)}`);
+  }
+
+  if (order.metadata?.split_payments) {
+    const split = order.metadata.split_payments as { method: string, amount: number }[];
+    split.forEach(s => {
+      lines.push(`${s.method.toUpperCase()}: ${(c + s.amount.toFixed(2)).padStart(21 - s.method.length)}`);
+    });
   }
   
   if (order.amount_paid && order.total && order.amount_paid > order.total) {
@@ -1215,7 +1298,100 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       return undefined as T;
     }
     case "get_combos": return [] as T;
-    case "get_customers": return [] as T;
+    case "get_customers": {
+      const c = lsGet<Customer[]>("pos_customers") || [];
+      return c.filter(x => x.store_id === storeId) as T;
+    }
+    case "save_customer": {
+      const customers = lsGet<Customer[]>("pos_customers") || [];
+      const c = (args as any).customer as Customer;
+      c.store_id = storeId;
+      const idx = customers.findIndex(x => x.id === c.id);
+      if (idx >= 0) customers[idx] = c; else customers.push(c);
+      lsSet("pos_customers", customers);
+      return undefined as T;
+    }
+    case "delete_customer": {
+      const customers = (lsGet<Customer[]>("pos_customers") || []).filter(x => x.id !== (args as any).id);
+      lsSet("pos_customers", customers);
+      return undefined as T;
+    }
+    case "get_customer_addresses": {
+      const a = lsGet<CustomerAddress[]>("pos_customer_addresses") || [];
+      return a.filter(x => x.customer_id === (args as any).customer_id) as T;
+    }
+    case "save_customer_address": {
+      const addresses = lsGet<CustomerAddress[]>("pos_customer_addresses") || [];
+      const a = (args as any).address as CustomerAddress;
+      const idx = addresses.findIndex(x => x.id === a.id);
+      if (idx >= 0) addresses[idx] = a; else addresses.push(a);
+      lsSet("pos_customer_addresses", addresses);
+      return undefined as T;
+    }
+    case "delete_customer_address": {
+      const addresses = (lsGet<CustomerAddress[]>("pos_customer_addresses") || []).filter(x => x.id !== (args as any).id);
+      lsSet("pos_customer_addresses", addresses);
+      return undefined as T;
+    }
+    case "export_customers_csv": {
+      const c = lsGet<Customer[]>("pos_customers") || [];
+      const filtered = c.filter(x => x.store_id === storeId);
+      const header = ["id", "name", "phone", "email", "loyalty_points", "total_spent", "visits", "group_name", "notes", "birthday", "anniversary", "credit_limit", "price_tier", "loyalty_tier"];
+      const rows = filtered.map(x => [
+        x.id, x.name, x.phone, x.email,
+        x.loyalty_points.toString(), x.total_spent.toString(), x.visits.toString(),
+        x.group_name || "", x.notes || "", x.birthday || "", x.anniversary || "",
+        (x.credit_limit || 0).toString(), x.price_tier || "", x.loyalty_tier || ""
+      ]);
+      const csv = [header, ...rows].map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(",")).join("\n");
+      return csv as T;
+    }
+    case "import_customers_csv": {
+      const csvData = (args as any).csvData as string;
+      const customers = lsGet<Customer[]>("pos_customers") || [];
+      const lines = csvData.split("\n");
+      let imported = 0;
+      let errors = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const parts = line.split(",").map(p => p.replace(/^"|"$/g, '').replace(/""/g, '"'));
+        if (parts.length < 3) { errors++; continue; }
+        const c: Customer = {
+          id: parts[0] || Math.random().toString(36).substr(2, 9),
+          store_id: storeId,
+          name: parts[1],
+          phone: parts[2],
+          email: parts[3] || "",
+          loyalty_points: parseInt(parts[4]) || 0,
+          total_spent: parseFloat(parts[5]) || 0,
+          visits: parseInt(parts[6]) || 0,
+          group_name: parts[7],
+          notes: parts[8],
+          birthday: parts[9],
+          anniversary: parts[10],
+          credit_limit: parseFloat(parts[11]),
+          price_tier: parts[12],
+          loyalty_tier: parts[13],
+          created_at: new Date().toISOString()
+        };
+        const idx = customers.findIndex(x => x.id === c.id);
+        if (idx >= 0) customers[idx] = c; else customers.push(c);
+        imported++;
+      }
+      lsSet("pos_customers", customers);
+      return { imported, errors } as T;
+    }
+    case "get_customer_statistics": {
+      const customers = lsGet<Customer[]>("pos_customers") || [];
+      const c = customers.find(x => x.id === (args as any).customer_id);
+      if (!c) return { total_spent: 0, visits: 0, avg_order_value: 0 } as T;
+      return {
+        total_spent: c.total_spent,
+        visits: c.visits,
+        avg_order_value: c.visits > 0 ? c.total_spent / c.visits : 0
+      } as T;
+    }
     case "get_ingredients": return [] as T;
     case "get_recipes": return [] as T;
     case "get_suppliers": return [] as T;

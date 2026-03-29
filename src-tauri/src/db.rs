@@ -140,6 +140,7 @@ pub struct OrderItem {
     pub price: f64,
     pub quantity: i64,
     pub discount: f64,
+    pub discount_type: Option<String>,
     pub tax: f64,
     pub metadata: Option<serde_json::Value>,
 }
@@ -166,6 +167,9 @@ pub struct Order {
     pub synced: Option<bool>,
     pub user_id: Option<String>,
     pub user_name: Option<String>,
+    pub tip_amount: Option<f64>,
+    pub discount_type: Option<String>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -303,7 +307,33 @@ pub struct Customer {
     pub loyalty_points: i32,
     pub total_spent: f64,
     pub visits: i32,
+    pub group_name: Option<String>,
+    pub notes: Option<String>,
+    pub birthday: Option<String>,
+    pub anniversary: Option<String>,
+    pub credit_limit: Option<f64>,
+    pub price_tier: Option<String>,
+    pub loyalty_tier: Option<String>,
     pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CustomerAddress {
+    pub id: String,
+    pub customer_id: String,
+    pub label: String,
+    pub address: String,
+    pub city: String,
+    pub state: String,
+    pub zip: String,
+    pub phone: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CustomerStatistics {
+    pub total_spent: f64,
+    pub visits: i32,
+    pub avg_order_value: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -675,6 +705,7 @@ impl Database {
                 subtotal        REAL NOT NULL,
                 tax_amount      REAL NOT NULL,
                 discount_amount REAL NOT NULL,
+                discount_type   TEXT,
                 total           REAL NOT NULL,
                 payment_method  TEXT NOT NULL,
                 amount_paid     REAL NOT NULL,
@@ -687,7 +718,9 @@ impl Database {
                 delivery_phone  TEXT NOT NULL DEFAULT '',
                 user_id         TEXT NOT NULL DEFAULT '',
                 user_name       TEXT NOT NULL DEFAULT '',
+                tip_amount      REAL DEFAULT 0,
                 synced          INTEGER NOT NULL DEFAULT 0,
+                metadata        TEXT,
                 created_at      TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -700,6 +733,7 @@ impl Database {
                 price        REAL NOT NULL,
                 quantity     INTEGER NOT NULL,
                 discount     REAL NOT NULL DEFAULT 0,
+                discount_type TEXT,
                 tax          REAL NOT NULL DEFAULT 18,
                 metadata     TEXT,
                 done         INTEGER NOT NULL DEFAULT 0
@@ -760,7 +794,26 @@ impl Database {
                 loyalty_points INTEGER NOT NULL DEFAULT 0,
                 total_spent REAL NOT NULL DEFAULT 0,
                 visits INTEGER NOT NULL DEFAULT 0,
+                group_name TEXT,
+                notes TEXT,
+                birthday TEXT,
+                anniversary TEXT,
+                credit_limit REAL,
+                price_tier TEXT,
+                loyalty_tier TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS customer_addresses (
+                id TEXT PRIMARY KEY,
+                customer_id TEXT NOT NULL,
+                label TEXT NOT NULL,
+                address TEXT NOT NULL,
+                city TEXT NOT NULL DEFAULT '',
+                state TEXT NOT NULL DEFAULT '',
+                zip TEXT NOT NULL DEFAULT '',
+                phone TEXT NOT NULL DEFAULT '',
+                FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS inventory_alerts (
@@ -973,6 +1026,7 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_staff_attendance_store_id ON staff_attendance(store_id);
             CREATE INDEX IF NOT EXISTS idx_customers_store_id ON customers(store_id);
             CREATE INDEX IF NOT EXISTS idx_customers_store_id_created_at ON customers(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_customer_addresses_customer_id ON customer_addresses(customer_id);
             CREATE INDEX IF NOT EXISTS idx_inventory_alerts_store_id ON inventory_alerts(store_id);
             CREATE INDEX IF NOT EXISTS idx_inventory_alerts_product_id ON inventory_alerts(product_id);
             CREATE INDEX IF NOT EXISTS idx_inventory_alerts_store_id_created_at ON inventory_alerts(store_id, created_at);
@@ -1079,6 +1133,14 @@ impl Database {
     }
 
     fn migrate_schema(&self) -> Result<()> {
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN group_name TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN notes TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN birthday TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN anniversary TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN credit_limit REAL", []);
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN price_tier TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN loyalty_tier TEXT", []);
+
         let store_name = "Main Store";
         let sql = format!(
             "INSERT OR IGNORE INTO stores (id, name, industry, is_active) VALUES ('default', '{}', 'food', 1)",
@@ -1110,6 +1172,10 @@ impl Database {
             "ALTER TABLE purchase_order_items ADD COLUMN store_id TEXT NOT NULL DEFAULT 'default'",
             [],
         );
+        let _ = self.conn.execute("ALTER TABLE orders ADD COLUMN metadata TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE orders ADD COLUMN tip_amount REAL DEFAULT 0", []);
+        let _ = self.conn.execute("ALTER TABLE orders ADD COLUMN discount_type TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE order_items ADD COLUMN discount_type TEXT", []);
 
         Ok(())
     }
@@ -1742,12 +1808,14 @@ impl Database {
         let limit_val = limit.unwrap_or(500);
         let offset_val = offset.unwrap_or(0);
         let mut stmt = self.conn.prepare(
-            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, created_at
+            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at
              FROM orders WHERE store_id=?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
         )?;
 
         let mut orders: Vec<Order> = stmt
             .query_map(params![store_id, limit_val, offset_val], |row| {
+                let metadata_str: Option<String> = row.get(18)?;
+                let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
                 Ok(Order {
                     id: row.get(0)?,
                     store_id: row.get(1)?,
@@ -1768,14 +1836,17 @@ impl Database {
                     user_id: row.get(15)?,
                     user_name: row.get(16)?,
                     synced: Some(row.get::<_, i32>(17)? == 1),
-                    created_at: row.get(18)?,
+                    metadata,
+                    tip_amount: row.get(19)?,
+                    discount_type: row.get(20)?,
+                    created_at: row.get(21)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
 
         for order in &mut orders {
             let mut item_stmt = self.conn.prepare(
-                "SELECT product_id, product_name, price, quantity, discount, tax, metadata FROM order_items WHERE order_id=?1"
+                "SELECT product_id, product_name, price, quantity, discount, tax, metadata, discount_type FROM order_items WHERE order_id=?1"
             )?;
             order.items = item_stmt
                 .query_map(params![order.id], |row| {
@@ -1789,6 +1860,7 @@ impl Database {
                         discount: row.get(4)?,
                         tax: row.get(5)?,
                         metadata,
+                        discount_type: row.get(7)?,
                     })
                 })?
                 .collect::<Result<Vec<_>>>()?;
@@ -1799,16 +1871,17 @@ impl Database {
 
     pub fn save_order(&self, o: &Order, store_id: &str) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
+        let metadata_str = o.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok());
 
         tx.execute(
             "INSERT OR REPLACE INTO orders
-             (id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, created_at)
-              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,0,?18)",
+             (id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at)
+              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,0,?18,?19,?20,?21)",
             params![
                 o.id, store_id, o.subtotal, o.tax_amount, o.discount_amount, o.total,
                 o.payment_method, o.amount_paid, o.change_amount,
                 o.customer_name, o.status, o.order_type, o.delivery_status,
-                o.delivery_address, o.delivery_phone, o.user_id, o.user_name, o.created_at
+                o.delivery_address, o.delivery_phone, o.user_id, o.user_name, metadata_str, o.tip_amount, o.discount_type, o.created_at
             ],
         )?;
 
@@ -1820,9 +1893,9 @@ impl Database {
                 .as_ref()
                 .and_then(|m| serde_json::to_string(m).ok());
             tx.execute(
-                "INSERT INTO order_items (order_id, store_id, product_id, product_name, price, quantity, discount, tax, metadata)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-                params![o.id, o.store_id, item.product_id, item.product_name, item.price, item.quantity, item.discount, item.tax, metadata_str],
+                "INSERT INTO order_items (order_id, store_id, product_id, product_name, price, quantity, discount, tax, metadata, discount_type)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                params![o.id, o.store_id, item.product_id, item.product_name, item.price, item.quantity, item.discount, item.tax, metadata_str, item.discount_type],
             )?;
 
             if o.status == "completed" {
@@ -2398,7 +2471,7 @@ impl Database {
     // ─── Others (Simplified) ──────────────────────────────────────────────────
 
     pub fn get_customers(&self, store_id: &str) -> Result<Vec<Customer>> {
-        let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, created_at FROM customers WHERE store_id=?1")?;
+        let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier, created_at FROM customers WHERE store_id=?1")?;
         let items = stmt
             .query_map(params![store_id], |row| {
                 Ok(Customer {
@@ -2410,7 +2483,14 @@ impl Database {
                     loyalty_points: row.get(5)?,
                     total_spent: row.get(6)?,
                     visits: row.get(7)?,
-                    created_at: row.get(8)?,
+                    group_name: row.get(8)?,
+                    notes: row.get(9)?,
+                    birthday: row.get(10)?,
+                    anniversary: row.get(11)?,
+                    credit_limit: row.get(12)?,
+                    price_tier: row.get(13)?,
+                    loyalty_tier: row.get(14)?,
+                    created_at: row.get(15)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -2419,14 +2499,29 @@ impl Database {
 
     pub fn save_customer(&self, c: &Customer, store_id: &str) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO customers (id, store_id, name, phone, email) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(id) DO UPDATE SET name=excluded.name, phone=excluded.phone, email=excluded.email",
-            params![c.id, store_id, c.name, c.phone, c.email],
+            "INSERT INTO customers (id, store_id, name, phone, email, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+             ON CONFLICT(id) DO UPDATE SET
+                name=excluded.name, phone=excluded.phone, email=excluded.email,
+                group_name=excluded.group_name, notes=excluded.notes,
+                birthday=excluded.birthday, anniversary=excluded.anniversary,
+                credit_limit=excluded.credit_limit, price_tier=excluded.price_tier,
+                loyalty_tier=excluded.loyalty_tier",
+            params![c.id, store_id, c.name, c.phone, c.email, c.group_name, c.notes, c.birthday, c.anniversary, c.credit_limit, c.price_tier, c.loyalty_tier],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_customer(&self, id: &str, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM customers WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
         )?;
         Ok(())
     }
 
     pub fn get_customer_by_phone(&self, phone: &str, store_id: &str) -> Result<Option<Customer>> {
-        let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, created_at FROM customers WHERE phone=?1 AND store_id=?2")?;
+        let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier, created_at FROM customers WHERE phone=?1 AND store_id=?2")?;
         let res = stmt.query_row(params![phone, store_id], |row| {
             Ok(Customer {
                 id: row.get(0)?,
@@ -2437,7 +2532,14 @@ impl Database {
                 loyalty_points: row.get(5)?,
                 total_spent: row.get(6)?,
                 visits: row.get(7)?,
-                created_at: row.get(8)?,
+                group_name: row.get(8)?,
+                notes: row.get(9)?,
+                birthday: row.get(10)?,
+                anniversary: row.get(11)?,
+                credit_limit: row.get(12)?,
+                price_tier: row.get(13)?,
+                loyalty_tier: row.get(14)?,
+                created_at: row.get(15)?,
             })
         });
         match res {
@@ -2460,6 +2562,125 @@ impl Database {
         Ok(())
     }
 
+    pub fn get_customer_addresses(&self, customer_id: &str) -> Result<Vec<CustomerAddress>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, customer_id, label, address, city, state, zip, phone FROM customer_addresses WHERE customer_id=?1"
+        )?;
+        let items = stmt
+            .query_map(params![customer_id], |row| {
+                Ok(CustomerAddress {
+                    id: row.get(0)?,
+                    customer_id: row.get(1)?,
+                    label: row.get(2)?,
+                    address: row.get(3)?,
+                    city: row.get(4)?,
+                    state: row.get(5)?,
+                    zip: row.get(6)?,
+                    phone: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    pub fn save_customer_address(&self, a: &CustomerAddress) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO customer_addresses (id, customer_id, label, address, city, state, zip, phone)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+                label=excluded.label, address=excluded.address, city=excluded.city,
+                state=excluded.state, zip=excluded.zip, phone=excluded.phone",
+            params![a.id, a.customer_id, a.label, a.address, a.city, a.state, a.zip, a.phone],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_customer_address(&self, id: &str) -> Result<()> {
+        self.conn.execute("DELETE FROM customer_addresses WHERE id=?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn export_customers_csv(&self, store_id: &str) -> Result<String> {
+        let customers = self.get_customers(store_id)?;
+        let mut wtr = csv::Writer::from_writer(vec![]);
+
+        wtr.write_record(&[
+            "id", "name", "phone", "email", "loyalty_points", "total_spent", "visits",
+            "group_name", "notes", "birthday", "anniversary", "credit_limit", "price_tier", "loyalty_tier"
+        ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+        for c in customers {
+            wtr.write_record(&[
+                &c.id, &c.name, &c.phone, &c.email,
+                &c.loyalty_points.to_string(), &c.total_spent.to_string(), &c.visits.to_string(),
+                c.group_name.as_deref().unwrap_or(""),
+                c.notes.as_deref().unwrap_or(""),
+                c.birthday.as_deref().unwrap_or(""),
+                c.anniversary.as_deref().unwrap_or(""),
+                &c.credit_limit.unwrap_or(0.0).to_string(),
+                c.price_tier.as_deref().unwrap_or(""),
+                c.loyalty_tier.as_deref().unwrap_or(""),
+            ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+        }
+
+        let data = String::from_utf8(wtr.into_inner().unwrap_or_default())
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        Ok(data)
+    }
+
+    pub fn import_customers_csv(&self, csv_data: &str, store_id: &str) -> Result<CsvImportResult> {
+        let mut imported = 0;
+        let mut errors = 0;
+        let mut rdr = csv::Reader::from_reader(csv_data.as_bytes());
+
+        for result in rdr.records() {
+            let record = match result {
+                Ok(r) => r,
+                Err(_) => { errors += 1; continue; }
+            };
+
+            if record.len() < 3 { errors += 1; continue; }
+
+            let c = Customer {
+                id: record.get(0).filter(|s| !s.is_empty()).map(|s| s.to_string()).unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                store_id: store_id.to_string(),
+                name: record.get(1).unwrap_or("").to_string(),
+                phone: record.get(2).unwrap_or("").to_string(),
+                email: record.get(3).unwrap_or("").to_string(),
+                loyalty_points: record.get(4).and_then(|s| s.parse().ok()).unwrap_or(0),
+                total_spent: record.get(5).and_then(|s| s.parse().ok()).unwrap_or(0.0),
+                visits: record.get(6).and_then(|s| s.parse().ok()).unwrap_or(0),
+                group_name: record.get(7).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                notes: record.get(8).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                birthday: record.get(9).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                anniversary: record.get(10).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                credit_limit: record.get(11).and_then(|s| s.parse().ok()),
+                price_tier: record.get(12).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                loyalty_tier: record.get(13).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                created_at: chrono::Local::now().to_rfc3339(),
+            };
+
+            if self.save_customer(&c, store_id).is_ok() {
+                imported += 1;
+            } else {
+                errors += 1;
+            }
+        }
+        Ok(CsvImportResult { imported, errors })
+    }
+
+    pub fn get_customer_statistics(&self, customer_id: &str) -> Result<CustomerStatistics> {
+        self.conn.query_row(
+            "SELECT total_spent, visits, CASE WHEN visits > 0 THEN total_spent / visits ELSE 0 END FROM customers WHERE id = ?1",
+            params![customer_id],
+            |row| Ok(CustomerStatistics {
+                total_spent: row.get(0)?,
+                visits: row.get(1)?,
+                avg_order_value: row.get(2)?,
+            })
+        )
+    }
+
     pub fn get_customer_orders(&self, phone: &str, store_id: &str) -> Result<Vec<Order>> {
         let mut stmt = self
             .conn
@@ -2478,10 +2699,12 @@ impl Database {
 
     fn get_order_by_id(&self, id: &str, store_id: &str) -> Result<Order> {
         self.conn.query_row(
-            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, created_at
+            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at
              FROM orders WHERE id=?1 AND store_id=?2",
             params![id, store_id],
             |row| {
+                let metadata_str: Option<String> = row.get(18)?;
+                let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
                 Ok(Order {
                     id: row.get(0)?,
                     store_id: row.get(1)?,
@@ -2502,7 +2725,10 @@ impl Database {
                     user_id: row.get(15)?,
                     user_name: row.get(16)?,
                     synced: Some(row.get::<_, i32>(17)? == 1),
-                    created_at: row.get(18)?,
+                    metadata,
+                    tip_amount: row.get(19)?,
+                    discount_type: row.get(20)?,
+                    created_at: row.get(21)?,
                 })
             }
         )
@@ -3243,6 +3469,30 @@ impl Database {
     ) -> Result<String> {
         Ok("Quickbooks CSV export placeholder".into())
     }
+    pub fn add_activity_log(
+        &self,
+        store_id: &str,
+        action: &str,
+        reason: &str,
+        user_id: &str,
+        user_name: &str,
+        order_id: Option<&str>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO activity_logs (id, store_id, order_id, action, reason, user_id, user_name) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params![
+                uuid::Uuid::new_v4().to_string(),
+                store_id,
+                order_id.unwrap_or(""),
+                action,
+                reason,
+                user_id,
+                user_name
+            ],
+        )?;
+        Ok(())
+    }
+
     pub fn create_compressed_backup(&self, store_id: &str) -> Result<Vec<u8>> {
         let products = self.get_products(store_id)?;
         let orders = self.get_orders(store_id, None, None)?;
