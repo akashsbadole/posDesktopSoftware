@@ -286,7 +286,33 @@ pub struct Customer {
     pub loyalty_points: i32,
     pub total_spent: f64,
     pub visits: i32,
+    pub group_name: Option<String>,
+    pub notes: Option<String>,
+    pub birthday: Option<String>,
+    pub anniversary: Option<String>,
+    pub credit_limit: Option<f64>,
+    pub price_tier: Option<String>,
+    pub loyalty_tier: Option<String>,
     pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CustomerAddress {
+    pub id: String,
+    pub customer_id: String,
+    pub label: String,
+    pub address: String,
+    pub city: String,
+    pub state: String,
+    pub zip: String,
+    pub phone: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CustomerStatistics {
+    pub total_spent: f64,
+    pub visits: i32,
+    pub avg_order_value: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -727,7 +753,26 @@ impl Database {
                 loyalty_points INTEGER NOT NULL DEFAULT 0,
                 total_spent REAL NOT NULL DEFAULT 0,
                 visits INTEGER NOT NULL DEFAULT 0,
+                group_name TEXT,
+                notes TEXT,
+                birthday TEXT,
+                anniversary TEXT,
+                credit_limit REAL,
+                price_tier TEXT,
+                loyalty_tier TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS customer_addresses (
+                id TEXT PRIMARY KEY,
+                customer_id TEXT NOT NULL,
+                label TEXT NOT NULL,
+                address TEXT NOT NULL,
+                city TEXT NOT NULL DEFAULT '',
+                state TEXT NOT NULL DEFAULT '',
+                zip TEXT NOT NULL DEFAULT '',
+                phone TEXT NOT NULL DEFAULT '',
+                FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS inventory_alerts (
@@ -940,6 +985,7 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_staff_attendance_store_id ON staff_attendance(store_id);
             CREATE INDEX IF NOT EXISTS idx_customers_store_id ON customers(store_id);
             CREATE INDEX IF NOT EXISTS idx_customers_store_id_created_at ON customers(store_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_customer_addresses_customer_id ON customer_addresses(customer_id);
             CREATE INDEX IF NOT EXISTS idx_inventory_alerts_store_id ON inventory_alerts(store_id);
             CREATE INDEX IF NOT EXISTS idx_inventory_alerts_product_id ON inventory_alerts(product_id);
             CREATE INDEX IF NOT EXISTS idx_inventory_alerts_store_id_created_at ON inventory_alerts(store_id, created_at);
@@ -1046,6 +1092,14 @@ impl Database {
     }
 
     fn migrate_schema(&self) -> Result<()> {
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN group_name TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN notes TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN birthday TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN anniversary TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN credit_limit REAL", []);
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN price_tier TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN loyalty_tier TEXT", []);
+
         let store_name = "Main Store";
         let sql = format!(
             "INSERT OR IGNORE INTO stores (id, name, industry, is_active) VALUES ('default', '{}', 'food', 1)",
@@ -2183,7 +2237,7 @@ impl Database {
     // ─── Others (Simplified) ──────────────────────────────────────────────────
 
     pub fn get_customers(&self, store_id: &str) -> Result<Vec<Customer>> {
-        let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, created_at FROM customers WHERE store_id=?1")?;
+        let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier, created_at FROM customers WHERE store_id=?1")?;
         let items = stmt
             .query_map(params![store_id], |row| {
                 Ok(Customer {
@@ -2195,7 +2249,14 @@ impl Database {
                     loyalty_points: row.get(5)?,
                     total_spent: row.get(6)?,
                     visits: row.get(7)?,
-                    created_at: row.get(8)?,
+                    group_name: row.get(8)?,
+                    notes: row.get(9)?,
+                    birthday: row.get(10)?,
+                    anniversary: row.get(11)?,
+                    credit_limit: row.get(12)?,
+                    price_tier: row.get(13)?,
+                    loyalty_tier: row.get(14)?,
+                    created_at: row.get(15)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -2204,14 +2265,29 @@ impl Database {
 
     pub fn save_customer(&self, c: &Customer, store_id: &str) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO customers (id, store_id, name, phone, email) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(id) DO UPDATE SET name=excluded.name, phone=excluded.phone, email=excluded.email",
-            params![c.id, store_id, c.name, c.phone, c.email],
+            "INSERT INTO customers (id, store_id, name, phone, email, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+             ON CONFLICT(id) DO UPDATE SET
+                name=excluded.name, phone=excluded.phone, email=excluded.email,
+                group_name=excluded.group_name, notes=excluded.notes,
+                birthday=excluded.birthday, anniversary=excluded.anniversary,
+                credit_limit=excluded.credit_limit, price_tier=excluded.price_tier,
+                loyalty_tier=excluded.loyalty_tier",
+            params![c.id, store_id, c.name, c.phone, c.email, c.group_name, c.notes, c.birthday, c.anniversary, c.credit_limit, c.price_tier, c.loyalty_tier],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_customer(&self, id: &str, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM customers WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
         )?;
         Ok(())
     }
 
     pub fn get_customer_by_phone(&self, phone: &str, store_id: &str) -> Result<Option<Customer>> {
-        let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, created_at FROM customers WHERE phone=?1 AND store_id=?2")?;
+        let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier, created_at FROM customers WHERE phone=?1 AND store_id=?2")?;
         let res = stmt.query_row(params![phone, store_id], |row| {
             Ok(Customer {
                 id: row.get(0)?,
@@ -2222,7 +2298,14 @@ impl Database {
                 loyalty_points: row.get(5)?,
                 total_spent: row.get(6)?,
                 visits: row.get(7)?,
-                created_at: row.get(8)?,
+                group_name: row.get(8)?,
+                notes: row.get(9)?,
+                birthday: row.get(10)?,
+                anniversary: row.get(11)?,
+                credit_limit: row.get(12)?,
+                price_tier: row.get(13)?,
+                loyalty_tier: row.get(14)?,
+                created_at: row.get(15)?,
             })
         });
         match res {
@@ -2243,6 +2326,125 @@ impl Database {
             params![points, spent, id, store_id],
         )?;
         Ok(())
+    }
+
+    pub fn get_customer_addresses(&self, customer_id: &str) -> Result<Vec<CustomerAddress>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, customer_id, label, address, city, state, zip, phone FROM customer_addresses WHERE customer_id=?1"
+        )?;
+        let items = stmt
+            .query_map(params![customer_id], |row| {
+                Ok(CustomerAddress {
+                    id: row.get(0)?,
+                    customer_id: row.get(1)?,
+                    label: row.get(2)?,
+                    address: row.get(3)?,
+                    city: row.get(4)?,
+                    state: row.get(5)?,
+                    zip: row.get(6)?,
+                    phone: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    pub fn save_customer_address(&self, a: &CustomerAddress) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO customer_addresses (id, customer_id, label, address, city, state, zip, phone)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+                label=excluded.label, address=excluded.address, city=excluded.city,
+                state=excluded.state, zip=excluded.zip, phone=excluded.phone",
+            params![a.id, a.customer_id, a.label, a.address, a.city, a.state, a.zip, a.phone],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_customer_address(&self, id: &str) -> Result<()> {
+        self.conn.execute("DELETE FROM customer_addresses WHERE id=?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn export_customers_csv(&self, store_id: &str) -> Result<String> {
+        let customers = self.get_customers(store_id)?;
+        let mut wtr = csv::Writer::from_writer(vec![]);
+
+        wtr.write_record(&[
+            "id", "name", "phone", "email", "loyalty_points", "total_spent", "visits",
+            "group_name", "notes", "birthday", "anniversary", "credit_limit", "price_tier", "loyalty_tier"
+        ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+        for c in customers {
+            wtr.write_record(&[
+                &c.id, &c.name, &c.phone, &c.email,
+                &c.loyalty_points.to_string(), &c.total_spent.to_string(), &c.visits.to_string(),
+                c.group_name.as_deref().unwrap_or(""),
+                c.notes.as_deref().unwrap_or(""),
+                c.birthday.as_deref().unwrap_or(""),
+                c.anniversary.as_deref().unwrap_or(""),
+                &c.credit_limit.unwrap_or(0.0).to_string(),
+                c.price_tier.as_deref().unwrap_or(""),
+                c.loyalty_tier.as_deref().unwrap_or(""),
+            ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+        }
+
+        let data = String::from_utf8(wtr.into_inner().unwrap_or_default())
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        Ok(data)
+    }
+
+    pub fn import_customers_csv(&self, csv_data: &str, store_id: &str) -> Result<CsvImportResult> {
+        let mut imported = 0;
+        let mut errors = 0;
+        let mut rdr = csv::Reader::from_reader(csv_data.as_bytes());
+
+        for result in rdr.records() {
+            let record = match result {
+                Ok(r) => r,
+                Err(_) => { errors += 1; continue; }
+            };
+
+            if record.len() < 3 { errors += 1; continue; }
+
+            let c = Customer {
+                id: record.get(0).filter(|s| !s.is_empty()).map(|s| s.to_string()).unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                store_id: store_id.to_string(),
+                name: record.get(1).unwrap_or("").to_string(),
+                phone: record.get(2).unwrap_or("").to_string(),
+                email: record.get(3).unwrap_or("").to_string(),
+                loyalty_points: record.get(4).and_then(|s| s.parse().ok()).unwrap_or(0),
+                total_spent: record.get(5).and_then(|s| s.parse().ok()).unwrap_or(0.0),
+                visits: record.get(6).and_then(|s| s.parse().ok()).unwrap_or(0),
+                group_name: record.get(7).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                notes: record.get(8).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                birthday: record.get(9).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                anniversary: record.get(10).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                credit_limit: record.get(11).and_then(|s| s.parse().ok()),
+                price_tier: record.get(12).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                loyalty_tier: record.get(13).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                created_at: chrono::Local::now().to_rfc3339(),
+            };
+
+            if self.save_customer(&c, store_id).is_ok() {
+                imported += 1;
+            } else {
+                errors += 1;
+            }
+        }
+        Ok(CsvImportResult { imported, errors })
+    }
+
+    pub fn get_customer_statistics(&self, customer_id: &str) -> Result<CustomerStatistics> {
+        self.conn.query_row(
+            "SELECT total_spent, visits, CASE WHEN visits > 0 THEN total_spent / visits ELSE 0 END FROM customers WHERE id = ?1",
+            params![customer_id],
+            |row| Ok(CustomerStatistics {
+                total_spent: row.get(0)?,
+                visits: row.get(1)?,
+                avg_order_value: row.get(2)?,
+            })
+        )
     }
 
     pub fn get_customer_orders(&self, phone: &str, store_id: &str) -> Result<Vec<Order>> {
