@@ -49,6 +49,7 @@ export default function OnboardingModal() {
   const { updateStore, stores, fetchStores } = useStoresStore();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [agreedToLicense, setAgreedToLicense] = useState(false);
 
   const [formData, setFormData] = useState({
     industry: "food" as StoreType["industry"],
@@ -133,19 +134,71 @@ export default function OnboardingModal() {
 
         {/* Progress Bar */}
         <div className="h-1.5 w-full bg-muted flex">
-          {[1, 2, 3, 4, 5].map((s) => (
+          {[1, 2, 3, 4, 5, 6].map((s) => (
             <div
               key={s}
               className={`h-full transition-all duration-500 ${
                 s <= step ? "bg-[#F5C842]" : "bg-transparent"
               }`}
-              style={{ width: "20%" }}
+              style={{ width: "16.66%" }}
             />
           ))}
         </div>
 
         <div className="p-8 md:p-12">
           {step === 1 && (
+            <div className="space-y-8 animate-in slide-in-from-right duration-300">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-[#F5C842]/10 rounded-2xl flex items-center justify-center text-[#F5C842] mx-auto mb-4">
+                  <ShieldCheck size={32} />
+                </div>
+                <h1 className="text-3xl font-bold mb-2">License Agreement</h1>
+                <p className="text-muted-foreground">Please review and accept the MIT License</p>
+              </div>
+
+              <div className="bg-muted/50 border border-border rounded-xl p-6 h-64 overflow-y-auto text-xs font-mono space-y-4 leading-relaxed">
+                <p className="font-bold">MIT License</p>
+                <p>Copyright (c) 2025 akash badole</p>
+                <p>
+                  Permission is hereby granted, free of charge, to any person obtaining a copy
+                  of this software and associated documentation files (the "Software"), to deal
+                  in the Software without restriction, including without limitation the rights
+                  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+                  copies of the Software, and to permit persons to whom the Software is
+                  furnished to do so, subject to the following conditions:
+                </p>
+                <p>
+                  The above copyright notice and this permission notice shall be included in all
+                  copies or substantial portions of the Software.
+                </p>
+                <p>
+                  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+                  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+                  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+                  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+                  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+                  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+                  SOFTWARE.
+                </p>
+              </div>
+
+              <label
+                onClick={() => setAgreedToLicense(!agreedToLicense)}
+                className="flex items-center gap-3 p-4 rounded-xl border border-border hover:bg-muted/50 transition-colors cursor-pointer group"
+              >
+                <div
+                  className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                    agreedToLicense ? "bg-[#F5C842] border-[#F5C842]" : "border-muted-foreground group-hover:border-[#F5C842]"
+                  }`}
+                >
+                  {agreedToLicense && <Check size={16} className="text-[#0D0D0F]" />}
+                </div>
+                <span className="text-sm font-medium">I have read and agree to the license terms</span>
+              </label>
+            </div>
+          )}
+
+          {step === 2 && (
             <div className="space-y-8 animate-in slide-in-from-right duration-300">
               <div className="text-center">
                 <div className="w-16 h-16 bg-[#F5C842]/10 rounded-2xl flex items-center justify-center text-[#F5C842] mx-auto mb-4">
@@ -180,7 +233,7 @@ export default function OnboardingModal() {
             </div>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <div className="space-y-8 animate-in slide-in-from-right duration-300">
               <div className="text-center">
                 <div className="w-16 h-16 bg-[#F5C842]/10 rounded-2xl flex items-center justify-center text-[#F5C842] mx-auto mb-4">
@@ -229,7 +282,7 @@ export default function OnboardingModal() {
             </div>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <div className="space-y-8 animate-in slide-in-from-right duration-300">
               <div className="text-center">
                 <div className="w-16 h-16 bg-[#F5C842]/10 rounded-2xl flex items-center justify-center text-[#F5C842] mx-auto mb-4">
@@ -271,7 +324,7 @@ export default function OnboardingModal() {
             </div>
           )}
 
-          {step === 4 && (
+          {step === 5 && (
             <div className="space-y-8 animate-in slide-in-from-right duration-300">
               <div className="text-center">
                 <div className="w-16 h-16 bg-[#F5C842]/10 rounded-2xl flex items-center justify-center text-[#F5C842] mx-auto mb-4">
@@ -320,7 +373,7 @@ export default function OnboardingModal() {
             </div>
           )}
 
-          {step === 5 && (
+          {step === 6 && (
             <div className="space-y-8 animate-in slide-in-from-right duration-300">
               <div className="text-center">
                 <div className="w-16 h-16 bg-[#F5C842]/10 rounded-2xl flex items-center justify-center text-[#F5C842] mx-auto mb-4">
@@ -384,10 +437,14 @@ export default function OnboardingModal() {
                 <ChevronLeft size={20} /> Back
               </button>
             )}
-            {step < 5 ? (
+            {step < 6 ? (
               <button
                 onClick={nextStep}
-                disabled={(step === 1 && !formData.industry) || (step === 2 && !formData.storeName)}
+                disabled={
+                  (step === 1 && !agreedToLicense) ||
+                  (step === 2 && !formData.industry) ||
+                  (step === 3 && !formData.storeName)
+                }
                 className="flex-[2] flex items-center justify-center gap-2 py-4 px-6 rounded-2xl bg-[#F5C842] text-[#0D0D0F] font-bold hover:opacity-90 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Continue <ChevronRight size={20} />
