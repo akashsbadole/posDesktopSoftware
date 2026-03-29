@@ -459,6 +459,27 @@ fn delete_store(id: String) -> Result<(), String> {
 // ─── KDS Commands ───────────────────────────────────────────────────────────
 
 #[tauri::command]
+async fn add_activity_log(
+    store_id: String,
+    action: String,
+    reason: String,
+    user_id: String,
+    user_name: String,
+    order_id: Option<String>,
+) -> Result<(), String> {
+    let db = DB.lock().unwrap();
+    db.add_activity_log(
+        &store_id,
+        &action,
+        &reason,
+        &user_id,
+        &user_name,
+        order_id.as_deref(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn open_kds_window(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::WindowBuilder;
     
@@ -975,6 +996,7 @@ fn main() {
             get_users,
             export_backup,
             import_backup,
+            add_activity_log,
             get_activity_logs,
             sync_to_neon,
             sync_from_neon,
