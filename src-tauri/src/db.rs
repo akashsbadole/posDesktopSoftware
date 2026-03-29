@@ -2055,8 +2055,11 @@ impl Database {
         let mut wtr = csv::Writer::from_writer(vec![]);
 
         // Header
-        wtr.write_record(&["id", "name", "price", "cost_price", "wholesale_price", "category", "subcategory", "stock", "barcode", "sku", "description", "tax", "status", "tags", "is_digital", "is_favorite", "image_url", "metadata"])
-            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        wtr.write_record(&[
+            "id", "parent_id", "name", "price", "cost_price", "wholesale_price",
+            "category", "subcategory", "stock", "barcode", "sku", "description",
+            "tax", "status", "tags", "is_digital", "is_favorite", "image_url", "metadata", "variant_value"
+        ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         for p in products {
             let metadata_str = p.metadata.as_ref()
@@ -2065,6 +2068,7 @@ impl Database {
 
             wtr.write_record(&[
                 &p.id,
+                "", // parent_id
                 &p.name,
                 &p.price.to_string(),
                 &p.cost_price.to_string(),
@@ -2082,7 +2086,36 @@ impl Database {
                 &p.is_favorite.to_string(),
                 p.image_url.as_deref().unwrap_or(""),
                 &metadata_str,
+                "", // variant_value
             ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+            // Export variants
+            if let Ok(variants) = self.get_product_variants(&p.id, store_id) {
+                for v in variants {
+                    wtr.write_record(&[
+                        &v.id,
+                        &p.id, // parent_id
+                        &v.name,
+                        &v.price.to_string(),
+                        "0", // cost_price
+                        "0", // wholesale_price
+                        &p.category,
+                        p.subcategory.as_deref().unwrap_or(""),
+                        &v.stock.to_string(),
+                        "", // barcode
+                        &v.sku,
+                        "", // description
+                        &p.tax.to_string(),
+                        "active", // status
+                        "", // tags
+                        "false", // is_digital
+                        "false", // is_favorite
+                        "", // image_url
+                        "{}", // metadata
+                        &v.value, // variant_value
+                    ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+                }
+            }
         }
 
         let data = String::from_utf8(wtr.into_inner().unwrap_or_default())
@@ -2128,62 +2161,139 @@ impl Database {
                 }
             };
 
-            if record.len() < 7 {
+            let len = record.len();
+            if len < 4 { // Very basic validation
                 errors += 1;
                 continue;
             }
 
-            let id = record.get(0).unwrap_or("").to_string();
-            let name = record.get(1).unwrap_or("").to_string();
+            // Map fields based on column count (backward compatibility)
+            // Legacy (~2024): id, name, price, category, stock, barcode, tax (7 columns)
+            // Intermediate (Early 2025): id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata (18 columns)
+            // Current: id, parent_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, variant_value (20 columns)
+
+            let (id, parent_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, variant_value);
+
+            if len >= 19 {
+                // New 20-column format or 19-column variant
+                id = record.get(0).unwrap_or("").to_string();
+                parent_id = record.get(1).unwrap_or("").to_string();
+                name = record.get(2).unwrap_or("").to_string();
+                price = record.get(3).unwrap_or("0").parse().unwrap_or(0.0);
+                cost_price = record.get(4).unwrap_or("0").parse().unwrap_or(0.0);
+                wholesale_price = record.get(5).unwrap_or("0").parse().unwrap_or(0.0);
+                category = record.get(6).unwrap_or("General").to_string();
+                subcategory = record.get(7).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                stock = record.get(8).unwrap_or("0").parse().unwrap_or(0);
+                barcode = record.get(9).unwrap_or("").to_string();
+                sku = record.get(10).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                description = record.get(11).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                tax = record.get(12).unwrap_or("0").parse().unwrap_or(0.0);
+                status = record.get(13).unwrap_or("active").to_string();
+                tags = record.get(14).unwrap_or("").to_string();
+                is_digital = record.get(15).map(|s| s == "true").unwrap_or(false);
+                is_favorite = record.get(16).map(|s| s == "true").unwrap_or(false);
+                image_url = record.get(17).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                metadata = record.get(18).and_then(|s| serde_json::from_str(s).ok());
+                variant_value = record.get(19).unwrap_or("").to_string();
+            } else if len == 18 {
+                // Intermediate 18-column format
+                id = record.get(0).unwrap_or("").to_string();
+                parent_id = String::new();
+                name = record.get(1).unwrap_or("").to_string();
+                price = record.get(2).unwrap_or("0").parse().unwrap_or(0.0);
+                cost_price = record.get(3).unwrap_or("0").parse().unwrap_or(0.0);
+                wholesale_price = record.get(4).unwrap_or("0").parse().unwrap_or(0.0);
+                category = record.get(5).unwrap_or("General").to_string();
+                subcategory = record.get(6).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                stock = record.get(7).unwrap_or("0").parse().unwrap_or(0);
+                barcode = record.get(8).unwrap_or("").to_string();
+                sku = record.get(9).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                description = record.get(10).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                tax = record.get(11).unwrap_or("0").parse().unwrap_or(0.0);
+                status = record.get(12).unwrap_or("active").to_string();
+                tags = record.get(13).unwrap_or("").to_string();
+                is_digital = record.get(14).map(|s| s == "true").unwrap_or(false);
+                is_favorite = record.get(15).map(|s| s == "true").unwrap_or(false);
+                image_url = record.get(16).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                metadata = record.get(17).and_then(|s| serde_json::from_str(s).ok());
+                variant_value = String::new();
+            } else {
+                // Legacy format (7-9 columns)
+                id = record.get(0).unwrap_or("").to_string();
+                parent_id = String::new();
+                name = record.get(1).unwrap_or("").to_string();
+                price = record.get(2).unwrap_or("0").parse().unwrap_or(0.0);
+                category = record.get(3).unwrap_or("General").to_string();
+                stock = record.get(4).unwrap_or("0").parse().unwrap_or(0);
+                barcode = record.get(5).unwrap_or("").to_string();
+                tax = record.get(6).unwrap_or("18").parse().unwrap_or(18.0);
+
+                cost_price = 0.0;
+                wholesale_price = 0.0;
+                subcategory = None;
+                sku = None;
+                description = None;
+                status = "active".to_string();
+                tags = String::new();
+                is_digital = false;
+                is_favorite = false;
+                image_url = None;
+                metadata = None;
+                variant_value = String::new();
+            }
+
             if name.is_empty() {
                 errors += 1;
                 continue;
             }
 
-            let price = record.get(2).unwrap_or("0").parse().unwrap_or(0.0);
-            let cost_price = record.get(3).unwrap_or("0").parse().unwrap_or(0.0);
-            let wholesale_price = record.get(4).unwrap_or("0").parse().unwrap_or(0.0);
-            let category = record.get(5).unwrap_or("General").to_string();
-            let subcategory = record.get(6).filter(|s| !s.is_empty()).map(|s| s.to_string());
-            let stock = record.get(7).unwrap_or("0").parse().unwrap_or(0);
-            let barcode = record.get(8).unwrap_or("").to_string();
-            let sku = record.get(9).filter(|s| !s.is_empty()).map(|s| s.to_string());
-            let description = record.get(10).filter(|s| !s.is_empty()).map(|s| s.to_string());
-            let tax = record.get(11).unwrap_or("0").parse().unwrap_or(0.0);
-            let status = record.get(12).unwrap_or("active").to_string();
-            let tags = record.get(13).unwrap_or("").to_string();
-            let is_digital = record.get(14).map(|s| s == "true").unwrap_or(false);
-            let is_favorite = record.get(15).map(|s| s == "true").unwrap_or(false);
-            let image_url = record.get(16).filter(|s| !s.is_empty()).map(|s| s.to_string());
-            let metadata = record.get(17).and_then(|s| serde_json::from_str(s).ok());
-
-            let p = Product {
-                id: if id.is_empty() { uuid::Uuid::new_v4().to_string() } else { id },
-                store_id: store_id.to_string(),
-                name,
-                price,
-                cost_price,
-                wholesale_price,
-                category,
-                subcategory,
-                stock,
-                barcode,
-                sku,
-                description,
-                tax,
-                status,
-                tags,
-                is_digital,
-                is_favorite,
-                image_url,
-                created_at: None,
-                metadata,
-            };
-
-            if self.upsert_product(&p, store_id).is_ok() {
-                imported += 1;
+            if parent_id.is_empty() {
+                // Import as Product
+                let p = Product {
+                    id: if id.is_empty() { uuid::Uuid::new_v4().to_string() } else { id },
+                    store_id: store_id.to_string(),
+                    name,
+                    price,
+                    cost_price,
+                    wholesale_price,
+                    category,
+                    subcategory,
+                    stock,
+                    barcode,
+                    sku,
+                    description,
+                    tax,
+                    status,
+                    tags,
+                    is_digital,
+                    is_favorite,
+                    image_url,
+                    created_at: None,
+                    metadata,
+                };
+                if self.upsert_product(&p, store_id).is_ok() {
+                    imported += 1;
+                } else {
+                    errors += 1;
+                }
             } else {
-                errors += 1;
+                // Import as Product Variant
+                let v = ProductVariant {
+                    id: if id.is_empty() { uuid::Uuid::new_v4().to_string() } else { id },
+                    product_id: parent_id,
+                    store_id: store_id.to_string(),
+                    name,
+                    value: variant_value,
+                    sku: sku.unwrap_or_default(),
+                    price,
+                    stock,
+                };
+                if self.save_product_variant(&v, store_id).is_ok() {
+                    imported += 1;
+                } else {
+                    errors += 1;
+                }
             }
         }
         Ok(CsvImportResult { imported, errors })

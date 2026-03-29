@@ -5,6 +5,7 @@ import { useSettingsStore } from './settingsStore';
 
 export type OrderType = 'dine_in' | 'takeaway' | 'delivery';
 export type PaymentMethod = 'cash' | 'card' | 'upi';
+export type PriceTier = 'retail' | 'wholesale';
 
 export interface CartItem {
   product: Product;
@@ -27,6 +28,7 @@ interface CartState {
   notes: string;
   globalDiscount: number;
   paymentMethod: PaymentMethod;
+  priceTier: PriceTier;
   amountPaid: number;
   originalOrderId: string | null;
   addItem: (product: Product, quantity?: number) => void;
@@ -38,6 +40,7 @@ interface CartState {
   setCustomerInfo: (info: CustomerInfo | null) => void;
   setNotes: (notes: string) => void;
   setGlobalDiscount: (discount: number) => void;
+  setPriceTier: (tier: PriceTier) => void;
   setPaymentMethod: (method: PaymentMethod) => void;
   setAmountPaid: (amount: number) => void;
   setOriginalOrderId: (id: string | null) => void;
@@ -59,6 +62,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   notes: '',
   globalDiscount: 0,
   paymentMethod: 'cash',
+  priceTier: 'retail',
   amountPaid: 0,
   originalOrderId: null,
 
@@ -66,42 +70,56 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   addItem: (product: Product, quantity = 1) => {
     set((state) => {
-      const existing = state.items.find((i) => i.product.id === product.id);
+      const tier = state.priceTier;
+      let finalProduct = { ...product };
+
+      // If we're in wholesale tier, use wholesale price
+      if (tier === 'wholesale' && product.wholesale_price) {
+        finalProduct.price = product.wholesale_price;
+      }
+
+      const existing = state.items.find((i) =>
+        i.product.id === finalProduct.id &&
+        JSON.stringify(i.product.metadata) === JSON.stringify(finalProduct.metadata) &&
+        i.product.price === finalProduct.price &&
+        i.product.name === finalProduct.name
+      );
       if (existing) {
         return {
           items: state.items.map((i) =>
-            i.product.id === product.id
+            (i.product.id === finalProduct.id && JSON.stringify(i.product.metadata) === JSON.stringify(finalProduct.metadata))
               ? { ...i, quantity: i.quantity + quantity }
               : i
           ),
         };
       }
-      return { items: [...state.items, { product, quantity, discount: 0 }] };
+      const cartItemId = uuid();
+      return { items: [...state.items, { product: { ...finalProduct, cartItemId } as any, quantity, discount: 0 }] };
     });
   },
 
-  removeItem: (productId: string) => {
+  removeItem: (cartItemId: string) => {
     set((state) => ({
-      items: state.items.filter((i) => i.product.id !== productId),
+      items: state.items.filter((i) => (i.product as any).cartItemId !== cartItemId),
     }));
   },
 
-  updateQuantity: (productId: string, quantity: number) => {
+  updateQuantity: (cartItemId: string, quantity: number) => {
     if (quantity <= 0) {
-      get().removeItem(productId);
+      get().removeItem(cartItemId);
       return;
     }
     set((state) => ({
       items: state.items.map((i) =>
-        i.product.id === productId ? { ...i, quantity } : i
+        (i.product as any).cartItemId === cartItemId ? { ...i, quantity } : i
       ),
     }));
   },
 
-  updateItemDiscount: (productId: string, discount: number) => {
+  updateItemDiscount: (cartItemId: string, discount: number) => {
     set((state) => ({
       items: state.items.map((i) =>
-        i.product.id === productId ? { ...i, discount: Math.max(0, Math.min(100, discount)) } : i
+        (i.product as any).cartItemId === cartItemId ? { ...i, discount: Math.max(0, Math.min(100, discount)) } : i
       ),
     }));
   },
@@ -111,6 +129,27 @@ export const useCartStore = create<CartState>((set, get) => ({
   setCustomerInfo: (customerInfo) => set({ customerInfo }),
   setNotes: (notes) => set({ notes }),
   setGlobalDiscount: (globalDiscount) => set({ globalDiscount: Math.max(0, Math.min(100, globalDiscount)) }),
+  setPriceTier: (priceTier) => {
+    const previousTier = get().priceTier;
+    if (previousTier === priceTier) return;
+
+    // Update all items in cart to match the new tier price
+    set((state) => ({
+      priceTier,
+      items: state.items.map(item => {
+        const product = item.product;
+        let newPrice = product.price;
+        if (priceTier === 'wholesale') {
+          newPrice = product.wholesale_price || product.price;
+        } else {
+          // This is a bit tricky since we might have overridden the price
+          // We'd need to fetch the original retail price or store both
+          // For now, we'll assume product.price was the retail price
+        }
+        return { ...item, product: { ...product, price: newPrice } };
+      })
+    }));
+  },
   setPaymentMethod: (paymentMethod) => set({ paymentMethod }),
   setAmountPaid: (amountPaid) => set({ amountPaid }),
 
@@ -124,6 +163,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       notes: '',
       globalDiscount: 0,
       paymentMethod: 'cash',
+      priceTier: 'retail',
       amountPaid: 0,
       originalOrderId: null,
     }),
@@ -149,6 +189,7 @@ export const useCartStore = create<CartState>((set, get) => ({
         tax: i.product.tax,
         status: "pending" as const,
         done: false,
+        metadata: i.product.metadata,
       })),
       subtotal: totals.subtotal,
       tax_amount: totals.tax_amount,

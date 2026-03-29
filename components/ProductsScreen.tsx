@@ -85,6 +85,9 @@ export default function ProductsScreen() {
   const [editingCombo, setEditingCombo] = useState<Combo | null>(null);
   const [comboItems, setComboItems] = useState<ComboItem[]>([]);
   const [editingVariants, setEditingVariants] = useState<ProductVariant[]>([]);
+  const [variantsToDelete, setVariantsToDelete] = useState<string[]>([]);
+  const initialVariantIds = useRef<Set<string>>(new Set());
+  const [customAttributes, setCustomAttributes] = useState<{ key: string, value: string }[]>([]);
 
   useEffect(() => { 
     fetchProducts(); 
@@ -93,10 +96,22 @@ export default function ProductsScreen() {
   }, [activeStoreId]);
 
   useEffect(() => {
-    if (editing?.id) {
-      fetchVariants(editing.id).then(setEditingVariants);
-    } else {
-      setEditingVariants([]);
+    if (editing) {
+      if (editing.id) {
+        fetchVariants(editing.id).then(variants => {
+          setEditingVariants(variants);
+          initialVariantIds.current = new Set(variants.map(v => v.id));
+        });
+      } else {
+        setEditingVariants([]);
+        initialVariantIds.current = new Set();
+      }
+
+      // Load custom attributes from metadata
+      const attrs = Object.entries(editing.metadata || {})
+        .filter(([key]) => !['duration', 'track_serial', 'expiry_months', 'variant_id', 'serial_number'].includes(key))
+        .map(([key, value]) => ({ key, value: String(value) }));
+      setCustomAttributes(attrs);
     }
   }, [editing?.id]);
 
@@ -151,11 +166,32 @@ export default function ProductsScreen() {
     }
     try {
       const productId = editing.id || uuid();
-      const product = { ...editing, id: productId, store_id: activeStoreId };
+
+      // Merge custom attributes back into metadata
+      const newMetadata = { ...editing.metadata };
+      customAttributes.forEach(attr => {
+        if (attr.key.trim()) {
+          newMetadata[attr.key.trim()] = attr.value;
+        }
+      });
+      // Remove keys that are now empty in custom attributes but existed before
+      const currentAttrKeys = customAttributes.map(a => a.key.trim());
+      Object.keys(newMetadata).forEach(key => {
+        if (!['duration', 'track_serial', 'expiry_months', 'variant_id', 'serial_number'].includes(key) && !currentAttrKeys.includes(key)) {
+          delete newMetadata[key];
+        }
+      });
+
+      const product = { ...editing, id: productId, store_id: activeStoreId, metadata: newMetadata };
       if (editing.id) {
         await updateProduct(product);
       } else {
         await addProduct(product);
+      }
+
+      // Delete staged variants
+      for (const variantId of variantsToDelete) {
+        await deleteVariant(variantId);
       }
 
       // Save variants
@@ -166,6 +202,8 @@ export default function ProductsScreen() {
       setEditing(null);
       setErrors({});
       setEditingVariants([]);
+      setVariantsToDelete([]);
+      initialVariantIds.current = new Set();
     } catch (err) {
       console.error("Failed to save product:", err);
       alert("Failed to save product. Please try again.");
@@ -299,14 +337,10 @@ export default function ProductsScreen() {
     setEditingVariants([...editingVariants, newVariant]);
   };
 
-  const handleRemoveVariant = async (id: string) => {
+  const handleRemoveVariant = (id: string) => {
     setEditingVariants(editingVariants.filter(v => v.id !== id));
-    if (editing?.id) {
-      try {
-        await deleteVariant(id);
-      } catch (err) {
-        console.error("Failed to delete variant:", err);
-      }
+    if (initialVariantIds.current.has(id)) {
+      setVariantsToDelete([...variantsToDelete, id]);
     }
   };
 
@@ -625,7 +659,7 @@ export default function ProductsScreen() {
         <div className="border-l border-border p-5 overflow-y-auto slide-in" style={{ width: 360 }}>
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-display font-bold">{editing.id ? "Edit" : "Add"} Product</h2>
-            <button onClick={() => { setEditing(null); setErrors({}); }} style={{ color: "#4A4A5A" }}><X size={18} /></button>
+            <button onClick={() => { setEditing(null); setErrors({}); setVariantsToDelete([]); initialVariantIds.current = new Set(); }} style={{ color: "#4A4A5A" }}><X size={18} /></button>
           </div>
           <div className="space-y-4">
             <div>
@@ -693,6 +727,23 @@ export default function ProductsScreen() {
                 <input type="number" value={editing.wholesale_price} onChange={(e) => setEditing({ ...editing, wholesale_price: parseFloat(e.target.value) || 0 })} min={0} />
               </div>
             </div>
+
+            {(editing.price > 0 && editing.cost_price > 0) && (
+              <div className="flex gap-4 p-2 rounded-lg bg-[#141418] border border-[#1E1E26]">
+                <div className="flex-1">
+                  <div className="text-[10px] text-[#4A4A5A] uppercase font-bold">Margin %</div>
+                  <div className="text-sm font-bold text-[#2ECC71]">
+                    {(((editing.price - editing.cost_price) / editing.price) * 100).toFixed(1)}%
+                  </div>
+                </div>
+                <div className="flex-1 border-l border-[#1E1E26] pl-4">
+                  <div className="text-[10px] text-[#4A4A5A] uppercase font-bold">Profit</div>
+                  <div className="text-sm font-bold text-[#2ECC71]">
+                    {curr}{(editing.price - editing.cost_price).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -800,6 +851,51 @@ export default function ProductsScreen() {
                )}
             </div>
 
+            {/* Custom Attributes Section */}
+            <div className="pt-4 border-t border-[#1E1E26] space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#4A4A5A]">Custom Attributes</h3>
+                <button
+                  onClick={() => setCustomAttributes([...customAttributes, { key: "", value: "" }])}
+                  className="text-[10px] px-2 py-1 bg-[#1E1E26] rounded text-[#F5C842] hover:bg-[#2A2A32]"
+                >
+                  <Plus size={10} className="inline mr-1" /> Add Field
+                </button>
+              </div>
+
+              {customAttributes.length === 0 ? (
+                <p className="text-[10px] text-center py-2 text-[#4A4A5A] italic">No custom fields added</p>
+              ) : (
+                <div className="space-y-2">
+                  {customAttributes.map((attr, idx) => (
+                    <div key={idx} className="flex gap-2 items-center">
+                      <input
+                        className="text-[10px] p-1.5 flex-1"
+                        placeholder="Key (e.g., Brand)"
+                        value={attr.key}
+                        onChange={(e) => {
+                          const newAttrs = [...customAttributes];
+                          newAttrs[idx].key = e.target.value;
+                          setCustomAttributes(newAttrs);
+                        }}
+                      />
+                      <input
+                        className="text-[10px] p-1.5 flex-1"
+                        placeholder="Value"
+                        value={attr.value}
+                        onChange={(e) => {
+                          const newAttrs = [...customAttributes];
+                          newAttrs[idx].value = e.target.value;
+                          setCustomAttributes(newAttrs);
+                        }}
+                      />
+                      <button onClick={() => setCustomAttributes(customAttributes.filter((_, i) => i !== idx))} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded"><X size={12} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Product Variants Section */}
             <div className="pt-4 border-t border-[#1E1E26] space-y-3">
               <div className="flex items-center justify-between">
@@ -867,7 +963,7 @@ export default function ProductsScreen() {
               <button className="btn-accent flex-1 flex items-center justify-center gap-2 py-2.5 text-sm" onClick={handleSave}>
                 <Check size={15} /> Save
               </button>
-              <button className="btn-ghost py-2.5 px-4 text-sm" onClick={() => { setEditing(null); setErrors({}); }}>Cancel</button>
+              <button className="btn-ghost py-2.5 px-4 text-sm" onClick={() => { setEditing(null); setErrors({}); setVariantsToDelete([]); initialVariantIds.current = new Set(); }}>Cancel</button>
             </div>
           </div>
         </div>
