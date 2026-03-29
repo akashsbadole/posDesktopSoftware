@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useCallback, useState } from "react";
-import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet, Package, QrCode, ShieldCheck, DollarSign, Split } from "lucide-react";
-import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet, Combo, dbHoldOrder, openCashDrawer, printReceipt, openWhatsAppShare, openEmailShare, saveReceiptToFile, Product, sendSmsNotification, dbAddActivityLog } from "@/lib/db";
+import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet, Package, QrCode, ShieldCheck, DollarSign, Split, Hash } from "lucide-react";
+import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet, Combo, dbHoldOrder, openCashDrawer, printReceipt, openWhatsAppShare, openEmailShare, saveReceiptToFile, Product, sendSmsNotification, dbAddActivityLog, dbGetBatches, dbGetSerialNumbers, Batch, SerialNumber } from "@/lib/db";
 import { QRCodeSVG } from "qrcode.react";
 import { useCartStore, useProductsStore, useSettingsStore, useAuthStore, useCombosStore, useStoresStore } from "@/lib/stores";
 import { useGridNavigation } from "@/lib/keyboard";
@@ -73,8 +73,9 @@ export default function POSScreen() {
   const [receipt, setReceipt] = useState<string | null>(null);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [metadataPrompt, setMetadataPrompt] = useState<{ productId: string, name: string, field: string } | null>(null);
+  const [metadataPrompt, setMetadataPrompt] = useState<{ productId: string, name: string, field: 'serial' | 'batch' } | null>(null);
   const [metadataValue, setMetadataValue] = useState("");
+  const [availableOptions, setAvailableOptions] = useState<{ batches: Batch[], serials: SerialNumber[] }>({ batches: [], serials: [] });
   const [focusedProductIndex, setFocusedProductIndex] = useState<number>(-1);
   const [isGridFocused, setIsGridFocused] = useState(false);
   const [heldOrders, setHeldOrders] = useState<Order[]>([]);
@@ -192,24 +193,41 @@ export default function POSScreen() {
     }
   };
 
-  const handleAddItem = (product: Product) => {
+  const handleAddItem = async (product: Product) => {
     if (product.stock === 0) return;
-    if (product.metadata?.track_serial) {
-      setMetadataPrompt({ productId: product.id, name: product.name, field: 'Serial Number' });
+
+    if (product.is_serialized) {
+      const serials = await dbGetSerialNumbers(activeStoreId, product.id);
+      setAvailableOptions({ batches: [], serials: serials.filter(s => s.status === 'available') });
+      setMetadataPrompt({ productId: product.id, name: product.name, field: 'serial' });
+      setMetadataValue("");
+    } else if (product.track_batches) {
+      const batches = await dbGetBatches(activeStoreId, product.id);
+      setAvailableOptions({ batches: batches.filter(b => b.quantity > 0), serials: [] });
+      setMetadataPrompt({ productId: product.id, name: product.name, field: 'batch' });
       setMetadataValue("");
     } else {
       addItem(product);
     }
   };
 
-  const handleMetadataSubmit = () => {
+  const handleMetadataSubmit = (val?: string) => {
     if (!metadataPrompt) return;
+    const finalVal = val || metadataValue;
+    if (!finalVal) return;
+
     const p = products.find(x => x.id === metadataPrompt.productId);
     if (p) {
-        addItem({ ...p, metadata: { ...p.metadata, serial_number: metadataValue } });
+        if (metadataPrompt.field === 'serial') {
+           addItem({ ...p, metadata: { ...p.metadata, serial_number: finalVal } });
+        } else {
+           const batch = availableOptions.batches.find(b => b.id === finalVal);
+           addItem({ ...p, metadata: { ...p.metadata, batch_id: finalVal, batch_number: batch?.batch_number } });
+        }
     }
     setMetadataPrompt(null);
     setMetadataValue("");
+    setAvailableOptions({ batches: [], serials: [] });
   }
 
   const handleAddComboToCart = (combo: Combo) => {
@@ -759,7 +777,8 @@ export default function POSScreen() {
             ) : (
               filtered.map((p, idx) => {
                 const inCart = cart.find((i) => i.product.id === p.id);
-                const oos = p.stock === 0;
+                const cartQty = inCart ? inCart.quantity : 0;
+                const oos = p.stock <= cartQty;
                 const isFocused = focusedProductIndex === idx;
                 return (
                   <button 
@@ -1447,21 +1466,64 @@ export default function POSScreen() {
       {metadataPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-               <ShieldCheck size={20} className="text-[#F5C842]" /> {metadataPrompt.name}
+            <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+               {metadataPrompt.field === 'serial' ? <ShieldCheck size={20} className="text-[#F5C842]" /> : <Hash size={20} className="text-[#F5C842]" />}
+               {metadataPrompt.name}
             </h3>
-            <p className="text-xs text-[#9090A8] mb-4">Please enter the {metadataPrompt.field} for this item to proceed.</p>
-            <input
-              autoFocus
-              placeholder={`Enter ${metadataPrompt.field}`}
-              className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3 mb-4"
-              value={metadataValue}
-              onChange={(e) => setMetadataValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleMetadataSubmit()}
-            />
-            <div className="flex gap-2">
-               <button onClick={() => {setMetadataPrompt(null); setMetadataValue("");}} className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl">Cancel</button>
-               <button onClick={handleMetadataSubmit} className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl">Add to Cart</button>
+            <p className="text-xs text-[#9090A8] mb-4">
+              Select or enter {metadataPrompt.field === 'serial' ? 'Serial Number' : 'Batch'} to continue.
+            </p>
+
+            <div className="max-h-60 overflow-y-auto mb-4 space-y-2">
+               {metadataPrompt.field === 'serial' ? (
+                 <>
+                   <input
+                     autoFocus
+                     placeholder="Type or Scan Serial Number..."
+                     className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3"
+                     value={metadataValue}
+                     onChange={(e) => setMetadataValue(e.target.value)}
+                     onKeyDown={(e) => e.key === 'Enter' && handleMetadataSubmit()}
+                   />
+                   <div className="text-[10px] font-bold text-[#4A4A5A] uppercase tracking-widest mt-4 mb-2">Available Serials</div>
+                   {availableOptions.serials.length > 0 ? availableOptions.serials.map(s => (
+                     <button
+                       key={s.id}
+                       onClick={() => handleMetadataSubmit(s.serial_number)}
+                       className="w-full text-left px-4 py-2.5 rounded-xl border border-[#1E1E26] hover:bg-[#1E1E26] transition-colors flex justify-between items-center"
+                     >
+                        <span className="font-mono text-sm">{s.serial_number}</span>
+                        <ChevronRight size={14} className="text-[#4A4A5A]" />
+                     </button>
+                   )) : <div className="text-xs text-center py-4 text-[#4A4A5A]">No serials found in system</div>}
+                 </>
+               ) : (
+                 <>
+                   <div className="text-[10px] font-bold text-[#4A4A5A] uppercase tracking-widest mb-2">Select Batch</div>
+                   {availableOptions.batches.length > 0 ? availableOptions.batches.map(b => (
+                     <button
+                       key={b.id}
+                       onClick={() => handleMetadataSubmit(b.id)}
+                       className="w-full text-left px-4 py-3 rounded-xl border border-[#1E1E26] hover:bg-[#1E1E26] transition-colors"
+                     >
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="font-bold">{b.batch_number}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-500 font-bold">{b.quantity} left</span>
+                        </div>
+                        <div className="text-[10px] text-[#4A4A5A]">
+                          Expires: {b.expiry_date ? new Date(b.expiry_date).toLocaleDateString() : 'No expiry'}
+                        </div>
+                     </button>
+                   )) : <div className="text-xs text-center py-4 text-[#4A4A5A]">No active batches found</div>}
+                 </>
+               )}
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-[#1E1E26]">
+               <button onClick={() => {setMetadataPrompt(null); setMetadataValue(""); setAvailableOptions({ batches: [], serials: [] });}} className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl">Cancel</button>
+               {metadataPrompt.field === 'serial' && (
+                 <button onClick={() => handleMetadataSubmit()} disabled={!metadataValue} className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl disabled:opacity-50">Add Manual</button>
+               )}
             </div>
           </div>
         </div>

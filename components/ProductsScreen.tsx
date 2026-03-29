@@ -6,7 +6,22 @@ import { useProductsStore, useSettingsStore, useStoresStore } from "@/lib/stores
 import { useRef } from "react";
 import { v4 as uuid } from "uuid";
 
-const EMPTY_PRODUCT: Product = { id: "", store_id: "", name: "", price: 0, category: "Food", stock: 0, barcode: "", tax: 18, image_url: "" };
+const EMPTY_PRODUCT: Product = {
+  id: "",
+  store_id: "",
+  name: "",
+  price: 0,
+  cost_price: 0,
+  category: "Food",
+  stock: 0,
+  reorder_level: 10,
+  unit: "pcs",
+  barcode: "",
+  tax: 18,
+  is_serialized: false,
+  track_batches: false,
+  image_url: ""
+};
 const CATEGORIES = ["Beverages", "Food", "Snacks", "Bakery", "Electronics", "Other"];
 const ITEMS_PER_PAGE = 30;
 
@@ -499,13 +514,30 @@ export default function ProductsScreen() {
             
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Price ({curr})</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Sale Price ({curr})</label>
                 <input name="price" type="number" value={editing.price} onChange={(e) => setEditing({ ...editing, price: parseFloat(e.target.value) || 0 })} min={0} />
                 {errors.price && <p className="text-xs mt-1" style={{ color: "#E74C3C" }}>{errors.price}</p>}
               </div>
               <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Cost Price ({curr})</label>
+                <input name="cost_price" type="number" value={editing.cost_price} onChange={(e) => setEditing({ ...editing, cost_price: parseFloat(e.target.value) || 0 })} min={0} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
                 <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Tax %</label>
                 <input name="tax" type="number" value={editing.tax} onChange={(e) => setEditing({ ...editing, tax: parseFloat(e.target.value) || 0 })} min={0} max={100} />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Unit</label>
+                <select value={editing.unit} onChange={(e) => setEditing({ ...editing, unit: e.target.value })}>
+                  <option value="pcs">pcs</option>
+                  <option value="kg">kg</option>
+                  <option value="liter">liter</option>
+                  <option value="box">box</option>
+                  <option value="dozen">dozen</option>
+                </select>
               </div>
             </div>
             
@@ -516,9 +548,35 @@ export default function ProductsScreen() {
                 {errors.stock && <p className="text-xs mt-1" style={{ color: "#E74C3C" }}>{errors.stock}</p>}
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Barcode</label>
-                <input name="barcode" value={editing.barcode || ""} onChange={(e) => setEditing({ ...editing, barcode: e.target.value })} placeholder="Optional" />
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Reorder Level</label>
+                <input name="reorder_level" type="number" value={editing.reorder_level} onChange={(e) => setEditing({ ...editing, reorder_level: parseInt(e.target.value) || 0 })} min={0} />
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Barcode</label>
+              <input name="barcode" value={editing.barcode || ""} onChange={(e) => setEditing({ ...editing, barcode: e.target.value })} placeholder="Optional" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editing.is_serialized}
+                  onChange={(e) => setEditing({ ...editing, is_serialized: e.target.checked })}
+                  className="w-4 h-4 rounded"
+                />
+                <span className="text-sm">Serialized</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editing.track_batches}
+                  onChange={(e) => setEditing({ ...editing, track_batches: e.target.checked })}
+                  className="w-4 h-4 rounded"
+                />
+                <span className="text-sm">Track Batches</span>
+              </label>
             </div>
 
             {/* Industry Specific Metadata */}

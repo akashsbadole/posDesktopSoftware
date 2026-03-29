@@ -24,6 +24,7 @@ import {
   Calculator,
   GraduationCap,
   Lock,
+  Layers,
   ChevronDown,
   LayoutGrid
 } from "lucide-react";
@@ -34,6 +35,7 @@ import { getIndustryLabels } from "@/lib/industry";
 
 const allNavItems = [
   { id: "pos" as Screen, label: "POS", icon: ShoppingCart, adminOnly: false },
+  { id: "inventory" as Screen, label: "Inventory", icon: Layers, adminOnly: true },
   {
     id: "dashboard" as Screen,
     label: "Dashboard",

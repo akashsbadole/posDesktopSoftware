@@ -32,10 +32,17 @@ export interface Product {
   store_id: string;
   name: string;
   price: number;
+  cost_price: number;
   category: string;
   stock: number;
+  reorder_level: number;
+  unit: string;
+  base_unit?: string;
+  conversion_factor?: number;
   barcode: string;
   tax: number;
+  is_serialized: boolean;
+  track_batches: boolean;
   created_at?: string;
   image_url?: string;
   is_combo?: boolean;
@@ -438,6 +445,61 @@ export interface ActivityLogEntry {
   created_at: string;
 }
 
+export interface InventoryTransaction {
+  id: string;
+  store_id: string;
+  product_id: string;
+  type: "adjustment" | "sale" | "refund" | "transfer_in" | "transfer_out" | "count";
+  quantity: number;
+  previous_stock: number;
+  new_stock: number;
+  reason: string | null;
+  reference_id: string | null;
+  user_id: string;
+  user_name: string;
+  created_at: string;
+}
+
+export interface Batch {
+  id: string;
+  store_id: string;
+  product_id: string;
+  batch_number: string;
+  expiry_date: string | null;
+  quantity: number;
+  cost_price: number;
+  created_at: string;
+}
+
+export interface SerialNumber {
+  id: string;
+  store_id: string;
+  product_id: string;
+  serial_number: string;
+  status: "available" | "sold" | "returned";
+  order_id: string | null;
+}
+
+export interface StockCount {
+  id: string;
+  store_id: string;
+  status: "draft" | "completed";
+  notes: string | null;
+  user_id: string;
+  created_at: string;
+  items: StockCountItem[];
+}
+
+export interface StockCountItem {
+  id: string;
+  count_id: string;
+  product_id: string;
+  product_name: string;
+  system_stock: number;
+  actual_stock: number;
+  difference: number;
+}
+
 // ─── Invoke wrapper ────────────────────────────────────────────────────────────
 async function sql<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (IS_TAURI) {
@@ -477,8 +539,48 @@ export async function dbUpdateStock(id: string, delta: number, storeId: string):
   return sql("update_stock", { id, delta, store_id: storeId });
 }
 
-export async function dbTransferStock(id: string, fromStore: string, toStore: string, qty: number): Promise<void> {
-  return sql("transfer_stock", { id, from_store: fromStore, to_store: toStore, qty });
+export async function dbTransferStock(id: string, fromStore: string, toStore: string, qty: number, userId: string = "system", userName: string = "System"): Promise<void> {
+  return sql("transfer_stock", { id, from_store: fromStore, to_store: toStore, qty, user_id: userId, user_name: userName });
+}
+
+export async function dbAdjustStockWithReason(productId: string, storeId: string, delta: number, reason: string, userId: string, userName: string): Promise<void> {
+  return sql("adjust_stock_with_reason", { product_id: productId, store_id: storeId, delta, reason, user_id: userId, user_name: userName });
+}
+
+export async function dbGetInventoryValuation(storeId: string, method: 'average' | 'fifo' = 'average'): Promise<number> {
+  return sql<number>("get_inventory_valuation", { store_id: storeId, method });
+}
+
+export async function dbGetDeadStock(storeId: string, days: number): Promise<Product[]> {
+  return sql<Product[]>("get_dead_stock", { store_id: storeId, days });
+}
+
+export async function dbGetInventoryHistory(storeId: string, productId?: string): Promise<InventoryTransaction[]> {
+  return sql<InventoryTransaction[]>("get_inventory_history", { store_id: storeId, product_id: productId });
+}
+
+export async function dbSaveStockCount(count: StockCount): Promise<void> {
+  return sql("save_stock_count", { count });
+}
+
+export async function dbSaveSerialNumber(serial: SerialNumber): Promise<void> {
+  return sql("save_serial_number", { serial, store_id: serial.store_id });
+}
+
+export async function dbGetStockCounts(storeId: string): Promise<StockCount[]> {
+  return sql<StockCount[]>("get_stock_counts", { store_id: storeId });
+}
+
+export async function dbGetBatches(storeId: string, productId: string): Promise<Batch[]> {
+  return sql<Batch[]>("get_batches", { store_id: storeId, product_id: productId });
+}
+
+export async function dbGetSerialNumbers(storeId: string, productId: string): Promise<SerialNumber[]> {
+  return sql<SerialNumber[]>("get_serial_numbers", { store_id: storeId, product_id: productId });
+}
+
+export async function dbSaveBatch(batch: Batch, storeId: string): Promise<void> {
+  return sql("save_batch", { batch, store_id: storeId });
 }
 
 // ─── Combos ──────────────────────────────────────────────────────────────────
@@ -1072,10 +1174,10 @@ function defaultSettings(): Settings {
 
 function seedProducts(storeId: string): Product[] {
   return [
-    { id: `p1_${storeId}`, store_id: storeId, name: "Coffee", price: 120, category: "Beverages", stock: 100, barcode: "001", tax: 5 },
-    { id: `p2_${storeId}`, store_id: storeId, name: "Tea", price: 60, category: "Beverages", stock: 150, barcode: "002", tax: 5 },
-    { id: `p3_${storeId}`, store_id: storeId, name: "Sandwich", price: 180, category: "Food", stock: 50, barcode: "003", tax: 12 },
-    { id: `p4_${storeId}`, store_id: storeId, name: "Burger", price: 250, category: "Food", stock: 40, barcode: "004", tax: 12 },
+    { id: `p1_${storeId}`, store_id: storeId, name: "Coffee", price: 120, cost_price: 40, category: "Beverages", stock: 100, reorder_level: 10, unit: "pcs", barcode: "001", tax: 5, is_serialized: false, track_batches: false },
+    { id: `p2_${storeId}`, store_id: storeId, name: "Tea", price: 60, cost_price: 20, category: "Beverages", stock: 150, reorder_level: 10, unit: "pcs", barcode: "002", tax: 5, is_serialized: false, track_batches: false },
+    { id: `p3_${storeId}`, store_id: storeId, name: "Sandwich", price: 180, cost_price: 80, category: "Food", stock: 50, reorder_level: 5, unit: "pcs", barcode: "003", tax: 12, is_serialized: false, track_batches: false },
+    { id: `p4_${storeId}`, store_id: storeId, name: "Burger", price: 250, cost_price: 120, category: "Food", stock: 40, reorder_level: 5, unit: "pcs", barcode: "004", tax: 12, is_serialized: false, track_batches: false },
   ];
 }
 
@@ -1181,7 +1283,21 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     }
     case "get_weekly_revenue": return [] as T;
     case "get_top_products": return [] as T;
-    case "get_low_stock": return [] as T;
+    case "get_low_stock": {
+      const p = lsGet<Product[]>(LS.products) || [];
+      return p.filter(x => x.store_id === storeId && x.stock <= x.reorder_level)
+        .map(x => ({ name: x.name, stock: x.stock })) as T;
+    }
+    case "get_inventory_valuation": {
+      const p = lsGet<Product[]>(LS.products) || [];
+      const val = p.filter(x => x.store_id === storeId)
+        .reduce((sum, x) => sum + (x.stock * (x.cost_price || 0)), 0);
+      return val as T;
+    }
+    case "get_dead_stock": return [] as T;
+    case "get_inventory_history": return [] as T;
+    case "save_stock_count": return undefined as T;
+    case "get_stock_counts": return [] as T;
     case "get_expense_categories": {
       const items = lsGet<ExpenseCategory[]>("pos_expense_categories") || [];
       return items.filter(x => x.store_id === storeId) as T;
@@ -1277,10 +1393,15 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
           store_id: storeId,
           name: parts[1],
           price: parseFloat(parts[2]) || 0,
+          cost_price: parseFloat(parts[parts.length > 9 ? 9 : 2]) || 0, // Simplified CSV import update
           category: parts[3] || "General",
           stock: parseInt(parts[4]) || 0,
+          reorder_level: 10,
+          unit: "pcs",
           barcode: parts[5] || "",
           tax: parseFloat(parts[6]) || 0,
+          is_serialized: false,
+          track_batches: false,
           image_url: parts[7] || "",
           metadata: parts[8] ? JSON.parse(parts[8]) : {}
         };

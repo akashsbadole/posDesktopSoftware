@@ -1,0 +1,105 @@
+
+> pos-tauri@0.1.0 dev
+> next dev
+
+⚠ Port 3000 is in use by an unknown process, using available port 3001 instead.
+▲ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://192.168.0.2:3001
+✓ Ready in 1048ms
+
+○ Compiling / ...
+ GET / 200 in 6.6s (next.js: 6.0s, application-code: 630ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1401:15)
+✓ Compiled in 357ms
+Persisting failed: Unable to write SST file 00000096.sst
+
+Caused by:
+    No such file or directory (os error 2)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+
+thread '<unnamed>' (11715) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 111909)
+
+Caused by:
+    0: Looking up task storage for TaskId 111909 from database failed
+    1: Unable to open static sorted file referenced from 00000064.meta
+    2: Unable to open static sorted file 00000058.sst
+    3: Failed to open SST file /app/out/dev/cache/turbopack/600cd2fe/00000058.sst
+    4: No such file or directory (os error 2)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+⨯ Error: ENOENT: no such file or directory, open '/app/out/dev/server/app/page/build-manifest.json'
+    at ignore-listed frames {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/app/out/dev/server/app/page/build-manifest.json'
+}
+
+thread 'tokio-runtime-worker' (14049) panicked at turbopack/crates/turbo-persistence/src/static_sorted_file.rs:600:24:
+range start index 42961 out of range for slice of length 42953
+
+thread 'tokio-runtime-worker' (13807) panicked at turbopack/crates/turbo-persistence/src/static_sorted_file.rs:600:24:
+range start index 42961 out of range for slice of length 42953
+
+-----
+[1m[31mFATAL[39m[0m: An unexpected Turbopack error occurred. A panic log has been written to /tmp/next-panic-168e0b7ba2ff4c8e8a26fb9d5ec2cba8.log.
+
+To help make Turbopack better, report this error by clicking here: https://bugs.nextjs.org/search?category=turbopack-error-report&title=Turbopack%20Error%3A%20range%20start%20index%2042961%20out%20of%20range%20for%20slice%20of%20length%2042953&body=Turbopack%20version%3A%20%60600cd2fe%60%0ANext.js%20version%3A%20%600.0.0%60%0A%0AError%20message%3A%0A%60%60%60%0Arange%20start%20index%2042961%20out%20of%20range%20for%20slice%20of%20length%2042953%0A%0ADebug%20info%3A%0A-%20Execution%20of%20get_written_endpoint_with_issues_operation%20failed%0A-%20range%20start%20index%2042961%20out%20of%20range%20for%20slice%20of%20length%2042953%0A%60%60%60&labels=Turbopack,Turbopack%20Panic%20Backtrace
+-----
+
+⨯ Error [TurbopackInternalError]: range start index 42961 out of range for slice of length 42953
+
+Debug info:
+- Execution of get_written_endpoint_with_issues_operation failed
+- range start index 42961 out of range for slice of length 42953
+    at <unknown> (TurbopackInternalError: range start index 42961 out of range for slice of length 42953) {
+  location: 'turbopack/crates/turbo-persistence/src/static_sorted_file.rs:600:24'
+}
+
+thread '<unnamed>' (11715) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:196:17:
+Failed to restore task data (corrupted database or bug): Data for TaskId 111909)
+
+Caused by:
+    0: Looking up task storage for TaskId 111909 from database failed
+    1: Unable to open static sorted file referenced from 00000064.meta
+    2: Unable to open static sorted file 00000058.sst
+    3: Failed to open SST file /app/out/dev/cache/turbopack/600cd2fe/00000058.sst
+    4: No such file or directory (os error 2)
+Error: ENOENT: no such file or directory, open '/app/out/dev/server/app/page/build-manifest.json'
+    at ignore-listed frames {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/app/out/dev/server/app/page/build-manifest.json'
+}
+⨯ Error [TurbopackInternalError]: range start index 42961 out of range for slice of length 42953
+
+Debug info:
+- Execution of get_written_endpoint_with_issues_operation failed
+- range start index 42961 out of range for slice of length 42953
+    at <unknown> (TurbopackInternalError: range start index 42961 out of range for slice of length 42953) {
+  location: 'turbopack/crates/turbo-persistence/src/static_sorted_file.rs:600:24'
+}
+Error [TurbopackInternalError]: range start index 42961 out of range for slice of length 42953
+
+Debug info:
+- Execution of get_written_endpoint_with_issues_operation failed
+- range start index 42961 out of range for slice of length 42953
+    at <unknown> (TurbopackInternalError: range start index 42961 out of range for slice of length 42953) {
+  location: 'turbopack/crates/turbo-persistence/src/static_sorted_file.rs:600:24'
+}
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)

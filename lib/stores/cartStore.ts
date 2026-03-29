@@ -84,7 +84,11 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   addItem: (product: Product, quantity = 1) => {
     set((state) => {
-      const existing = state.items.find((i) => i.product.id === product.id && i.override_price === undefined);
+      // Don't group if item is serialized or has specific batch/serial metadata
+      const isTrackable = product.is_serialized || product.track_batches || !!product.metadata?.serial_number || !!product.metadata?.batch_id;
+
+      const existing = !isTrackable && state.items.find((i) => i.product.id === product.id && i.override_price === undefined);
+
       if (existing) {
         return {
           items: state.items.map((i) =>
@@ -104,10 +108,15 @@ export const useCartStore = create<CartState>((set, get) => ({
       store_id: useSettingsStore.getState().activeStoreId,
       name,
       price,
+      cost_price: 0,
       category: 'Custom',
       stock: 9999,
+      reorder_level: 0,
+      unit: 'pcs',
       barcode: '',
       tax: useSettingsStore.getState().settings.tax_rate,
+      is_serialized: false,
+      track_batches: false,
       metadata: { is_custom: true }
     };
     set((state) => ({
@@ -206,6 +215,7 @@ export const useCartStore = create<CartState>((set, get) => ({
         tax: i.product.tax,
         status: "pending" as const,
         done: false,
+        metadata: i.product.metadata,
       })),
       subtotal: totals.subtotal,
       tax_amount: totals.tax_amount,

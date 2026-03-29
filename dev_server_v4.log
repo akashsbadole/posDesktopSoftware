@@ -1,0 +1,13 @@
+
+> pos-tauri@0.1.0 dev
+> next dev
+
+⚠ Port 3000 is in use by an unknown process, using available port 3002 instead.
+▲ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3002
+- Network:       http://192.168.0.2:3002
+✓ Ready in 624ms
+
+○ Compiling / ...
+ GET / 200 in 5.8s (next.js: 5.4s, application-code: 408ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1417:15)
