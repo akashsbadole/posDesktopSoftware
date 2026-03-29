@@ -1133,13 +1133,27 @@ impl Database {
     }
 
     fn migrate_schema(&self) -> Result<()> {
-        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN group_name TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN notes TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN birthday TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN anniversary TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN credit_limit REAL", []);
-        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN price_tier TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE customers ADD COLUMN loyalty_tier TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE customers ADD COLUMN group_name TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE customers ADD COLUMN notes TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE customers ADD COLUMN birthday TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE customers ADD COLUMN anniversary TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE customers ADD COLUMN credit_limit REAL", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE customers ADD COLUMN price_tier TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE customers ADD COLUMN loyalty_tier TEXT", []);
 
         let store_name = "Main Store";
         let sql = format!(
@@ -1148,15 +1162,39 @@ impl Database {
         );
         self.conn.execute(&sql, [])?;
 
-        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN cost_price REAL NOT NULL DEFAULT 0", []);
-        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN wholesale_price REAL NOT NULL DEFAULT 0", []);
-        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN subcategory TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN sku TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN description TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN status TEXT NOT NULL DEFAULT 'active'", []);
-        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN tags TEXT NOT NULL DEFAULT ''", []);
-        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN is_digital INTEGER NOT NULL DEFAULT 0", []);
-        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0", []);
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN cost_price REAL NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN wholesale_price REAL NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = self
+            .conn
+            .execute("ALTER TABLE products ADD COLUMN subcategory TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE products ADD COLUMN sku TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE products ADD COLUMN description TEXT", []);
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN tags TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN is_digital INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE products ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
 
         let _ = self
             .conn
@@ -1172,10 +1210,19 @@ impl Database {
             "ALTER TABLE purchase_order_items ADD COLUMN store_id TEXT NOT NULL DEFAULT 'default'",
             [],
         );
-        let _ = self.conn.execute("ALTER TABLE orders ADD COLUMN metadata TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE orders ADD COLUMN tip_amount REAL DEFAULT 0", []);
-        let _ = self.conn.execute("ALTER TABLE orders ADD COLUMN discount_type TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE order_items ADD COLUMN discount_type TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE orders ADD COLUMN metadata TEXT", []);
+        let _ = self.conn.execute(
+            "ALTER TABLE orders ADD COLUMN tip_amount REAL DEFAULT 0",
+            [],
+        );
+        let _ = self
+            .conn
+            .execute("ALTER TABLE orders ADD COLUMN discount_type TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE order_items ADD COLUMN discount_type TEXT", []);
 
         Ok(())
     }
@@ -1871,7 +1918,10 @@ impl Database {
 
     pub fn save_order(&self, o: &Order, store_id: &str) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
-        let metadata_str = o.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok());
+        let metadata_str = o
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::to_string(m).ok());
 
         tx.execute(
             "INSERT OR REPLACE INTO orders
@@ -2129,13 +2179,33 @@ impl Database {
 
         // Header
         wtr.write_record(&[
-            "id", "parent_id", "name", "price", "cost_price", "wholesale_price",
-            "category", "subcategory", "stock", "barcode", "sku", "description",
-            "tax", "status", "tags", "is_digital", "is_favorite", "image_url", "metadata", "variant_value"
-        ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+            "id",
+            "parent_id",
+            "name",
+            "price",
+            "cost_price",
+            "wholesale_price",
+            "category",
+            "subcategory",
+            "stock",
+            "barcode",
+            "sku",
+            "description",
+            "tax",
+            "status",
+            "tags",
+            "is_digital",
+            "is_favorite",
+            "image_url",
+            "metadata",
+            "variant_value",
+        ])
+        .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         for p in products {
-            let metadata_str = p.metadata.as_ref()
+            let metadata_str = p
+                .metadata
+                .as_ref()
                 .and_then(|m| serde_json::to_string(m).ok())
                 .unwrap_or_default();
 
@@ -2160,7 +2230,8 @@ impl Database {
                 p.image_url.as_deref().unwrap_or(""),
                 &metadata_str,
                 "", // variant_value
-            ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+            ])
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
             // Export variants
             if let Ok(variants) = self.get_product_variants(&p.id, store_id) {
@@ -2180,13 +2251,14 @@ impl Database {
                         "", // description
                         &p.tax.to_string(),
                         "active", // status
-                        "", // tags
-                        "false", // is_digital
-                        "false", // is_favorite
-                        "", // image_url
-                        "{}", // metadata
+                        "",       // tags
+                        "false",  // is_digital
+                        "false",  // is_favorite
+                        "",       // image_url
+                        "{}",     // metadata
                         &v.value, // variant_value
-                    ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+                    ])
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?;
                 }
             }
         }
@@ -2200,8 +2272,16 @@ impl Database {
         let orders = self.get_orders(store_id, None, None)?;
         let mut wtr = csv::Writer::from_writer(vec![]);
 
-        wtr.write_record(&["id", "total", "payment_method", "customer", "status", "order_type", "created_at"])
-            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        wtr.write_record(&[
+            "id",
+            "total",
+            "payment_method",
+            "customer",
+            "status",
+            "order_type",
+            "created_at",
+        ])
+        .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         for o in orders {
             wtr.write_record(&[
@@ -2212,7 +2292,8 @@ impl Database {
                 &o.status,
                 &o.order_type,
                 &o.created_at,
-            ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+            ])
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         }
 
         let data = String::from_utf8(wtr.into_inner().unwrap_or_default())
@@ -2235,7 +2316,8 @@ impl Database {
             };
 
             let len = record.len();
-            if len < 4 { // Very basic validation
+            if len < 4 {
+                // Very basic validation
                 errors += 1;
                 continue;
             }
@@ -2245,7 +2327,28 @@ impl Database {
             // Intermediate (Early 2025): id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata (18 columns)
             // Current: id, parent_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, variant_value (20 columns)
 
-            let (id, parent_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, variant_value);
+            let (
+                id,
+                parent_id,
+                name,
+                price,
+                cost_price,
+                wholesale_price,
+                category,
+                subcategory,
+                stock,
+                barcode,
+                sku,
+                description,
+                tax,
+                status,
+                tags,
+                is_digital,
+                is_favorite,
+                image_url,
+                metadata,
+                variant_value,
+            );
 
             if len >= 19 {
                 // New 20-column format or 19-column variant
@@ -2256,17 +2359,29 @@ impl Database {
                 cost_price = record.get(4).unwrap_or("0").parse().unwrap_or(0.0);
                 wholesale_price = record.get(5).unwrap_or("0").parse().unwrap_or(0.0);
                 category = record.get(6).unwrap_or("General").to_string();
-                subcategory = record.get(7).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                subcategory = record
+                    .get(7)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
                 stock = record.get(8).unwrap_or("0").parse().unwrap_or(0);
                 barcode = record.get(9).unwrap_or("").to_string();
-                sku = record.get(10).filter(|s| !s.is_empty()).map(|s| s.to_string());
-                description = record.get(11).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                sku = record
+                    .get(10)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                description = record
+                    .get(11)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
                 tax = record.get(12).unwrap_or("0").parse().unwrap_or(0.0);
                 status = record.get(13).unwrap_or("active").to_string();
                 tags = record.get(14).unwrap_or("").to_string();
                 is_digital = record.get(15).map(|s| s == "true").unwrap_or(false);
                 is_favorite = record.get(16).map(|s| s == "true").unwrap_or(false);
-                image_url = record.get(17).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                image_url = record
+                    .get(17)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
                 metadata = record.get(18).and_then(|s| serde_json::from_str(s).ok());
                 variant_value = record.get(19).unwrap_or("").to_string();
             } else if len == 18 {
@@ -2278,17 +2393,29 @@ impl Database {
                 cost_price = record.get(3).unwrap_or("0").parse().unwrap_or(0.0);
                 wholesale_price = record.get(4).unwrap_or("0").parse().unwrap_or(0.0);
                 category = record.get(5).unwrap_or("General").to_string();
-                subcategory = record.get(6).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                subcategory = record
+                    .get(6)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
                 stock = record.get(7).unwrap_or("0").parse().unwrap_or(0);
                 barcode = record.get(8).unwrap_or("").to_string();
-                sku = record.get(9).filter(|s| !s.is_empty()).map(|s| s.to_string());
-                description = record.get(10).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                sku = record
+                    .get(9)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                description = record
+                    .get(10)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
                 tax = record.get(11).unwrap_or("0").parse().unwrap_or(0.0);
                 status = record.get(12).unwrap_or("active").to_string();
                 tags = record.get(13).unwrap_or("").to_string();
                 is_digital = record.get(14).map(|s| s == "true").unwrap_or(false);
                 is_favorite = record.get(15).map(|s| s == "true").unwrap_or(false);
-                image_url = record.get(16).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                image_url = record
+                    .get(16)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
                 metadata = record.get(17).and_then(|s| serde_json::from_str(s).ok());
                 variant_value = String::new();
             } else {
@@ -2324,7 +2451,11 @@ impl Database {
             if parent_id.is_empty() {
                 // Import as Product
                 let p = Product {
-                    id: if id.is_empty() { uuid::Uuid::new_v4().to_string() } else { id },
+                    id: if id.is_empty() {
+                        uuid::Uuid::new_v4().to_string()
+                    } else {
+                        id
+                    },
                     store_id: store_id.to_string(),
                     name,
                     price,
@@ -2353,7 +2484,11 @@ impl Database {
             } else {
                 // Import as Product Variant
                 let v = ProductVariant {
-                    id: if id.is_empty() { uuid::Uuid::new_v4().to_string() } else { id },
+                    id: if id.is_empty() {
+                        uuid::Uuid::new_v4().to_string()
+                    } else {
+                        id
+                    },
                     product_id: parent_id,
                     store_id: store_id.to_string(),
                     name,
@@ -2417,20 +2552,26 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_product_variants(&self, product_id: &str, store_id: &str) -> Result<Vec<ProductVariant>> {
+    pub fn get_product_variants(
+        &self,
+        product_id: &str,
+        store_id: &str,
+    ) -> Result<Vec<ProductVariant>> {
         let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, name, value, sku, price, stock FROM product_variants WHERE product_id=?1 AND store_id=?2")?;
-        let variants = stmt.query_map(params![product_id, store_id], |row| {
-            Ok(ProductVariant {
-                id: row.get(0)?,
-                product_id: row.get(1)?,
-                store_id: row.get(2)?,
-                name: row.get(3)?,
-                value: row.get(4)?,
-                sku: row.get(5)?,
-                price: row.get(6)?,
-                stock: row.get(7)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let variants = stmt
+            .query_map(params![product_id, store_id], |row| {
+                Ok(ProductVariant {
+                    id: row.get(0)?,
+                    product_id: row.get(1)?,
+                    store_id: row.get(2)?,
+                    name: row.get(3)?,
+                    value: row.get(4)?,
+                    sku: row.get(5)?,
+                    price: row.get(6)?,
+                    stock: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(variants)
     }
 
@@ -2596,7 +2737,8 @@ impl Database {
     }
 
     pub fn delete_customer_address(&self, id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM customer_addresses WHERE id=?1", params![id])?;
+        self.conn
+            .execute("DELETE FROM customer_addresses WHERE id=?1", params![id])?;
         Ok(())
     }
 
@@ -2605,14 +2747,32 @@ impl Database {
         let mut wtr = csv::Writer::from_writer(vec![]);
 
         wtr.write_record(&[
-            "id", "name", "phone", "email", "loyalty_points", "total_spent", "visits",
-            "group_name", "notes", "birthday", "anniversary", "credit_limit", "price_tier", "loyalty_tier"
-        ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+            "id",
+            "name",
+            "phone",
+            "email",
+            "loyalty_points",
+            "total_spent",
+            "visits",
+            "group_name",
+            "notes",
+            "birthday",
+            "anniversary",
+            "credit_limit",
+            "price_tier",
+            "loyalty_tier",
+        ])
+        .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         for c in customers {
             wtr.write_record(&[
-                &c.id, &c.name, &c.phone, &c.email,
-                &c.loyalty_points.to_string(), &c.total_spent.to_string(), &c.visits.to_string(),
+                &c.id,
+                &c.name,
+                &c.phone,
+                &c.email,
+                &c.loyalty_points.to_string(),
+                &c.total_spent.to_string(),
+                &c.visits.to_string(),
                 c.group_name.as_deref().unwrap_or(""),
                 c.notes.as_deref().unwrap_or(""),
                 c.birthday.as_deref().unwrap_or(""),
@@ -2620,7 +2780,8 @@ impl Database {
                 &c.credit_limit.unwrap_or(0.0).to_string(),
                 c.price_tier.as_deref().unwrap_or(""),
                 c.loyalty_tier.as_deref().unwrap_or(""),
-            ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+            ])
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         }
 
         let data = String::from_utf8(wtr.into_inner().unwrap_or_default())
@@ -2636,13 +2797,23 @@ impl Database {
         for result in rdr.records() {
             let record = match result {
                 Ok(r) => r,
-                Err(_) => { errors += 1; continue; }
+                Err(_) => {
+                    errors += 1;
+                    continue;
+                }
             };
 
-            if record.len() < 3 { errors += 1; continue; }
+            if record.len() < 3 {
+                errors += 1;
+                continue;
+            }
 
             let c = Customer {
-                id: record.get(0).filter(|s| !s.is_empty()).map(|s| s.to_string()).unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                id: record
+                    .get(0)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
                 store_id: store_id.to_string(),
                 name: record.get(1).unwrap_or("").to_string(),
                 phone: record.get(2).unwrap_or("").to_string(),
@@ -2650,13 +2821,31 @@ impl Database {
                 loyalty_points: record.get(4).and_then(|s| s.parse().ok()).unwrap_or(0),
                 total_spent: record.get(5).and_then(|s| s.parse().ok()).unwrap_or(0.0),
                 visits: record.get(6).and_then(|s| s.parse().ok()).unwrap_or(0),
-                group_name: record.get(7).filter(|s| !s.is_empty()).map(|s| s.to_string()),
-                notes: record.get(8).filter(|s| !s.is_empty()).map(|s| s.to_string()),
-                birthday: record.get(9).filter(|s| !s.is_empty()).map(|s| s.to_string()),
-                anniversary: record.get(10).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                group_name: record
+                    .get(7)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
+                notes: record
+                    .get(8)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
+                birthday: record
+                    .get(9)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
+                anniversary: record
+                    .get(10)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
                 credit_limit: record.get(11).and_then(|s| s.parse().ok()),
-                price_tier: record.get(12).filter(|s| !s.is_empty()).map(|s| s.to_string()),
-                loyalty_tier: record.get(13).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                price_tier: record
+                    .get(12)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
+                loyalty_tier: record
+                    .get(13)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
                 created_at: chrono::Local::now().to_rfc3339(),
             };
 
@@ -2822,7 +3011,9 @@ impl Database {
         encoder
             .write_all(json.as_bytes())
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let compressed = encoder.finish().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let compressed = encoder
+            .finish()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         use base64::{engine::general_purpose, Engine as _};
         Ok(general_purpose::STANDARD.encode(compressed))
@@ -3332,7 +3523,6 @@ impl Database {
     }
 
     pub fn get_customer_wallet(&self, customer_id: &str) -> Result<CustomerWallet> {
-        let mut stmt = self.conn.prepare("SELECT customer_id, balance, total_loaded, total_spent FROM wallet_transactions WHERE customer_id=?1")?;
         // Simplified: aggregate from wallet_transactions
         let balance: f64 = self.conn.query_row(
             "SELECT COALESCE(SUM(amount), 0) FROM wallet_transactions WHERE customer_id=?1",
@@ -3513,7 +3703,9 @@ impl Database {
         encoder
             .write_all(json.as_bytes())
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let compressed = encoder.finish().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let compressed = encoder
+            .finish()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         Ok(compressed)
     }
 }

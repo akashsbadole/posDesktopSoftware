@@ -7,6 +7,7 @@ mod lan_sync;
 
 use db::Database;
 use once_cell::sync::OnceCell;
+use rusqlite::Error;
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -527,7 +528,7 @@ async fn add_activity_log(
     user_name: String,
     order_id: Option<String>,
 ) -> Result<(), String> {
-    let db = DB.lock().unwrap();
+    let db = DB.get().unwrap().lock().unwrap();
     db.add_activity_log(
         &store_id,
         &action,
@@ -536,7 +537,7 @@ async fn add_activity_log(
         &user_name,
         order_id.as_deref(),
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e: Error| e.to_string())
 }
 
 #[tauri::command]

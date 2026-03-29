@@ -246,6 +246,9 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                         synced: Some(true),
                         user_id: user_id.map(|s| s.to_string()),
                         user_name: user_name.map(|s| s.to_string()),
+                        tip_amount: None,
+                        discount_type: None,
+                        metadata: None,
                     });
                 }
             }
