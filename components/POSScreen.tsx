@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useCallback, useState } from "react";
 import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet, Package, QrCode, ShieldCheck, DollarSign, Split } from "lucide-react";
-import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet, Combo, dbHoldOrder, openCashDrawer, printReceipt, openWhatsAppShare, openEmailShare, saveReceiptToFile, Product, sendSmsNotification, dbAddActivityLog } from "@/lib/db";
+import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, dbGetCustomerAddresses, Coupon, CustomerWallet, Combo, dbHoldOrder, openCashDrawer, printReceipt, openWhatsAppShare, openEmailShare, saveReceiptToFile, Product, Customer, CustomerAddress, sendSmsNotification, dbAddActivityLog } from "@/lib/db";
 import { QRCodeSVG } from "qrcode.react";
 import { useCartStore, useProductsStore, useSettingsStore, useAuthStore, useCombosStore, useStoresStore } from "@/lib/stores";
 import { useGridNavigation } from "@/lib/keyboard";
@@ -94,6 +94,9 @@ export default function POSScreen() {
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [useWallet, setUseWallet] = useState(false);
   const [walletCustomerId, setWalletCustomerId] = useState<string | null>(null);
+  const [customerAddresses, setCustomerAddresses] = useState<CustomerAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [activeCustomer, setActiveCustomer] = useState<Customer | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { 
@@ -242,21 +245,45 @@ export default function POSScreen() {
     setCouponError("");
   };
 
-  const lookupCustomerWallet = async (phone: string) => {
-    if (!phone || phone.length < 7) return;
+  const lookupCustomerData = async (phone: string) => {
+    if (!phone || phone.length < 7) {
+      setActiveCustomer(null);
+      setWalletBalance(0);
+      setWalletCustomerId(null);
+      setCustomerAddresses([]);
+      return;
+    }
     try {
       const customer = await dbGetCustomerByPhone(phone, activeStoreId);
       if (customer) {
-        const wallet = await getCustomerWallet(customer.id);
+        setActiveCustomer(customer);
+        const [wallet, addrs] = await Promise.all([
+          getCustomerWallet(customer.id),
+          dbGetCustomerAddresses(customer.id)
+        ]);
         setWalletBalance(wallet.balance);
         setWalletCustomerId(customer.id);
+        setCustomerAddresses(addrs);
+
+        // Apply price tier logic if applicable
+        if (customer.price_tier === 'discount') {
+           setGlobalDiscount(10, 'percentage');
+        } else if (customer.price_tier === 'wholesale') {
+           setGlobalDiscount(15, 'percentage');
+        } else if (customer.price_tier === 'premium') {
+           setGlobalDiscount(-10, 'percentage');
+        }
       } else {
+        setActiveCustomer(null);
         setWalletBalance(0);
         setWalletCustomerId(null);
+        setCustomerAddresses([]);
       }
     } catch {
+      setActiveCustomer(null);
       setWalletBalance(0);
       setWalletCustomerId(null);
+      setCustomerAddresses([]);
     }
   };
 
@@ -352,6 +379,9 @@ export default function POSScreen() {
       setWalletCustomerId(null);
       setTipAmount(0);
       setSplitPayments([]);
+      setActiveCustomer(null);
+      setCustomerAddresses([]);
+      setSelectedAddressId(null);
       await Promise.all([fetchProducts(), loadHeldOrders()]);
     } catch (err) {
       console.error("Checkout failed:", err);
@@ -899,10 +929,33 @@ export default function POSScreen() {
                 onChange={(e) => {
                   setCustomerInfo({ ...customerInfo, phone: e.target.value, name: customerInfo?.name || "", address: customerInfo?.address || "" } as any);
                   setErrors(prev => ({ ...prev, phone: "" }));
+                  lookupCustomerData(e.target.value);
                 }}
-                onBlur={(e) => lookupCustomerWallet(e.target.value)}
                 className={`text-sm ${errors.phone ? "error" : ""}`} style={{ padding: "7px 12px" }}
               />
+
+              {customerAddresses.length > 0 && (
+                <div className="space-y-1 mt-2">
+                  <label className="text-[10px] uppercase font-bold text-gray-500 px-1">Select Saved Address</label>
+                  <div className="flex gap-2 overflow-x-auto pb-2 px-1">
+                    {customerAddresses.map(addr => (
+                      <button
+                        key={addr.id}
+                        onClick={() => {
+                          setSelectedAddressId(addr.id);
+                          setCustomerInfo({ ...customerInfo, address: addr.address, phone: addr.phone, name: customerInfo?.name || "" } as any);
+                        }}
+                        className={`flex-shrink-0 px-3 py-2 rounded-lg text-xs border transition-all ${
+                          selectedAddressId === addr.id ? 'bg-yellow-400/10 border-yellow-400 text-yellow-400' : 'bg-[#1E1E26] border-transparent text-gray-400'
+                        }`}
+                      >
+                        <div className="font-bold">{addr.label}</div>
+                        <div className="text-[10px] truncate max-w-[100px] opacity-70">{addr.address}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {errors.phone && <div className="text-xs px-1" style={{ color: "#E74C3C" }}>{errors.phone}</div>}
             </div>
           )}
@@ -912,9 +965,12 @@ export default function POSScreen() {
             <label htmlFor="customer-name" className="sr-only">Customer name (optional)</label>
             <input 
               id="customer-name"
-              placeholder="Customer name (optional)" 
+              placeholder={activeCustomer ? activeCustomer.name : "Walk-in Customer"}
               value={customerInfo?.name || ""}
-              onChange={(e) => setCustomerInfo({ ...customerInfo, name: e.target.value, phone: customerInfo?.phone || "", address: customerInfo?.address || "" } as any)}
+              onChange={(e) => {
+                setCustomerInfo({ ...customerInfo, name: e.target.value, phone: customerInfo?.phone || "", address: customerInfo?.address || "" } as any);
+                if (orderType !== 'delivery') lookupCustomerData(customerInfo?.phone || "");
+              }}
               style={{ paddingLeft: 30, fontSize: 13, padding: "7px 12px 7px 30px" }} 
             />
           </div>

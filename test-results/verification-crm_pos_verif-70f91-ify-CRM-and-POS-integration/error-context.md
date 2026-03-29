@@ -1,0 +1,179 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - button "Open Next.js Dev Tools" [ref=e8] [cursor=pointer]:
+    - img [ref=e9]
+  - alert [ref=e12]
+  - application "POS Application" [ref=e13]:
+    - banner [ref=e14]:
+      - generic [ref=e16]: Point of Sale
+      - generic [ref=e17]:
+        - region "Keyboard shortcuts reference" [ref=e18]:
+          - img [ref=e19]
+          - generic [ref=e21]:
+            - 'generic "F1: POS" [ref=e22]': F1
+            - 'generic "F2: Dashboard" [ref=e23]': F2
+            - 'generic "F3: Orders" [ref=e24]': F3
+            - 'generic "F4: Products" [ref=e25]': F4
+            - 'generic "F5: Kitchen" [ref=e26]': F5
+            - 'generic "F6: Reports" [ref=e27]': F6
+            - 'generic "F7: Logs" [ref=e28]': F7
+            - 'generic "F8: Settings" [ref=e29]': F8
+            - 'generic "Show Help: ?" [ref=e30]': "?"
+        - button "Main Store" [ref=e32] [cursor=pointer]:
+          - img [ref=e33]
+          - generic [ref=e37]: Main Store
+          - img [ref=e38]
+        - button "Show keyboard shortcuts" [ref=e40] [cursor=pointer]:
+          - img [ref=e41]
+          - generic [ref=e43]: Shortcuts
+        - button "Lock screen" [ref=e44] [cursor=pointer]:
+          - img [ref=e45]
+          - generic [ref=e48]: Lock
+        - status "Logged in as Administrator" [ref=e49]:
+          - generic [ref=e50]: A
+          - generic [ref=e51]: Administrator
+          - generic [ref=e52]: admin
+    - generic [ref=e53]:
+      - navigation "Main navigation" [ref=e54]:
+        - button "Main Store" [ref=e56] [cursor=pointer]:
+          - img [ref=e57]
+        - generic [ref=e59]:
+          - generic [ref=e60]: 29 Mar 2026
+          - generic [ref=e61]: 10:15:29 am
+        - menubar "Navigation menu" [ref=e62]:
+          - menuitem "POS" [ref=e63] [cursor=pointer]:
+            - img [ref=e65]
+            - generic [ref=e69]: POS
+          - menuitem "Dashboard" [ref=e70] [cursor=pointer]:
+            - img [ref=e71]
+            - generic [ref=e72]: Dashboard
+          - menuitem "Orders" [ref=e73] [cursor=pointer]:
+            - img [ref=e74]
+            - generic [ref=e77]: Orders
+          - menuitem "Products" [ref=e78] [cursor=pointer]:
+            - img [ref=e79]
+            - generic [ref=e83]: Products
+          - menuitem "Tables" [ref=e84] [cursor=pointer]:
+            - img [ref=e85]
+            - generic [ref=e89]: Tables
+          - menuitem "Bookings" [ref=e90] [cursor=pointer]:
+            - img [ref=e91]
+            - generic [ref=e93]: Bookings
+          - menuitem "Kitchen" [ref=e94] [cursor=pointer]:
+            - img [ref=e95]
+            - generic [ref=e97]: Kitchen
+          - menuitem "Customers" [ref=e98] [cursor=pointer]:
+            - img [ref=e99]
+            - generic [ref=e104]: Customers
+          - menuitem "Coupons" [ref=e105] [cursor=pointer]:
+            - img [ref=e106]
+            - generic [ref=e109]: Coupons
+          - menuitem "Alerts" [ref=e110] [cursor=pointer]:
+            - img [ref=e111]
+            - generic [ref=e114]: Alerts
+          - menuitem "Refunds" [ref=e115] [cursor=pointer]:
+            - img [ref=e116]
+            - generic [ref=e118]: Refunds
+          - menuitem "Staff" [ref=e119] [cursor=pointer]:
+            - img [ref=e120]
+            - generic [ref=e125]: Staff
+          - menuitem "Reports" [ref=e126] [cursor=pointer]:
+            - img [ref=e127]
+            - generic [ref=e130]: Reports
+          - menuitem "GST" [ref=e131] [cursor=pointer]:
+            - img [ref=e132]
+            - generic [ref=e135]: GST
+          - menuitem "Logs" [ref=e136] [cursor=pointer]:
+            - img [ref=e137]
+            - generic [ref=e141]: Logs
+          - menuitem "Stores" [ref=e142] [cursor=pointer]:
+            - img [ref=e143]
+            - generic [ref=e148]: Stores
+          - menuitem "Settings" [ref=e149] [cursor=pointer]:
+            - img [ref=e150]
+            - generic [ref=e153]: Settings
+          - menuitem "Training" [ref=e154] [cursor=pointer]:
+            - img [ref=e155]
+            - generic [ref=e158]: Training
+        - generic [ref=e159]:
+          - button "Lock Screen" [ref=e160] [cursor=pointer]:
+            - img [ref=e161]
+            - generic [ref=e164]: Lock
+          - button "Logout" [ref=e165] [cursor=pointer]:
+            - img [ref=e166]
+            - generic [ref=e169]: Logout
+      - main "Main content" [ref=e170]:
+        - main "POS Screen" [ref=e171]:
+          - generic [ref=e172]:
+            - search "Product search" [ref=e173]:
+              - generic [ref=e174]:
+                - img [ref=e175]
+                - generic [ref=e178]: Search or scan barcode
+                - textbox "Search or scan barcode" [ref=e179]:
+                  - /placeholder: Search or scan barcode...
+                - generic [ref=e180]: Press Enter to search by barcode, Escape to clear
+              - group "Filter by category" [ref=e181]:
+                - button "Add custom item" [ref=e182] [cursor=pointer]:
+                  - img [ref=e183]
+                  - text: Custom
+                - button "All" [pressed] [ref=e184] [cursor=pointer]
+                - button "Combos" [ref=e185] [cursor=pointer]:
+                  - img [ref=e186]
+                  - text: Combos
+                - button "Beverages" [ref=e189] [cursor=pointer]
+                - button "Food" [ref=e190] [cursor=pointer]
+              - button "Refresh products" [ref=e191] [cursor=pointer]:
+                - img [ref=e192]
+            - grid "Product grid" [ref=e197]:
+              - 'gridcell "Coffee, Beverages, $120, Stock: 100" [ref=e198] [cursor=pointer]':
+                - generic [ref=e199]: C
+                - generic [ref=e200]: Coffee
+                - generic [ref=e201]: Beverages
+                - generic [ref=e202]: $120
+                - generic [ref=e203]: "Stock: 100"
+              - 'gridcell "Tea, Beverages, $60, Stock: 150" [ref=e204] [cursor=pointer]':
+                - generic [ref=e205]: T
+                - generic [ref=e206]: Tea
+                - generic [ref=e207]: Beverages
+                - generic [ref=e208]: $60
+                - generic [ref=e209]: "Stock: 150"
+              - 'gridcell "Sandwich, Food, $180, Stock: 50" [ref=e210] [cursor=pointer]':
+                - generic [ref=e211]: S
+                - generic [ref=e212]: Sandwich
+                - generic [ref=e213]: Food
+                - generic [ref=e214]: $180
+                - generic [ref=e215]: "Stock: 50"
+              - 'gridcell "Burger, Food, $250, Stock: 40" [ref=e216] [cursor=pointer]':
+                - generic [ref=e217]: B
+                - generic [ref=e218]: Burger
+                - generic [ref=e219]: Food
+                - generic [ref=e220]: $250
+                - generic [ref=e221]: "Stock: 40"
+          - region "Shopping cart" [ref=e222]:
+            - generic [ref=e223]:
+              - generic [ref=e224]: Cart
+              - generic [ref=e225]:
+                - button "Open cash drawer" [ref=e226] [cursor=pointer]:
+                  - img [ref=e227]
+                - button "View held orders" [ref=e230] [cursor=pointer]:
+                  - img [ref=e231]
+            - generic [ref=e234]:
+              - group "Order type" [ref=e235]:
+                - button "Dine-in" [pressed] [ref=e236] [cursor=pointer]
+                - button "Takeaway" [ref=e237] [cursor=pointer]
+                - button "Delivery" [ref=e238] [cursor=pointer]
+              - generic [ref=e239]:
+                - img [ref=e240]
+                - generic [ref=e243]: Customer name (optional)
+                - textbox "Customer name (optional)" [active] [ref=e244]:
+                  - /placeholder: Walk-in Customer
+                  - text: "9876543210"
+            - list "Cart items" [ref=e245]:
+              - status [ref=e246]:
+                - img [ref=e247]
+                - generic [ref=e251]: Cart is empty
+```

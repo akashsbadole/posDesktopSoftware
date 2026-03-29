@@ -138,7 +138,31 @@ export interface Customer {
   loyalty_points: number;
   total_spent: number;
   visits: number;
+  group_name?: string;
+  notes?: string;
+  birthday?: string;
+  anniversary?: string;
+  credit_limit?: number;
+  price_tier?: string;
+  loyalty_tier?: string;
   created_at: string;
+}
+
+export interface CustomerAddress {
+  id: string;
+  customer_id: string;
+  label: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  phone: string;
+}
+
+export interface CustomerStatistics {
+  total_spent: number;
+  visits: number;
+  avg_order_value: number;
 }
 
 export interface OrderNote {
@@ -689,6 +713,34 @@ export async function dbSaveCustomer(customer: Customer, storeId: string): Promi
   return sql("save_customer", { customer, store_id: storeId });
 }
 
+export async function dbDeleteCustomer(id: string, storeId: string): Promise<void> {
+  return sql("delete_customer", { id, store_id: storeId });
+}
+
+export async function dbGetCustomerAddresses(customerId: string): Promise<CustomerAddress[]> {
+  return sql<CustomerAddress[]>("get_customer_addresses", { customer_id: customerId });
+}
+
+export async function dbSaveCustomerAddress(address: CustomerAddress): Promise<void> {
+  return sql("save_customer_address", { address });
+}
+
+export async function dbDeleteCustomerAddress(id: string): Promise<void> {
+  return sql("delete_customer_address", { id });
+}
+
+export async function exportCustomersCsv(storeId: string): Promise<string> {
+  return sql<string>("export_customers_csv", { store_id: storeId });
+}
+
+export async function importCustomersCsv(csvData: string, storeId: string): Promise<{ imported: number; errors: number }> {
+  return sql<{ imported: number; errors: number }>("import_customers_csv", { csv_data: csvData, store_id: storeId });
+}
+
+export async function dbGetCustomerStatistics(customerId: string): Promise<CustomerStatistics> {
+  return sql<CustomerStatistics>("get_customer_statistics", { customer_id: customerId });
+}
+
 export async function dbGetCustomerByPhone(phone: string, storeId: string): Promise<Customer | null> {
   return sql<Customer | null>("get_customer_by_phone", { phone, store_id: storeId });
 }
@@ -1196,7 +1248,100 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       return undefined as T;
     }
     case "get_combos": return [] as T;
-    case "get_customers": return [] as T;
+    case "get_customers": {
+      const c = lsGet<Customer[]>("pos_customers") || [];
+      return c.filter(x => x.store_id === storeId) as T;
+    }
+    case "save_customer": {
+      const customers = lsGet<Customer[]>("pos_customers") || [];
+      const c = (args as any).customer as Customer;
+      c.store_id = storeId;
+      const idx = customers.findIndex(x => x.id === c.id);
+      if (idx >= 0) customers[idx] = c; else customers.push(c);
+      lsSet("pos_customers", customers);
+      return undefined as T;
+    }
+    case "delete_customer": {
+      const customers = (lsGet<Customer[]>("pos_customers") || []).filter(x => x.id !== (args as any).id);
+      lsSet("pos_customers", customers);
+      return undefined as T;
+    }
+    case "get_customer_addresses": {
+      const a = lsGet<CustomerAddress[]>("pos_customer_addresses") || [];
+      return a.filter(x => x.customer_id === (args as any).customer_id) as T;
+    }
+    case "save_customer_address": {
+      const addresses = lsGet<CustomerAddress[]>("pos_customer_addresses") || [];
+      const a = (args as any).address as CustomerAddress;
+      const idx = addresses.findIndex(x => x.id === a.id);
+      if (idx >= 0) addresses[idx] = a; else addresses.push(a);
+      lsSet("pos_customer_addresses", addresses);
+      return undefined as T;
+    }
+    case "delete_customer_address": {
+      const addresses = (lsGet<CustomerAddress[]>("pos_customer_addresses") || []).filter(x => x.id !== (args as any).id);
+      lsSet("pos_customer_addresses", addresses);
+      return undefined as T;
+    }
+    case "export_customers_csv": {
+      const c = lsGet<Customer[]>("pos_customers") || [];
+      const filtered = c.filter(x => x.store_id === storeId);
+      const header = ["id", "name", "phone", "email", "loyalty_points", "total_spent", "visits", "group_name", "notes", "birthday", "anniversary", "credit_limit", "price_tier", "loyalty_tier"];
+      const rows = filtered.map(x => [
+        x.id, x.name, x.phone, x.email,
+        x.loyalty_points.toString(), x.total_spent.toString(), x.visits.toString(),
+        x.group_name || "", x.notes || "", x.birthday || "", x.anniversary || "",
+        (x.credit_limit || 0).toString(), x.price_tier || "", x.loyalty_tier || ""
+      ]);
+      const csv = [header, ...rows].map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(",")).join("\n");
+      return csv as T;
+    }
+    case "import_customers_csv": {
+      const csvData = (args as any).csvData as string;
+      const customers = lsGet<Customer[]>("pos_customers") || [];
+      const lines = csvData.split("\n");
+      let imported = 0;
+      let errors = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const parts = line.split(",").map(p => p.replace(/^"|"$/g, '').replace(/""/g, '"'));
+        if (parts.length < 3) { errors++; continue; }
+        const c: Customer = {
+          id: parts[0] || Math.random().toString(36).substr(2, 9),
+          store_id: storeId,
+          name: parts[1],
+          phone: parts[2],
+          email: parts[3] || "",
+          loyalty_points: parseInt(parts[4]) || 0,
+          total_spent: parseFloat(parts[5]) || 0,
+          visits: parseInt(parts[6]) || 0,
+          group_name: parts[7],
+          notes: parts[8],
+          birthday: parts[9],
+          anniversary: parts[10],
+          credit_limit: parseFloat(parts[11]),
+          price_tier: parts[12],
+          loyalty_tier: parts[13],
+          created_at: new Date().toISOString()
+        };
+        const idx = customers.findIndex(x => x.id === c.id);
+        if (idx >= 0) customers[idx] = c; else customers.push(c);
+        imported++;
+      }
+      lsSet("pos_customers", customers);
+      return { imported, errors } as T;
+    }
+    case "get_customer_statistics": {
+      const customers = lsGet<Customer[]>("pos_customers") || [];
+      const c = customers.find(x => x.id === (args as any).customer_id);
+      if (!c) return { total_spent: 0, visits: 0, avg_order_value: 0 } as T;
+      return {
+        total_spent: c.total_spent,
+        visits: c.visits,
+        avg_order_value: c.visits > 0 ? c.total_spent / c.visits : 0
+      } as T;
+    }
     case "get_ingredients": return [] as T;
     case "get_recipes": return [] as T;
     case "get_suppliers": return [] as T;
