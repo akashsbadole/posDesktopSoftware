@@ -24,6 +24,7 @@ export default function POSScreen() {
     notes, 
     globalDiscount, 
     paymentMethod, 
+    priceTier,
     amountPaid,
     originalOrderId,
     addItem, 
@@ -34,6 +35,7 @@ export default function POSScreen() {
     setCustomerInfo, 
     setNotes, 
     setGlobalDiscount,
+    setPriceTier,
     setPaymentMethod,
     setAmountPaid,
     setOriginalOrderId,
@@ -62,7 +64,8 @@ export default function POSScreen() {
     setSelectedCategory,
     setSearchQuery,
     selectedCategory,
-    searchQuery
+    searchQuery,
+    fetchVariants
   } = useProductsStore();
 
   const { combos, fetchCombos, getActiveCombos } = useCombosStore();
@@ -75,6 +78,7 @@ export default function POSScreen() {
   const [processing, setProcessing] = useState(false);
   const [metadataPrompt, setMetadataPrompt] = useState<{ productId: string, name: string, field: string } | null>(null);
   const [metadataValue, setMetadataValue] = useState("");
+  const [variantSelection, setVariantSelection] = useState<{ product: Product, variants: ProductVariant[] } | null>(null);
   const [focusedProductIndex, setFocusedProductIndex] = useState<number>(-1);
   const [isGridFocused, setIsGridFocused] = useState(false);
   const [heldOrders, setHeldOrders] = useState<Order[]>([]);
@@ -195,14 +199,39 @@ export default function POSScreen() {
     }
   };
 
-  const handleAddItem = (product: Product) => {
+  const handleAddItem = async (product: Product) => {
     if (product.stock === 0) return;
+
+    // Check for variants first
+    const productVariants = await fetchVariants(product.id);
+    if (productVariants && productVariants.length > 0) {
+      setVariantSelection({ product, variants: productVariants });
+      return;
+    }
+
     if (product.metadata?.track_serial) {
       setMetadataPrompt({ productId: product.id, name: product.name, field: 'Serial Number' });
       setMetadataValue("");
     } else {
       addItem(product);
     }
+  };
+
+  const handleSelectVariant = (variant: ProductVariant) => {
+    if (!variantSelection) return;
+    const { product } = variantSelection;
+
+    // Create a specialized product entry for the cart using variant details
+    const variantProduct: Product = {
+      ...product,
+      price: variant.price,
+      sku: variant.sku || product.sku,
+      name: `${product.name} (${variant.name}: ${variant.value})`,
+      metadata: { ...product.metadata, variant_id: variant.id }
+    };
+
+    addItem(variantProduct);
+    setVariantSelection(null);
   };
 
   const handleMetadataSubmit = () => {
@@ -216,11 +245,43 @@ export default function POSScreen() {
   }
 
   const handleAddComboToCart = (combo: Combo) => {
+    // Calculate total price of individual items
+    const totalIndividualPrice = combo.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+    // Calculate global discount percentage needed to reach combo price
+    // Formula: (Individual - Combo) / Individual * 100
+    const discountPercent = totalIndividualPrice > 0
+      ? ((totalIndividualPrice - combo.combo_price) / totalIndividualPrice) * 100
+      : 0;
+
     combo.items.forEach(item => {
       const product = products.find(p => p.id === item.product_id);
       if (product) {
+        // We add the item and then immediately update its discount to match the combo pricing
+        // This is a bit tricky since addItem is async-ish (state update)
+        // Better: Use a version of addItem that accepts a discount
+        const comboProduct = {
+          ...product,
+          metadata: { ...product.metadata, from_combo: combo.id, combo_name: combo.name }
+        };
+
+        // We need to use a slightly different approach since we want to apply the discount
+        // I'll add a helper to cartStore or just do it manually here if possible
+        // For now, I'll just add the product. The user can see it's from a combo.
+
+        // To ensure the price is correct, we can temporarily override the product price
+        // or apply the discount. Applying discount is cleaner.
+
         for (let i = 0; i < item.quantity; i++) {
-          addItem(product);
+          // Create a "virtual" product with the discounted price
+          const discountedPrice = item.price * (1 - discountPercent / 100);
+          const virtualProduct: Product = {
+            ...product,
+            price: discountedPrice,
+            name: `${product.name} (${combo.name})`,
+            metadata: { ...product.metadata, from_combo: combo.id, original_price: item.price }
+          };
+          addItem(virtualProduct);
         }
       }
     });
@@ -571,6 +632,8 @@ export default function POSScreen() {
     }
   };
 
+  const handleClearCart = () => clearCart();
+  const handleRemoveItem = (cartItemId: string) => useCartStore.getState().removeItem(cartItemId);
   const handleClearCart = () => {
     if (cart.length === 0) return;
     setShowVoidReasonModal(true);
@@ -883,6 +946,20 @@ export default function POSScreen() {
         </div>
 
         <div className="px-4 pt-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] uppercase font-bold text-[#4A4A5A]">Price Tier</span>
+            <div className="flex bg-[#141418] rounded-lg p-0.5 border border-[#1E1E26]">
+              <button
+                onClick={() => setPriceTier('retail')}
+                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${priceTier === 'retail' ? 'bg-[#F5C842] text-[#0D0D0F]' : 'text-[#4A4A5A]'}`}
+              >RETAIL</button>
+              <button
+                onClick={() => setPriceTier('wholesale')}
+                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${priceTier === 'wholesale' ? 'bg-[#F5C842] text-[#0D0D0F]' : 'text-[#4A4A5A]'}`}
+              >WHOLESALE</button>
+            </div>
+          </div>
+
           <div className="flex gap-2 mb-3" role="group" aria-label="Order type">
             <button
               onClick={() => setOrderType("dine_in")}
@@ -1044,7 +1121,7 @@ export default function POSScreen() {
                     style={{ color: "#9090A8" }}
                     aria-label={`Increase quantity of ${item.product.name}`}
                   >
-                    <Plus size={16} aria-hidden="true"/>
+                    <X size={14} aria-hidden="true" />
                   </button>
                 </div>
                 <div className="flex items-center gap-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
@@ -1065,8 +1142,8 @@ export default function POSScreen() {
                   </button>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {cart.length > 0 && (
@@ -1518,6 +1595,41 @@ export default function POSScreen() {
             <div className="flex gap-2">
                <button onClick={() => {setMetadataPrompt(null); setMetadataValue("");}} className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl">Cancel</button>
                <button onClick={handleMetadataSubmit} className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Variant Selection Modal */}
+      {variantSelection && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-[#1E1E26] flex items-center justify-between">
+               <h3 className="text-lg font-bold flex items-center gap-2">
+                 <Package size={20} className="text-[#F5C842]" /> Select Variant: {variantSelection.product.name}
+               </h3>
+               <button onClick={() => setVariantSelection(null)} className="text-gray-400 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="p-6 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
+              {variantSelection.variants.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => handleSelectVariant(v)}
+                  className="flex flex-col p-4 rounded-xl bg-[#141418] border border-[#1E1E26] hover:border-[#F5C842] transition-all text-left"
+                >
+                  <div className="text-xs text-[#9090A8] uppercase font-bold mb-1">{v.name}</div>
+                  <div className="text-base font-bold mb-2">{v.value}</div>
+                  <div className="flex items-center justify-between mt-auto">
+                    <span className="text-[#F5C842] font-bold">{curr}{v.price.toFixed(2)}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${v.stock > 0 ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                      {v.stock > 0 ? `In Stock: ${v.stock}` : 'Out of Stock'}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="p-4 bg-[#141418] flex justify-end">
+               <button onClick={() => setVariantSelection(null)} className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl">Cancel</button>
             </div>
           </div>
         </div>

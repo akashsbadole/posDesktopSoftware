@@ -33,6 +33,24 @@ fn get_products(store_id: String) -> Result<Vec<db::Product>, String> {
 }
 
 #[tauri::command]
+fn get_product_variants(product_id: String, store_id: String) -> Result<Vec<db::ProductVariant>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_product_variants(&product_id, &store_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_product_variant(variant: db::ProductVariant, store_id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.save_product_variant(&variant, &store_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_product_variant(id: String, store_id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.delete_product_variant(&id, &store_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn upsert_product(product: db::Product, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.upsert_product(&product, &store_id).map_err(|e| e.to_string())
@@ -1011,6 +1029,9 @@ fn main() {
             get_products,
             upsert_product,
             delete_product,
+            get_product_variants,
+            save_product_variant,
+            delete_product_variant,
             update_stock,
             transfer_stock,
             get_combos,

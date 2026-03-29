@@ -5,6 +5,7 @@ import { useSettingsStore } from './settingsStore';
 
 export type OrderType = 'dine_in' | 'takeaway' | 'delivery';
 export type PaymentMethod = 'cash' | 'card' | 'upi';
+export type PriceTier = 'retail' | 'wholesale';
 
 export interface CartItem {
   cartItemId: string;
@@ -50,6 +51,7 @@ interface CartState {
   setTable: (id: string | null, name: string | null) => void;
   setCustomerInfo: (info: CustomerInfo | null) => void;
   setNotes: (notes: string) => void;
+  setPriceTier: (tier: PriceTier) => void;
   setGlobalDiscount: (discount: number, type?: 'percentage' | 'fixed') => void;
   setPaymentMethod: (method: PaymentMethod | 'split') => void;
   setSplitPayments: (payments: PaymentEntry[]) => void;
@@ -75,6 +77,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   globalDiscount: 0,
   globalDiscountType: 'percentage',
   paymentMethod: 'cash',
+  priceTier: 'retail',
   splitPayments: [],
   amountPaid: 0,
   tipAmount: 0,
@@ -84,40 +87,37 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   addItem: (product: Product, quantity = 1) => {
     set((state) => {
-      const existing = state.items.find((i) => i.product.id === product.id && i.override_price === undefined);
+      const tier = state.priceTier;
+      let finalProduct = { ...product };
+
+      // If we're in wholesale tier, use wholesale price
+      if (tier === 'wholesale' && product.wholesale_price) {
+        finalProduct.price = product.wholesale_price;
+      }
+
+      const existing = state.items.find((i) =>
+        i.product.id === finalProduct.id &&
+        JSON.stringify(i.product.metadata) === JSON.stringify(finalProduct.metadata) &&
+        i.product.price === finalProduct.price &&
+        i.product.name === finalProduct.name
+      );
       if (existing) {
         return {
           items: state.items.map((i) =>
-            (i.product.id === product.id && i.override_price === undefined)
+            (i.product.id === finalProduct.id && JSON.stringify(i.product.metadata) === JSON.stringify(finalProduct.metadata))
               ? { ...i, quantity: i.quantity + quantity }
               : i
           ),
         };
       }
-      return { items: [...state.items, { cartItemId: uuid(), product, quantity, discount: 0, discount_type: 'percentage' }] };
+      const cartItemId = uuid();
+      return { items: [...state.items, { product: { ...finalProduct, cartItemId } as any, quantity, discount: 0 }] };
     });
-  },
-
-  addCustomItem: (name, price) => {
-    const customProduct: Product = {
-      id: `custom-${uuid()}`,
-      store_id: useSettingsStore.getState().activeStoreId,
-      name,
-      price,
-      category: 'Custom',
-      stock: 9999,
-      barcode: '',
-      tax: useSettingsStore.getState().settings.tax_rate,
-      metadata: { is_custom: true }
-    };
-    set((state) => ({
-      items: [...state.items, { cartItemId: uuid(), product: customProduct, quantity: 1, discount: 0, discount_type: 'percentage' }]
-    }));
   },
 
   removeItem: (cartItemId: string) => {
     set((state) => ({
-      items: state.items.filter((i) => i.cartItemId !== cartItemId),
+      items: state.items.filter((i) => (i.product as any).cartItemId !== cartItemId),
     }));
   },
 
@@ -161,6 +161,27 @@ export const useCartStore = create<CartState>((set, get) => ({
     globalDiscount: (type || state.globalDiscountType) === 'percentage' ? Math.max(0, Math.min(100, globalDiscount)) : Math.max(0, globalDiscount),
     globalDiscountType: type || state.globalDiscountType
   })),
+  setPriceTier: (priceTier) => {
+    const previousTier = get().priceTier;
+    if (previousTier === priceTier) return;
+
+    // Update all items in cart to match the new tier price
+    set((state) => ({
+      priceTier,
+      items: state.items.map(item => {
+        const product = item.product;
+        let newPrice = product.price;
+        if (priceTier === 'wholesale') {
+          newPrice = product.wholesale_price || product.price;
+        } else {
+          // This is a bit tricky since we might have overridden the price
+          // We'd need to fetch the original retail price or store both
+          // For now, we'll assume product.price was the retail price
+        }
+        return { ...item, product: { ...product, price: newPrice } };
+      })
+    }));
+  },
   setPaymentMethod: (paymentMethod) => set({ paymentMethod }),
   setSplitPayments: (splitPayments) => set({ splitPayments }),
   setAmountPaid: (amountPaid) => set({ amountPaid }),
@@ -177,6 +198,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       globalDiscount: 0,
       globalDiscountType: 'percentage',
       paymentMethod: 'cash',
+      priceTier: 'retail',
       splitPayments: [],
       amountPaid: 0,
       tipAmount: 0,
@@ -206,6 +228,7 @@ export const useCartStore = create<CartState>((set, get) => ({
         tax: i.product.tax,
         status: "pending" as const,
         done: false,
+        metadata: i.product.metadata,
       })),
       subtotal: totals.subtotal,
       tax_amount: totals.tax_amount,

@@ -1,13 +1,32 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, X, Check, Search, RefreshCw, Package, Image, Tag, Star, GripVertical, Clock, ShieldCheck, Calendar, Download, Upload } from "lucide-react";
-import { dbSaveProduct, dbDeleteProduct, Product, dbGetCombos, dbSaveCombo, dbDeleteCombo, dbToggleCombo, Combo, ComboItem } from "@/lib/db";
+import { Plus, Pencil, Trash2, X, Check, Search, RefreshCw, Package, Image, Tag, Star, GripVertical, Clock, ShieldCheck, Calendar, Download, Upload, Filter, ChevronRight, Barcode, Hash, FileText, Activity } from "lucide-react";
+import { dbSaveProduct, dbDeleteProduct, Product, dbGetCombos, dbSaveCombo, dbDeleteCombo, dbToggleCombo, Combo, ComboItem, ProductVariant } from "@/lib/db";
 import { useProductsStore, useSettingsStore, useStoresStore } from "@/lib/stores";
 import { useRef } from "react";
 import { v4 as uuid } from "uuid";
 
-const EMPTY_PRODUCT: Product = { id: "", store_id: "", name: "", price: 0, category: "Food", stock: 0, barcode: "", tax: 18, image_url: "" };
-const CATEGORIES = ["Beverages", "Food", "Snacks", "Bakery", "Electronics", "Other"];
+const EMPTY_PRODUCT: Product = {
+  id: "",
+  store_id: "",
+  name: "",
+  price: 0,
+  cost_price: 0,
+  wholesale_price: 0,
+  category: "Food",
+  subcategory: "",
+  stock: 0,
+  barcode: "",
+  sku: "",
+  description: "",
+  tax: 18,
+  status: "active",
+  tags: "",
+  is_digital: false,
+  is_favorite: false,
+  image_url: ""
+};
+const CATEGORIES = ["Beverages", "Food", "Snacks", "Bakery", "Electronics", "Medicines", "Clothing", "Other"];
 const ITEMS_PER_PAGE = 30;
 
 const validateProduct = (product: Product): Record<string, string> => {
@@ -47,7 +66,12 @@ const EMPTY_COMBO: Combo = {
 export default function ProductsScreen() {
   const { activeStoreId } = useSettingsStore();
   const { stores } = useStoresStore();
-  const { products, isLoading, fetchProducts, addProduct, updateProduct, deleteProduct, exportProducts, importProducts } = useProductsStore();
+  const {
+    products, isLoading, fetchProducts, addProduct, updateProduct, deleteProduct,
+    exportProducts, importProducts, fetchVariants, saveVariant, deleteVariant,
+    categories, subcategories, selectedCategory, setSelectedCategory,
+    selectedSubcategory, setSelectedSubcategory, sortBy, sortOrder, setSorting
+  } = useProductsStore();
   const { settings, fetchSettings } = useSettingsStore();
 
   const activeStore = stores.find(s => s.id === activeStoreId);
@@ -60,12 +84,36 @@ export default function ProductsScreen() {
   const [combos, setCombos] = useState<Combo[]>([]);
   const [editingCombo, setEditingCombo] = useState<Combo | null>(null);
   const [comboItems, setComboItems] = useState<ComboItem[]>([]);
+  const [editingVariants, setEditingVariants] = useState<ProductVariant[]>([]);
+  const [variantsToDelete, setVariantsToDelete] = useState<string[]>([]);
+  const initialVariantIds = useRef<Set<string>>(new Set());
+  const [customAttributes, setCustomAttributes] = useState<{ key: string, value: string }[]>([]);
 
   useEffect(() => { 
     fetchProducts(); 
     fetchSettings();
     fetchCombos();
   }, [activeStoreId]);
+
+  useEffect(() => {
+    if (editing) {
+      if (editing.id) {
+        fetchVariants(editing.id).then(variants => {
+          setEditingVariants(variants);
+          initialVariantIds.current = new Set(variants.map(v => v.id));
+        });
+      } else {
+        setEditingVariants([]);
+        initialVariantIds.current = new Set();
+      }
+
+      // Load custom attributes from metadata
+      const attrs = Object.entries(editing.metadata || {})
+        .filter(([key]) => !['duration', 'track_serial', 'expiry_months', 'variant_id', 'serial_number'].includes(key))
+        .map(([key, value]) => ({ key, value: String(value) }));
+      setCustomAttributes(attrs);
+    }
+  }, [editing?.id]);
 
   const fetchCombos = async () => {
     try {
@@ -76,14 +124,36 @@ export default function ProductsScreen() {
     }
   };
 
-  const filtered = products.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.category.toLowerCase().includes(search.toLowerCase()) ||
-    p.barcode?.includes(search)
-  );
+  const filtered = products.filter((p) => {
+    const matchesSearch =
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.category.toLowerCase().includes(search.toLowerCase()) ||
+      p.barcode?.includes(search) ||
+      p.sku?.toLowerCase().includes(search.toLowerCase()) ||
+      p.tags?.toLowerCase().includes(search.toLowerCase());
 
-  const displayedProducts = filtered.slice(0, displayLimit);
-  const hasMore = displayLimit < filtered.length;
+    const matchesCategory = !selectedCategory || p.category === selectedCategory;
+    const matchesSubcategory = !selectedSubcategory || p.subcategory === selectedSubcategory;
+
+    return matchesSearch && matchesCategory && matchesSubcategory;
+  });
+
+  // Sort logic
+  const sorted = [...filtered].sort((a, b) => {
+    // Favorites always first
+    if (a.is_favorite !== b.is_favorite) return a.is_favorite ? -1 : 1;
+
+    let comparison = 0;
+    if (sortBy === 'name') comparison = a.name.localeCompare(b.name);
+    else if (sortBy === 'price') comparison = a.price - b.price;
+    else if (sortBy === 'stock') comparison = a.stock - b.stock;
+    else if (sortBy === 'category') comparison = a.category.localeCompare(b.category);
+
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+
+  const displayedProducts = sorted.slice(0, displayLimit);
+  const hasMore = displayLimit < sorted.length;
 
   useEffect(() => { setDisplayLimit(ITEMS_PER_PAGE); }, [search]);
 
@@ -95,14 +165,45 @@ export default function ProductsScreen() {
       return;
     }
     try {
-      const product = { ...editing, id: editing.id || uuid(), store_id: activeStoreId };
+      const productId = editing.id || uuid();
+
+      // Merge custom attributes back into metadata
+      const newMetadata = { ...editing.metadata };
+      customAttributes.forEach(attr => {
+        if (attr.key.trim()) {
+          newMetadata[attr.key.trim()] = attr.value;
+        }
+      });
+      // Remove keys that are now empty in custom attributes but existed before
+      const currentAttrKeys = customAttributes.map(a => a.key.trim());
+      Object.keys(newMetadata).forEach(key => {
+        if (!['duration', 'track_serial', 'expiry_months', 'variant_id', 'serial_number'].includes(key) && !currentAttrKeys.includes(key)) {
+          delete newMetadata[key];
+        }
+      });
+
+      const product = { ...editing, id: productId, store_id: activeStoreId, metadata: newMetadata };
       if (editing.id) {
         await updateProduct(product);
       } else {
         await addProduct(product);
       }
+
+      // Delete staged variants
+      for (const variantId of variantsToDelete) {
+        await deleteVariant(variantId);
+      }
+
+      // Save variants
+      for (const variant of editingVariants) {
+        await saveVariant({ ...variant, product_id: productId, store_id: activeStoreId });
+      }
+
       setEditing(null);
       setErrors({});
+      setEditingVariants([]);
+      setVariantsToDelete([]);
+      initialVariantIds.current = new Set();
     } catch (err) {
       console.error("Failed to save product:", err);
       alert("Failed to save product. Please try again.");
@@ -222,6 +323,49 @@ export default function ProductsScreen() {
     }
   };
 
+  const handleAddVariant = () => {
+    const newVariant: ProductVariant = {
+      id: uuid(),
+      product_id: editing?.id || "",
+      store_id: activeStoreId,
+      name: "",
+      value: "",
+      sku: "",
+      price: editing?.price || 0,
+      stock: 0,
+    };
+    setEditingVariants([...editingVariants, newVariant]);
+  };
+
+  const handleRemoveVariant = (id: string) => {
+    setEditingVariants(editingVariants.filter(v => v.id !== id));
+    if (initialVariantIds.current.has(id)) {
+      setVariantsToDelete([...variantsToDelete, id]);
+    }
+  };
+
+  const handleUpdateVariant = (id: string, updates: Partial<ProductVariant>) => {
+    setEditingVariants(editingVariants.map(v => v.id === id ? { ...v, ...updates } : v));
+  };
+
+  const generateSKU = (name: string, category: string) => {
+    const prefix = category.substring(0, 3).toUpperCase();
+    const suffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `${prefix}-${suffix}`;
+  };
+
+  const generateBarcode = () => {
+    return Math.floor(100000000000 + Math.random() * 900000000000).toString();
+  };
+
+  const toggleFavorite = async (product: Product) => {
+    try {
+      await updateProduct({ ...product, is_favorite: !product.is_favorite });
+    } catch (err) {
+      console.error("Failed to toggle favorite:", err);
+    }
+  };
+
   const handleImportClick = () => {
     fileInputRef.current?.click();
   };
@@ -301,9 +445,37 @@ export default function ProductsScreen() {
 
         {view === "products" && (
           <>
-            <div className="relative mb-4">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#4A4A5A" }} />
-              <input placeholder="Search products..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 36 }} />
+            <div className="flex gap-4 mb-4">
+              <div className="relative flex-1">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#4A4A5A" }} />
+                <input placeholder="Search products, SKU or barcode..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 36 }} />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex items-center gap-1 px-3 rounded-lg border border-border bg-[#141418]">
+                  <Filter size={12} className="text-[#4A4A5A]" />
+                  <select
+                    className="bg-transparent border-none text-xs focus:ring-0 min-w-[100px]"
+                    value={selectedCategory || ""}
+                    onChange={(e) => setSelectedCategory(e.target.value || null)}
+                  >
+                    <option value="">All Categories</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                {selectedCategory && (
+                  <div className="flex items-center gap-1 px-3 rounded-lg border border-border bg-[#141418] animate-in fade-in slide-in-from-left-2">
+                    <ChevronRight size={12} className="text-[#4A4A5A]" />
+                    <select
+                      className="bg-transparent border-none text-xs focus:ring-0 min-w-[100px]"
+                      value={selectedSubcategory || ""}
+                      onChange={(e) => setSelectedSubcategory(e.target.value || null)}
+                    >
+                      <option value="">All Subcategories</option>
+                      {subcategories.filter(s => products.some(p => p.category === selectedCategory && p.subcategory === s)).map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto">
@@ -313,11 +485,19 @@ export default function ProductsScreen() {
                 <table className="w-full text-sm">
                   <thead className="sticky top-0" style={{ background: "#0D0D0F" }}>
                     <tr style={{ color: "#4A4A5A", fontSize: 11 }}>
-                      <th className="text-left pb-3 pl-3">PRODUCT</th>
-                      <th className="text-left pb-3">CATEGORY</th>
-                      <th className="text-right pb-3">PRICE</th>
+                      <th className="text-left pb-3 pl-3 cursor-pointer" onClick={() => setSorting('name', sortBy === 'name' && sortOrder === 'asc' ? 'desc' : 'asc')}>
+                        PRODUCT {sortBy === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th className="text-left pb-3 cursor-pointer" onClick={() => setSorting('category', sortBy === 'category' && sortOrder === 'asc' ? 'desc' : 'asc')}>
+                        CATEGORY {sortBy === 'category' && (sortOrder === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th className="text-right pb-3 cursor-pointer" onClick={() => setSorting('price', sortBy === 'price' && sortOrder === 'asc' ? 'desc' : 'asc')}>
+                        PRICE {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}
+                      </th>
                       <th className="text-right pb-3">TAX</th>
-                      <th className="text-right pb-3">STOCK</th>
+                      <th className="text-right pb-3 cursor-pointer" onClick={() => setSorting('stock', sortBy === 'stock' && sortOrder === 'asc' ? 'desc' : 'asc')}>
+                        STOCK {sortBy === 'stock' && (sortOrder === 'asc' ? '↑' : '↓')}
+                      </th>
                       <th className="text-right pb-3 pr-3">ACTIONS</th>
                     </tr>
                   </thead>
@@ -334,8 +514,16 @@ export default function ProductsScreen() {
                               </div>
                             )}
                             <div>
-                              <div className="font-medium">{p.name}</div>
-                              {p.barcode && <div className="text-xs font-mono" style={{ color: "#4A4A5A" }}>#{p.barcode}</div>}
+                              <div className="flex items-center gap-2">
+                                <div className="font-medium">{p.name}</div>
+                                {p.is_favorite && <Star size={12} fill="#F5C842" color="#F5C842" />}
+                                {p.is_digital && <div className="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30">DIGITAL</div>}
+                                {p.status !== 'active' && <div className="px-1.5 py-0.5 rounded text-[10px] bg-gray-500/20 text-gray-400 border border-gray-500/30 uppercase">{p.status}</div>}
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {p.barcode && <div className="text-[10px] font-mono" style={{ color: "#4A4A5A" }}>#{p.barcode}</div>}
+                                {p.sku && <div className="text-[10px] font-mono px-1 rounded bg-[#1A1A22]" style={{ color: "#9090A8" }}>{p.sku}</div>}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -347,6 +535,14 @@ export default function ProductsScreen() {
                         </td>
                         <td className="text-right pr-3">
                           <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => toggleFavorite(p)}
+                              className="p-1.5 rounded-lg"
+                              style={{ color: p.is_favorite ? "#F5C842" : "#4A4A5A" }}
+                              title="Toggle favorite"
+                            >
+                              <Star size={14} fill={p.is_favorite ? "#F5C842" : "none"} />
+                            </button>
                             <button
                               onClick={() => setEditing({ ...p })}
                               className="p-1.5 rounded-lg"
@@ -463,13 +659,25 @@ export default function ProductsScreen() {
         <div className="border-l border-border p-5 overflow-y-auto slide-in" style={{ width: 360 }}>
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-display font-bold">{editing.id ? "Edit" : "Add"} Product</h2>
-            <button onClick={() => { setEditing(null); setErrors({}); }} style={{ color: "#4A4A5A" }}><X size={18} /></button>
+            <button onClick={() => { setEditing(null); setErrors({}); setVariantsToDelete([]); initialVariantIds.current = new Set(); }} style={{ color: "#4A4A5A" }}><X size={18} /></button>
           </div>
           <div className="space-y-4">
             <div>
               <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Name *</label>
               <input name="name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Product name" />
               {errors.name && <p className="text-xs mt-1" style={{ color: "#E74C3C" }}>{errors.name}</p>}
+            </div>
+
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Description</label>
+              <textarea
+                className="w-full p-2 rounded-lg text-sm"
+                rows={3}
+                style={{ background: "#1E1E26", color: "white", border: "1px solid #2A2A32" }}
+                value={editing.description || ""}
+                onChange={(e) => setEditing({ ...editing, description: e.target.value })}
+                placeholder="Product description..."
+              />
             </div>
             
             <div>
@@ -484,31 +692,59 @@ export default function ProductsScreen() {
                 />
               </div>
               {editing.image_url && (
-                <div className="mt-2">
+                <div className="mt-2 relative">
                   <img src={editing.image_url} alt="Preview" className="w-full h-32 object-cover rounded-lg" style={{ background: "#1E1E26" }} />
+                  <button onClick={() => setEditing({ ...editing, image_url: "" })} className="absolute top-2 right-2 p-1 bg-black/50 rounded-full text-white"><X size={14} /></button>
                 </div>
               )}
             </div>
 
-            <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Category</label>
-              <select value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Price ({curr})</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Category</label>
+                <select value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>
+                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Subcategory</label>
+                <input value={editing.subcategory || ""} onChange={(e) => setEditing({ ...editing, subcategory: e.target.value })} placeholder="e.g., Hot Drinks" />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Selling ({curr}) *</label>
                 <input name="price" type="number" value={editing.price} onChange={(e) => setEditing({ ...editing, price: parseFloat(e.target.value) || 0 })} min={0} />
                 {errors.price && <p className="text-xs mt-1" style={{ color: "#E74C3C" }}>{errors.price}</p>}
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Tax %</label>
-                <input name="tax" type="number" value={editing.tax} onChange={(e) => setEditing({ ...editing, tax: parseFloat(e.target.value) || 0 })} min={0} max={100} />
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Cost ({curr})</label>
+                <input type="number" value={editing.cost_price} onChange={(e) => setEditing({ ...editing, cost_price: parseFloat(e.target.value) || 0 })} min={0} />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Wholesale ({curr})</label>
+                <input type="number" value={editing.wholesale_price} onChange={(e) => setEditing({ ...editing, wholesale_price: parseFloat(e.target.value) || 0 })} min={0} />
               </div>
             </div>
-            
+
+            {(editing.price > 0 && editing.cost_price > 0) && (
+              <div className="flex gap-4 p-2 rounded-lg bg-[#141418] border border-[#1E1E26]">
+                <div className="flex-1">
+                  <div className="text-[10px] text-[#4A4A5A] uppercase font-bold">Margin %</div>
+                  <div className="text-sm font-bold text-[#2ECC71]">
+                    {(((editing.price - editing.cost_price) / editing.price) * 100).toFixed(1)}%
+                  </div>
+                </div>
+                <div className="flex-1 border-l border-[#1E1E26] pl-4">
+                  <div className="text-[10px] text-[#4A4A5A] uppercase font-bold">Profit</div>
+                  <div className="text-sm font-bold text-[#2ECC71]">
+                    {curr}{(editing.price - editing.cost_price).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Stock</label>
@@ -516,9 +752,62 @@ export default function ProductsScreen() {
                 {errors.stock && <p className="text-xs mt-1" style={{ color: "#E74C3C" }}>{errors.stock}</p>}
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Barcode</label>
-                <input name="barcode" value={editing.barcode || ""} onChange={(e) => setEditing({ ...editing, barcode: e.target.value })} placeholder="Optional" />
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Tax %</label>
+                <input name="tax" type="number" value={editing.tax} onChange={(e) => setEditing({ ...editing, tax: parseFloat(e.target.value) || 0 })} min={0} max={100} />
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>SKU</label>
+                <div className="flex gap-1">
+                  <input className="flex-1" value={editing.sku || ""} onChange={(e) => setEditing({ ...editing, sku: e.target.value })} placeholder="Auto" />
+                  <button onClick={() => setEditing({ ...editing, sku: generateSKU(editing.name, editing.category) })} className="p-2 bg-[#1E1E26] rounded-lg" title="Generate SKU"><Hash size={14} /></button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Barcode</label>
+                <div className="flex gap-1">
+                  <input className="flex-1" value={editing.barcode || ""} onChange={(e) => setEditing({ ...editing, barcode: e.target.value })} placeholder="Auto" />
+                  <button onClick={() => setEditing({ ...editing, barcode: generateBarcode() })} className="p-2 bg-[#1E1E26] rounded-lg" title="Generate Barcode"><Barcode size={14} /></button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Status</label>
+                <select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value as any })}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="discontinued">Discontinued</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Tags (comma separated)</label>
+                <input value={editing.tags || ""} onChange={(e) => setEditing({ ...editing, tags: e.target.value })} placeholder="tag1, tag2" />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-6 py-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editing.is_digital}
+                  onChange={(e) => setEditing({ ...editing, is_digital: e.target.checked })}
+                  className="w-4 h-4 rounded"
+                />
+                <span className="text-sm">Digital Product</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editing.is_favorite}
+                  onChange={(e) => setEditing({ ...editing, is_favorite: e.target.checked })}
+                  className="w-4 h-4 rounded"
+                />
+                <span className="text-sm">Pin to Favorites</span>
+              </label>
             </div>
 
             {/* Industry Specific Metadata */}
@@ -562,11 +851,119 @@ export default function ProductsScreen() {
                )}
             </div>
 
+            {/* Custom Attributes Section */}
+            <div className="pt-4 border-t border-[#1E1E26] space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#4A4A5A]">Custom Attributes</h3>
+                <button
+                  onClick={() => setCustomAttributes([...customAttributes, { key: "", value: "" }])}
+                  className="text-[10px] px-2 py-1 bg-[#1E1E26] rounded text-[#F5C842] hover:bg-[#2A2A32]"
+                >
+                  <Plus size={10} className="inline mr-1" /> Add Field
+                </button>
+              </div>
+
+              {customAttributes.length === 0 ? (
+                <p className="text-[10px] text-center py-2 text-[#4A4A5A] italic">No custom fields added</p>
+              ) : (
+                <div className="space-y-2">
+                  {customAttributes.map((attr, idx) => (
+                    <div key={idx} className="flex gap-2 items-center">
+                      <input
+                        className="text-[10px] p-1.5 flex-1"
+                        placeholder="Key (e.g., Brand)"
+                        value={attr.key}
+                        onChange={(e) => {
+                          const newAttrs = [...customAttributes];
+                          newAttrs[idx].key = e.target.value;
+                          setCustomAttributes(newAttrs);
+                        }}
+                      />
+                      <input
+                        className="text-[10px] p-1.5 flex-1"
+                        placeholder="Value"
+                        value={attr.value}
+                        onChange={(e) => {
+                          const newAttrs = [...customAttributes];
+                          newAttrs[idx].value = e.target.value;
+                          setCustomAttributes(newAttrs);
+                        }}
+                      />
+                      <button onClick={() => setCustomAttributes(customAttributes.filter((_, i) => i !== idx))} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded"><X size={12} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Product Variants Section */}
+            <div className="pt-4 border-t border-[#1E1E26] space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#4A4A5A]"><Activity size={12} className="inline mr-1" /> Product Variants</h3>
+                <button onClick={handleAddVariant} className="text-[10px] px-2 py-1 bg-[#1E1E26] rounded text-[#F5C842] hover:bg-[#2A2A32]">
+                  <Plus size={10} className="inline mr-1" /> Add Variant
+                </button>
+              </div>
+
+              {editingVariants.length === 0 ? (
+                <p className="text-[10px] text-center py-4 text-[#4A4A5A] italic">No variants defined for this product</p>
+              ) : (
+                <div className="space-y-2">
+                  {editingVariants.map((v) => (
+                    <div key={v.id} className="p-2 rounded-lg bg-[#141418] border border-[#1E1E26] space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          className="text-[10px] p-1.5"
+                          placeholder="Name (e.g., Color)"
+                          value={v.name}
+                          onChange={(e) => handleUpdateVariant(v.id, { name: e.target.value })}
+                        />
+                        <input
+                          className="text-[10px] p-1.5"
+                          placeholder="Value (e.g., Red)"
+                          value={v.value}
+                          onChange={(e) => handleUpdateVariant(v.id, { value: e.target.value })}
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="relative">
+                          <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[9px] text-[#4A4A5A] pl-1">{curr}</span>
+                          <input
+                            type="number"
+                            className="text-[10px] p-1.5 pl-4"
+                            placeholder="Price"
+                            value={v.price}
+                            onChange={(e) => handleUpdateVariant(v.id, { price: parseFloat(e.target.value) || 0 })}
+                          />
+                        </div>
+                        <input
+                          type="number"
+                          className="text-[10px] p-1.5"
+                          placeholder="Stock"
+                          value={v.stock}
+                          onChange={(e) => handleUpdateVariant(v.id, { stock: parseInt(e.target.value) || 0 })}
+                        />
+                        <div className="flex gap-1">
+                          <input
+                            className="text-[10px] p-1.5 flex-1"
+                            placeholder="SKU"
+                            value={v.sku}
+                            onChange={(e) => handleUpdateVariant(v.id, { sku: e.target.value })}
+                          />
+                          <button onClick={() => handleRemoveVariant(v.id)} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded"><X size={12} /></button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-2 pt-4">
               <button className="btn-accent flex-1 flex items-center justify-center gap-2 py-2.5 text-sm" onClick={handleSave}>
                 <Check size={15} /> Save
               </button>
-              <button className="btn-ghost py-2.5 px-4 text-sm" onClick={() => { setEditing(null); setErrors({}); }}>Cancel</button>
+              <button className="btn-ghost py-2.5 px-4 text-sm" onClick={() => { setEditing(null); setErrors({}); setVariantsToDelete([]); initialVariantIds.current = new Set(); }}>Cancel</button>
             </div>
           </div>
         </div>

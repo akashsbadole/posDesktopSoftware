@@ -81,13 +81,34 @@ pub struct Product {
     pub store_id: String,
     pub name: String,
     pub price: f64,
+    pub cost_price: f64,
+    pub wholesale_price: f64,
     pub category: String,
+    pub subcategory: Option<String>,
     pub stock: i64,
     pub barcode: String,
+    pub sku: Option<String>,
+    pub description: Option<String>,
     pub tax: f64,
+    pub status: String,
+    pub tags: String,
+    pub is_digital: bool,
+    pub is_favorite: bool,
     pub image_url: Option<String>,
     pub created_at: Option<String>,
     pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProductVariant {
+    pub id: String,
+    pub product_id: String,
+    pub store_id: String,
+    pub name: String,
+    pub value: String,
+    pub sku: String,
+    pub price: f64,
+    pub stock: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -649,13 +670,33 @@ impl Database {
                 store_id    TEXT NOT NULL DEFAULT 'default',
                 name        TEXT NOT NULL,
                 price       REAL NOT NULL DEFAULT 0,
+                cost_price  REAL NOT NULL DEFAULT 0,
+                wholesale_price REAL NOT NULL DEFAULT 0,
                 category    TEXT NOT NULL DEFAULT 'General',
+                subcategory TEXT,
                 stock       INTEGER NOT NULL DEFAULT 0,
                 barcode     TEXT NOT NULL DEFAULT '',
+                sku         TEXT,
+                description TEXT,
                 tax         REAL NOT NULL DEFAULT 18,
+                status      TEXT NOT NULL DEFAULT 'active',
+                tags        TEXT NOT NULL DEFAULT '',
+                is_digital  INTEGER NOT NULL DEFAULT 0,
+                is_favorite INTEGER NOT NULL DEFAULT 0,
                 image_url   TEXT NOT NULL DEFAULT '',
                 metadata    TEXT,
                 created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS product_variants (
+                id         TEXT PRIMARY KEY,
+                product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                store_id   TEXT NOT NULL DEFAULT 'default',
+                name       TEXT NOT NULL,
+                value      TEXT NOT NULL,
+                sku        TEXT NOT NULL DEFAULT '',
+                price      REAL NOT NULL DEFAULT 0,
+                stock      INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS orders (
@@ -1106,6 +1147,16 @@ impl Database {
             store_name
         );
         self.conn.execute(&sql, [])?;
+
+        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN cost_price REAL NOT NULL DEFAULT 0", []);
+        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN wholesale_price REAL NOT NULL DEFAULT 0", []);
+        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN subcategory TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN sku TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN description TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN status TEXT NOT NULL DEFAULT 'active'", []);
+        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN tags TEXT NOT NULL DEFAULT ''", []);
+        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN is_digital INTEGER NOT NULL DEFAULT 0", []);
+        let _ = self.conn.execute("ALTER TABLE products ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0", []);
 
         let _ = self
             .conn
@@ -1622,24 +1673,33 @@ impl Database {
 
     pub fn get_products(&self, store_id: &str) -> Result<Vec<Product>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, store_id, name, price, category, stock, barcode, tax, image_url, metadata, created_at FROM products WHERE store_id=?1 ORDER BY name"
+            "SELECT id, store_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, created_at FROM products WHERE store_id=?1 ORDER BY is_favorite DESC, name"
         )?;
         let products = stmt
             .query_map(params![store_id], |row| {
-                let metadata_str: Option<String> = row.get(9)?;
+                let metadata_str: Option<String> = row.get(18)?;
                 let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
                 Ok(Product {
                     id: row.get(0)?,
                     store_id: row.get(1)?,
                     name: row.get(2)?,
                     price: row.get(3)?,
-                    category: row.get(4)?,
-                    stock: row.get(5)?,
-                    barcode: row.get(6)?,
-                    tax: row.get(7)?,
-                    image_url: row.get(8)?,
+                    cost_price: row.get(4)?,
+                    wholesale_price: row.get(5)?,
+                    category: row.get(6)?,
+                    subcategory: row.get(7)?,
+                    stock: row.get(8)?,
+                    barcode: row.get(9)?,
+                    sku: row.get(10)?,
+                    description: row.get(11)?,
+                    tax: row.get(12)?,
+                    status: row.get(13)?,
+                    tags: row.get(14)?,
+                    is_digital: row.get::<_, i32>(15)? == 1,
+                    is_favorite: row.get::<_, i32>(16)? == 1,
+                    image_url: row.get(17)?,
                     metadata,
-                    created_at: row.get(10)?,
+                    created_at: row.get(19)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -1652,12 +1712,14 @@ impl Database {
             .as_ref()
             .and_then(|m| serde_json::to_string(m).ok());
         self.conn.execute(
-            "INSERT INTO products (id, store_id, name, price, category, stock, barcode, tax, image_url, metadata)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "INSERT INTO products (id, store_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
              ON CONFLICT(id) DO UPDATE SET
-               name=excluded.name, price=excluded.price, category=excluded.category,
-               stock=excluded.stock, barcode=excluded.barcode, tax=excluded.tax, image_url=excluded.image_url, metadata=excluded.metadata",
-            params![p.id, store_id, p.name, p.price, p.category, p.stock, p.barcode, p.tax, p.image_url, metadata_str],
+               name=excluded.name, price=excluded.price, cost_price=excluded.cost_price, wholesale_price=excluded.wholesale_price,
+               category=excluded.category, subcategory=excluded.subcategory, stock=excluded.stock, barcode=excluded.barcode,
+               sku=excluded.sku, description=excluded.description, tax=excluded.tax, status=excluded.status, tags=excluded.tags,
+               is_digital=excluded.is_digital, is_favorite=excluded.is_favorite, image_url=excluded.image_url, metadata=excluded.metadata",
+            params![p.id, store_id, p.name, p.price, p.cost_price, p.wholesale_price, p.category, p.subcategory, p.stock, p.barcode, p.sku, p.description, p.tax, p.status, p.tags, if p.is_digital { 1 } else { 0 }, if p.is_favorite { 1 } else { 0 }, p.image_url, metadata_str],
         )?;
         Ok(())
     }
@@ -2066,8 +2128,11 @@ impl Database {
         let mut wtr = csv::Writer::from_writer(vec![]);
 
         // Header
-        wtr.write_record(&["id", "name", "price", "category", "stock", "barcode", "tax", "image_url", "metadata"])
-            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        wtr.write_record(&[
+            "id", "parent_id", "name", "price", "cost_price", "wholesale_price",
+            "category", "subcategory", "stock", "barcode", "sku", "description",
+            "tax", "status", "tags", "is_digital", "is_favorite", "image_url", "metadata", "variant_value"
+        ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         for p in products {
             let metadata_str = p.metadata.as_ref()
@@ -2076,15 +2141,54 @@ impl Database {
 
             wtr.write_record(&[
                 &p.id,
+                "", // parent_id
                 &p.name,
                 &p.price.to_string(),
+                &p.cost_price.to_string(),
+                &p.wholesale_price.to_string(),
                 &p.category,
+                p.subcategory.as_deref().unwrap_or(""),
                 &p.stock.to_string(),
                 &p.barcode,
+                p.sku.as_deref().unwrap_or(""),
+                p.description.as_deref().unwrap_or(""),
                 &p.tax.to_string(),
+                &p.status,
+                &p.tags,
+                &p.is_digital.to_string(),
+                &p.is_favorite.to_string(),
                 p.image_url.as_deref().unwrap_or(""),
                 &metadata_str,
+                "", // variant_value
             ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+            // Export variants
+            if let Ok(variants) = self.get_product_variants(&p.id, store_id) {
+                for v in variants {
+                    wtr.write_record(&[
+                        &v.id,
+                        &p.id, // parent_id
+                        &v.name,
+                        &v.price.to_string(),
+                        "0", // cost_price
+                        "0", // wholesale_price
+                        &p.category,
+                        p.subcategory.as_deref().unwrap_or(""),
+                        &v.stock.to_string(),
+                        "", // barcode
+                        &v.sku,
+                        "", // description
+                        &p.tax.to_string(),
+                        "active", // status
+                        "", // tags
+                        "false", // is_digital
+                        "false", // is_favorite
+                        "", // image_url
+                        "{}", // metadata
+                        &v.value, // variant_value
+                    ]).map_err(|_| rusqlite::Error::InvalidQuery)?;
+                }
+            }
         }
 
         let data = String::from_utf8(wtr.into_inner().unwrap_or_default())
@@ -2130,44 +2234,139 @@ impl Database {
                 }
             };
 
-            if record.len() < 7 {
+            let len = record.len();
+            if len < 4 { // Very basic validation
                 errors += 1;
                 continue;
             }
 
-            let id = record.get(0).unwrap_or("").to_string();
-            let name = record.get(1).unwrap_or("").to_string();
+            // Map fields based on column count (backward compatibility)
+            // Legacy (~2024): id, name, price, category, stock, barcode, tax (7 columns)
+            // Intermediate (Early 2025): id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata (18 columns)
+            // Current: id, parent_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, variant_value (20 columns)
+
+            let (id, parent_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, variant_value);
+
+            if len >= 19 {
+                // New 20-column format or 19-column variant
+                id = record.get(0).unwrap_or("").to_string();
+                parent_id = record.get(1).unwrap_or("").to_string();
+                name = record.get(2).unwrap_or("").to_string();
+                price = record.get(3).unwrap_or("0").parse().unwrap_or(0.0);
+                cost_price = record.get(4).unwrap_or("0").parse().unwrap_or(0.0);
+                wholesale_price = record.get(5).unwrap_or("0").parse().unwrap_or(0.0);
+                category = record.get(6).unwrap_or("General").to_string();
+                subcategory = record.get(7).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                stock = record.get(8).unwrap_or("0").parse().unwrap_or(0);
+                barcode = record.get(9).unwrap_or("").to_string();
+                sku = record.get(10).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                description = record.get(11).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                tax = record.get(12).unwrap_or("0").parse().unwrap_or(0.0);
+                status = record.get(13).unwrap_or("active").to_string();
+                tags = record.get(14).unwrap_or("").to_string();
+                is_digital = record.get(15).map(|s| s == "true").unwrap_or(false);
+                is_favorite = record.get(16).map(|s| s == "true").unwrap_or(false);
+                image_url = record.get(17).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                metadata = record.get(18).and_then(|s| serde_json::from_str(s).ok());
+                variant_value = record.get(19).unwrap_or("").to_string();
+            } else if len == 18 {
+                // Intermediate 18-column format
+                id = record.get(0).unwrap_or("").to_string();
+                parent_id = String::new();
+                name = record.get(1).unwrap_or("").to_string();
+                price = record.get(2).unwrap_or("0").parse().unwrap_or(0.0);
+                cost_price = record.get(3).unwrap_or("0").parse().unwrap_or(0.0);
+                wholesale_price = record.get(4).unwrap_or("0").parse().unwrap_or(0.0);
+                category = record.get(5).unwrap_or("General").to_string();
+                subcategory = record.get(6).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                stock = record.get(7).unwrap_or("0").parse().unwrap_or(0);
+                barcode = record.get(8).unwrap_or("").to_string();
+                sku = record.get(9).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                description = record.get(10).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                tax = record.get(11).unwrap_or("0").parse().unwrap_or(0.0);
+                status = record.get(12).unwrap_or("active").to_string();
+                tags = record.get(13).unwrap_or("").to_string();
+                is_digital = record.get(14).map(|s| s == "true").unwrap_or(false);
+                is_favorite = record.get(15).map(|s| s == "true").unwrap_or(false);
+                image_url = record.get(16).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                metadata = record.get(17).and_then(|s| serde_json::from_str(s).ok());
+                variant_value = String::new();
+            } else {
+                // Legacy format (7-9 columns)
+                id = record.get(0).unwrap_or("").to_string();
+                parent_id = String::new();
+                name = record.get(1).unwrap_or("").to_string();
+                price = record.get(2).unwrap_or("0").parse().unwrap_or(0.0);
+                category = record.get(3).unwrap_or("General").to_string();
+                stock = record.get(4).unwrap_or("0").parse().unwrap_or(0);
+                barcode = record.get(5).unwrap_or("").to_string();
+                tax = record.get(6).unwrap_or("18").parse().unwrap_or(18.0);
+
+                cost_price = 0.0;
+                wholesale_price = 0.0;
+                subcategory = None;
+                sku = None;
+                description = None;
+                status = "active".to_string();
+                tags = String::new();
+                is_digital = false;
+                is_favorite = false;
+                image_url = None;
+                metadata = None;
+                variant_value = String::new();
+            }
+
             if name.is_empty() {
                 errors += 1;
                 continue;
             }
 
-            let price = record.get(2).unwrap_or("0").parse().unwrap_or(0.0);
-            let category = record.get(3).unwrap_or("General").to_string();
-            let stock = record.get(4).unwrap_or("0").parse().unwrap_or(0);
-            let barcode = record.get(5).unwrap_or("").to_string();
-            let tax = record.get(6).unwrap_or("0").parse().unwrap_or(0.0);
-            let image_url = record.get(7).filter(|s| !s.is_empty()).map(|s| s.to_string());
-            let metadata = record.get(8).and_then(|s| serde_json::from_str(s).ok());
-
-            let p = Product {
-                id: if id.is_empty() { uuid::Uuid::new_v4().to_string() } else { id },
-                store_id: store_id.to_string(),
-                name,
-                price,
-                category,
-                stock,
-                barcode,
-                tax,
-                image_url,
-                created_at: None,
-                metadata,
-            };
-
-            if self.upsert_product(&p, store_id).is_ok() {
-                imported += 1;
+            if parent_id.is_empty() {
+                // Import as Product
+                let p = Product {
+                    id: if id.is_empty() { uuid::Uuid::new_v4().to_string() } else { id },
+                    store_id: store_id.to_string(),
+                    name,
+                    price,
+                    cost_price,
+                    wholesale_price,
+                    category,
+                    subcategory,
+                    stock,
+                    barcode,
+                    sku,
+                    description,
+                    tax,
+                    status,
+                    tags,
+                    is_digital,
+                    is_favorite,
+                    image_url,
+                    created_at: None,
+                    metadata,
+                };
+                if self.upsert_product(&p, store_id).is_ok() {
+                    imported += 1;
+                } else {
+                    errors += 1;
+                }
             } else {
-                errors += 1;
+                // Import as Product Variant
+                let v = ProductVariant {
+                    id: if id.is_empty() { uuid::Uuid::new_v4().to_string() } else { id },
+                    product_id: parent_id,
+                    store_id: store_id.to_string(),
+                    name,
+                    value: variant_value,
+                    sku: sku.unwrap_or_default(),
+                    price,
+                    stock,
+                };
+                if self.save_product_variant(&v, store_id).is_ok() {
+                    imported += 1;
+                } else {
+                    errors += 1;
+                }
             }
         }
         Ok(CsvImportResult { imported, errors })
@@ -2214,6 +2413,41 @@ impl Database {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT(id) DO UPDATE SET name=excluded.name, capacity=excluded.capacity, status=excluded.status, position_x=excluded.position_x, position_y=excluded.position_y",
             params![t.id, store_id, t.name, t.capacity, t.status, t.position_x, t.position_y],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_product_variants(&self, product_id: &str, store_id: &str) -> Result<Vec<ProductVariant>> {
+        let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, name, value, sku, price, stock FROM product_variants WHERE product_id=?1 AND store_id=?2")?;
+        let variants = stmt.query_map(params![product_id, store_id], |row| {
+            Ok(ProductVariant {
+                id: row.get(0)?,
+                product_id: row.get(1)?,
+                store_id: row.get(2)?,
+                name: row.get(3)?,
+                value: row.get(4)?,
+                sku: row.get(5)?,
+                price: row.get(6)?,
+                stock: row.get(7)?,
+            })
+        })?.collect::<Result<Vec<_>>>()?;
+        Ok(variants)
+    }
+
+    pub fn save_product_variant(&self, v: &ProductVariant, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO product_variants (id, product_id, store_id, name, value, sku, price, stock)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET name=excluded.name, value=excluded.value, sku=excluded.sku, price=excluded.price, stock=excluded.stock",
+            params![v.id, v.product_id, store_id, v.name, v.value, v.sku, v.price, v.stock],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_product_variant(&self, id: &str, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM product_variants WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
         )?;
         Ok(())
     }

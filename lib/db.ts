@@ -32,16 +32,36 @@ export interface Product {
   store_id: string;
   name: string;
   price: number;
+  cost_price: number;
+  wholesale_price: number;
   category: string;
+  subcategory: string;
   stock: number;
   barcode: string;
+  sku: string;
+  description: string;
   tax: number;
+  status: "active" | "inactive" | "discontinued";
+  tags: string;
+  is_digital: boolean;
+  is_favorite: boolean;
   created_at?: string;
   image_url?: string;
   is_combo?: boolean;
   combo_items?: ComboItem[];
   combo_discount?: number;
   metadata?: any;
+}
+
+export interface ProductVariant {
+  id: string;
+  product_id: string;
+  store_id: string;
+  name: string;
+  value: string;
+  sku: string;
+  price: number;
+  stock: number;
 }
 
 export interface ComboItem {
@@ -495,6 +515,18 @@ export async function dbSaveProduct(product: Product, storeId: string): Promise<
 
 export async function dbDeleteProduct(id: string, storeId: string): Promise<void> {
   return sql("delete_product", { id, store_id: storeId });
+}
+
+export async function dbGetProductVariants(productId: string, storeId: string): Promise<ProductVariant[]> {
+  return sql<ProductVariant[]>("get_product_variants", { product_id: productId, store_id: storeId });
+}
+
+export async function dbSaveProductVariant(variant: ProductVariant, storeId: string): Promise<void> {
+  return sql("save_product_variant", { variant, store_id: storeId });
+}
+
+export async function dbDeleteProductVariant(id: string, storeId: string): Promise<void> {
+  return sql("delete_product_variant", { id, store_id: storeId });
 }
 
 export async function dbUpdateStock(id: string, delta: number, storeId: string): Promise<void> {
@@ -1124,10 +1156,10 @@ function defaultSettings(): Settings {
 
 function seedProducts(storeId: string): Product[] {
   return [
-    { id: `p1_${storeId}`, store_id: storeId, name: "Coffee", price: 120, category: "Beverages", stock: 100, barcode: "001", tax: 5 },
-    { id: `p2_${storeId}`, store_id: storeId, name: "Tea", price: 60, category: "Beverages", stock: 150, barcode: "002", tax: 5 },
-    { id: `p3_${storeId}`, store_id: storeId, name: "Sandwich", price: 180, category: "Food", stock: 50, barcode: "003", tax: 12 },
-    { id: `p4_${storeId}`, store_id: storeId, name: "Burger", price: 250, category: "Food", stock: 40, barcode: "004", tax: 12 },
+    { id: `p1_${storeId}`, store_id: storeId, name: "Coffee", price: 120, cost_price: 50, wholesale_price: 100, category: "Beverages", subcategory: "Hot Coffee", stock: 100, barcode: "001", sku: "COF-001", description: "Rich blend coffee", tax: 5, status: "active", tags: "hot,morning", is_digital: false, is_favorite: true },
+    { id: `p2_${storeId}`, store_id: storeId, name: "Tea", price: 60, cost_price: 20, wholesale_price: 50, category: "Beverages", subcategory: "Hot Tea", stock: 150, barcode: "002", sku: "TEA-002", description: "Green tea", tax: 5, status: "active", tags: "hot,healthy", is_digital: false, is_favorite: false },
+    { id: `p3_${storeId}`, store_id: storeId, name: "Sandwich", price: 180, cost_price: 80, wholesale_price: 150, category: "Food", subcategory: "Snacks", stock: 50, barcode: "003", sku: "SND-003", description: "Club sandwich", tax: 12, status: "active", tags: "snack,lunch", is_digital: false, is_favorite: false },
+    { id: `p4_${storeId}`, store_id: storeId, name: "Burger", price: 250, cost_price: 120, wholesale_price: 220, category: "Food", subcategory: "Main Course", stock: 40, barcode: "004", sku: "BRG-004", description: "Beef burger", tax: 12, status: "active", tags: "heavy,dinner", is_digital: false, is_favorite: true },
   ];
 }
 
@@ -1237,6 +1269,24 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     case "get_expense_categories": {
       const items = lsGet<ExpenseCategory[]>("pos_expense_categories") || [];
       return items.filter(x => x.store_id === storeId) as T;
+    }
+    case "get_product_variants": {
+      const items = lsGet<ProductVariant[]>("pos_product_variants") || [];
+      return items.filter(x => x.product_id === (args as any).product_id && x.store_id === storeId) as T;
+    }
+    case "save_product_variant": {
+      const items = lsGet<ProductVariant[]>("pos_product_variants") || [];
+      const v = (args as any).variant as ProductVariant;
+      v.store_id = storeId;
+      const idx = items.findIndex(x => x.id === v.id);
+      if (idx >= 0) items[idx] = v; else items.push(v);
+      lsSet("pos_product_variants", items);
+      return undefined as T;
+    }
+    case "delete_product_variant": {
+      const items = (lsGet<ProductVariant[]>("pos_product_variants") || []).filter(x => !(x.id === (args as any).id && x.store_id === storeId));
+      lsSet("pos_product_variants", items);
+      return undefined as T;
     }
     case "update_order_status": {
       const orders = lsGet<Order[]>(LS.orders) || [];
@@ -1360,25 +1410,73 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     ] as T;
     case "export_products_csv": {
       const p = lsGet<Product[]>(LS.products) || [];
+      const variants = lsGet<ProductVariant[]>("pos_product_variants") || [];
       const filtered = p.filter(x => x.store_id === storeId);
-      const header = ["id", "name", "price", "category", "stock", "barcode", "tax", "image_url", "metadata"];
-      const rows = filtered.map(x => [
-        x.id,
-        x.name,
-        x.price.toString(),
-        x.category,
-        x.stock.toString(),
-        x.barcode,
-        x.tax.toString(),
-        x.image_url || "",
-        JSON.stringify(x.metadata || {})
-      ]);
+      const header = [
+        "id", "parent_id", "name", "price", "cost_price", "wholesale_price",
+        "category", "subcategory", "stock", "barcode", "sku", "description",
+        "tax", "status", "tags", "is_digital", "is_favorite", "image_url", "metadata", "variant_value"
+      ];
+      const rows: string[][] = [];
+
+      filtered.forEach(x => {
+        rows.push([
+          x.id,
+          "", // parent_id
+          x.name,
+          x.price.toString(),
+          x.cost_price.toString(),
+          x.wholesale_price.toString(),
+          x.category,
+          x.subcategory || "",
+          x.stock.toString(),
+          x.barcode || "",
+          x.sku || "",
+          x.description || "",
+          x.tax.toString(),
+          x.status || "active",
+          x.tags || "",
+          x.is_digital ? "true" : "false",
+          x.is_favorite ? "true" : "false",
+          x.image_url || "",
+          JSON.stringify(x.metadata || {}),
+          "" // variant_value
+        ]);
+
+        // Export variants for this product
+        variants.filter(v => v.product_id === x.id && v.store_id === storeId).forEach(v => {
+          rows.push([
+            v.id,
+            x.id, // parent_id
+            v.name,
+            v.price.toString(),
+            "0", // cost_price
+            "0", // wholesale_price
+            x.category,
+            x.subcategory || "",
+            v.stock.toString(),
+            "", // barcode
+            v.sku || "",
+            "", // description
+            x.tax.toString(),
+            "active",
+            "",
+            "false",
+            "false",
+            "",
+            "{}",
+            v.value
+          ]);
+        });
+      });
+
       const csv = [header, ...rows].map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
       return csv as T;
     }
     case "import_products_csv": {
       const csvData = (args as any).csvData as string;
       const products = lsGet<Product[]>(LS.products) || [];
+      const variants = lsGet<ProductVariant[]>("pos_product_variants") || [];
       const lines = csvData.split("\n");
       let imported = 0;
       let errors = 0;
@@ -1390,7 +1488,7 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
         for (let i = 0; i < line.length; i++) {
           const char = line[i];
           if (char === '"') {
-            if (inQuotes && line[i + 1] === '"') {
+            if (inQuotes && (i + 1 < line.length) && line[i + 1] === '"') {
               current += '"';
               i++;
             } else {
@@ -1412,29 +1510,111 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
         if (!line) continue;
 
         const parts = parseCsvLine(line);
-        if (parts.length < 7) {
+        const len = parts.length;
+        if (len < 4) {
           errors++;
           continue;
         }
 
-        const p: Product = {
-          id: parts[0] || Math.random().toString(36).substr(2, 9),
-          store_id: storeId,
-          name: parts[1],
-          price: parseFloat(parts[2]) || 0,
-          category: parts[3] || "General",
-          stock: parseInt(parts[4]) || 0,
-          barcode: parts[5] || "",
-          tax: parseFloat(parts[6]) || 0,
-          image_url: parts[7] || "",
-          metadata: parts[8] ? JSON.parse(parts[8]) : {}
-        };
+        let id, parent_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, variant_value;
 
-        const idx = products.findIndex(x => x.id === p.id && x.store_id === storeId);
-        if (idx >= 0) products[idx] = p; else products.push(p);
-        imported++;
+        if (len >= 19) {
+          id = parts[0];
+          parent_id = parts[1];
+          name = parts[2];
+          price = parseFloat(parts[3]) || 0;
+          cost_price = parseFloat(parts[4]) || 0;
+          wholesale_price = parseFloat(parts[5]) || 0;
+          category = parts[6] || "General";
+          subcategory = parts[7] || "";
+          stock = parseInt(parts[8]) || 0;
+          barcode = parts[9] || "";
+          sku = parts[10] || "";
+          description = parts[11] || "";
+          tax = parseFloat(parts[12]) || 0;
+          status = (parts[13] as any) || "active";
+          tags = parts[14] || "";
+          is_digital = parts[15] === "true";
+          is_favorite = parts[16] === "true";
+          image_url = parts[17] || "";
+          try { metadata = parts[18] ? JSON.parse(parts[18]) : {}; } catch { metadata = {}; }
+          variant_value = parts[19] || "";
+        } else if (len == 18) {
+          id = parts[0];
+          parent_id = "";
+          name = parts[1];
+          price = parseFloat(parts[2]) || 0;
+          cost_price = parseFloat(parts[3]) || 0;
+          wholesale_price = parseFloat(parts[4]) || 0;
+          category = parts[5] || "General";
+          subcategory = parts[6] || "";
+          stock = parseInt(parts[7]) || 0;
+          barcode = parts[8] || "";
+          sku = parts[9] || "";
+          description = parts[10] || "";
+          tax = parseFloat(parts[11]) || 0;
+          status = (parts[12] as any) || "active";
+          tags = parts[13] || "";
+          is_digital = parts[14] === "true";
+          is_favorite = parts[15] === "true";
+          image_url = parts[16] || "";
+          try { metadata = parts[17] ? JSON.parse(parts[17]) : {}; } catch { metadata = {}; }
+          variant_value = "";
+        } else {
+          id = parts[0];
+          parent_id = "";
+          name = parts[1];
+          price = parseFloat(parts[2]) || 0;
+          category = parts[3] || "General";
+          stock = parseInt(parts[4]) || 0;
+          barcode = parts[5] || "";
+          tax = parseFloat(parts[6]) || 18;
+          cost_price = 0; wholesale_price = 0; subcategory = ""; sku = ""; description = ""; status = "active"; tags = ""; is_digital = false; is_favorite = false; image_url = ""; metadata = {}; variant_value = "";
+        }
+
+        if (parent_id) {
+          const v: ProductVariant = {
+            id: id || Math.random().toString(36).substr(2, 9),
+            product_id: parent_id,
+            store_id: storeId,
+            name: name,
+            value: variant_value,
+            sku: sku,
+            price: price,
+            stock: stock
+          };
+          const idx = variants.findIndex(x => x.id === v.id && x.store_id === storeId);
+          if (idx >= 0) variants[idx] = v; else variants.push(v);
+          imported++;
+        } else {
+          const p: Product = {
+            id: id || Math.random().toString(36).substr(2, 9),
+            store_id: storeId,
+            name: name,
+            price: price,
+            cost_price: cost_price,
+            wholesale_price: wholesale_price,
+            category: category,
+            subcategory: subcategory,
+            stock: stock,
+            barcode: barcode,
+            sku: sku,
+            description: description,
+            tax: tax,
+            status: status as any,
+            tags: tags,
+            is_digital: is_digital,
+            is_favorite: is_favorite,
+            image_url: image_url,
+            metadata: metadata
+          };
+          const idx = products.findIndex(x => x.id === p.id && x.store_id === storeId);
+          if (idx >= 0) products[idx] = p; else products.push(p);
+          imported++;
+        }
       }
       lsSet(LS.products, products);
+      lsSet("pos_product_variants", variants);
       return { imported, errors } as T;
     }
     default:
