@@ -230,6 +230,7 @@ export interface Settings {
   receipt_header_text: string;
   merchant_id: string;
   show_tax_breakdown: boolean;
+  onboarding_completed: boolean;
 }
 
 export interface TaxRate {
@@ -1034,6 +1035,7 @@ function defaultSettings(): Settings {
     receipt_header_text: "",
     merchant_id: "",
     show_tax_breakdown: true,
+    onboarding_completed: false,
   };
 }
 
@@ -1057,7 +1059,10 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
         { id: "retail1", name: "Fashion Boutique", industry: "retail", is_active: true, created_at: new Date().toISOString() }
       ]);
       lsSet(LS.products, seedProducts("default").concat(seedProducts("retail1")));
-      lsSet(LS.settings, { "default": defaultSettings(), "retail1": defaultSettings() });
+      lsSet(LS.settings, {
+        "default": { ...defaultSettings(), onboarding_completed: true },
+        "retail1": { ...defaultSettings(), onboarding_completed: true }
+      });
       lsSet("pos_initialized", true);
     }
   };

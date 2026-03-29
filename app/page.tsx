@@ -31,6 +31,7 @@ import RefundRequestsScreen from "@/components/RefundRequestsScreen";
 import InventoryAlertsScreen from "@/components/InventoryAlertsScreen";
 import ContactTraining from "@/components/ContactTraining";
 import StoresScreen from "@/components/StoresScreen";
+import OnboardingModal from "@/components/OnboardingModal";
 import { dbGetPendingOrdersCount } from "@/lib/db";
 import { useAuthStore, useSettingsStore } from "@/lib/stores";
 
@@ -101,11 +102,14 @@ export default function Home() {
   const [isLocked, setIsLocked] = useState(false);
 
   const { user, isAuthenticated, logout } = useAuthStore();
-  const { activeStoreId } = useSettingsStore();
+  const { activeStoreId, settings, fetchSettings } = useSettingsStore();
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    if (isAuthenticated) {
+      fetchSettings();
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (mounted) {
@@ -193,6 +197,10 @@ export default function Home() {
 
   if (!isAuthenticated) {
     return <LoginScreen />;
+  }
+
+  if (settings && !settings.onboarding_completed && user?.role === "admin") {
+    return <OnboardingModal />;
   }
 
   if (isAdminScreen && !isAdmin) {
