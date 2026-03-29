@@ -32,16 +32,36 @@ export interface Product {
   store_id: string;
   name: string;
   price: number;
+  cost_price: number;
+  wholesale_price: number;
   category: string;
+  subcategory: string;
   stock: number;
   barcode: string;
+  sku: string;
+  description: string;
   tax: number;
+  status: "active" | "inactive" | "discontinued";
+  tags: string;
+  is_digital: boolean;
+  is_favorite: boolean;
   created_at?: string;
   image_url?: string;
   is_combo?: boolean;
   combo_items?: ComboItem[];
   combo_discount?: number;
   metadata?: any;
+}
+
+export interface ProductVariant {
+  id: string;
+  product_id: string;
+  store_id: string;
+  name: string;
+  value: string;
+  sku: string;
+  price: number;
+  stock: number;
 }
 
 export interface ComboItem {
@@ -467,6 +487,18 @@ export async function dbSaveProduct(product: Product, storeId: string): Promise<
 
 export async function dbDeleteProduct(id: string, storeId: string): Promise<void> {
   return sql("delete_product", { id, store_id: storeId });
+}
+
+export async function dbGetProductVariants(productId: string, storeId: string): Promise<ProductVariant[]> {
+  return sql<ProductVariant[]>("get_product_variants", { product_id: productId, store_id: storeId });
+}
+
+export async function dbSaveProductVariant(variant: ProductVariant, storeId: string): Promise<void> {
+  return sql("save_product_variant", { variant, store_id: storeId });
+}
+
+export async function dbDeleteProductVariant(id: string, storeId: string): Promise<void> {
+  return sql("delete_product_variant", { id, store_id: storeId });
 }
 
 export async function dbUpdateStock(id: string, delta: number, storeId: string): Promise<void> {
@@ -1041,10 +1073,10 @@ function defaultSettings(): Settings {
 
 function seedProducts(storeId: string): Product[] {
   return [
-    { id: `p1_${storeId}`, store_id: storeId, name: "Coffee", price: 120, category: "Beverages", stock: 100, barcode: "001", tax: 5 },
-    { id: `p2_${storeId}`, store_id: storeId, name: "Tea", price: 60, category: "Beverages", stock: 150, barcode: "002", tax: 5 },
-    { id: `p3_${storeId}`, store_id: storeId, name: "Sandwich", price: 180, category: "Food", stock: 50, barcode: "003", tax: 12 },
-    { id: `p4_${storeId}`, store_id: storeId, name: "Burger", price: 250, category: "Food", stock: 40, barcode: "004", tax: 12 },
+    { id: `p1_${storeId}`, store_id: storeId, name: "Coffee", price: 120, cost_price: 50, wholesale_price: 100, category: "Beverages", subcategory: "Hot Coffee", stock: 100, barcode: "001", sku: "COF-001", description: "Rich blend coffee", tax: 5, status: "active", tags: "hot,morning", is_digital: false, is_favorite: true },
+    { id: `p2_${storeId}`, store_id: storeId, name: "Tea", price: 60, cost_price: 20, wholesale_price: 50, category: "Beverages", subcategory: "Hot Tea", stock: 150, barcode: "002", sku: "TEA-002", description: "Green tea", tax: 5, status: "active", tags: "hot,healthy", is_digital: false, is_favorite: false },
+    { id: `p3_${storeId}`, store_id: storeId, name: "Sandwich", price: 180, cost_price: 80, wholesale_price: 150, category: "Food", subcategory: "Snacks", stock: 50, barcode: "003", sku: "SND-003", description: "Club sandwich", tax: 12, status: "active", tags: "snack,lunch", is_digital: false, is_favorite: false },
+    { id: `p4_${storeId}`, store_id: storeId, name: "Burger", price: 250, cost_price: 120, wholesale_price: 220, category: "Food", subcategory: "Main Course", stock: 40, barcode: "004", sku: "BRG-004", description: "Beef burger", tax: 12, status: "active", tags: "heavy,dinner", is_digital: false, is_favorite: true },
   ];
 }
 
@@ -1155,6 +1187,24 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       const items = lsGet<ExpenseCategory[]>("pos_expense_categories") || [];
       return items.filter(x => x.store_id === storeId) as T;
     }
+    case "get_product_variants": {
+      const items = lsGet<ProductVariant[]>("pos_product_variants") || [];
+      return items.filter(x => x.product_id === (args as any).product_id && x.store_id === storeId) as T;
+    }
+    case "save_product_variant": {
+      const items = lsGet<ProductVariant[]>("pos_product_variants") || [];
+      const v = (args as any).variant as ProductVariant;
+      v.store_id = storeId;
+      const idx = items.findIndex(x => x.id === v.id);
+      if (idx >= 0) items[idx] = v; else items.push(v);
+      lsSet("pos_product_variants", items);
+      return undefined as T;
+    }
+    case "delete_product_variant": {
+      const items = (lsGet<ProductVariant[]>("pos_product_variants") || []).filter(x => !(x.id === (args as any).id && x.store_id === storeId));
+      lsSet("pos_product_variants", items);
+      return undefined as T;
+    }
     case "update_order_status": {
       const orders = lsGet<Order[]>(LS.orders) || [];
       const id = (args as any).id;
@@ -1185,15 +1235,24 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     case "export_products_csv": {
       const p = lsGet<Product[]>(LS.products) || [];
       const filtered = p.filter(x => x.store_id === storeId);
-      const header = ["id", "name", "price", "category", "stock", "barcode", "tax", "image_url", "metadata"];
+      const header = ["id", "name", "price", "cost_price", "wholesale_price", "category", "subcategory", "stock", "barcode", "sku", "description", "tax", "status", "tags", "is_digital", "is_favorite", "image_url", "metadata"];
       const rows = filtered.map(x => [
         x.id,
         x.name,
         x.price.toString(),
+        x.cost_price.toString(),
+        x.wholesale_price.toString(),
         x.category,
+        x.subcategory || "",
         x.stock.toString(),
-        x.barcode,
+        x.barcode || "",
+        x.sku || "",
+        x.description || "",
         x.tax.toString(),
+        x.status || "active",
+        x.tags || "",
+        x.is_digital ? "true" : "false",
+        x.is_favorite ? "true" : "false",
         x.image_url || "",
         JSON.stringify(x.metadata || {})
       ]);
@@ -1214,7 +1273,7 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
         for (let i = 0; i < line.length; i++) {
           const char = line[i];
           if (char === '"') {
-            if (inQuotes && line[i + 1] === '"') {
+            if (inQuotes && (i + 1 < line.length) && line[i + 1] === '"') {
               current += '"';
               i++;
             } else {
@@ -1246,12 +1305,21 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
           store_id: storeId,
           name: parts[1],
           price: parseFloat(parts[2]) || 0,
-          category: parts[3] || "General",
-          stock: parseInt(parts[4]) || 0,
-          barcode: parts[5] || "",
-          tax: parseFloat(parts[6]) || 0,
-          image_url: parts[7] || "",
-          metadata: parts[8] ? JSON.parse(parts[8]) : {}
+          cost_price: parseFloat(parts[3]) || 0,
+          wholesale_price: parseFloat(parts[4]) || 0,
+          category: parts[5] || "General",
+          subcategory: parts[6] || "",
+          stock: parseInt(parts[7]) || 0,
+          barcode: parts[8] || "",
+          sku: parts[9] || "",
+          description: parts[10] || "",
+          tax: parseFloat(parts[11]) || 0,
+          status: (parts[12] as any) || "active",
+          tags: parts[13] || "",
+          is_digital: parts[14] === "true",
+          is_favorite: parts[15] === "true",
+          image_url: parts[16] || "",
+          metadata: parts[17] ? JSON.parse(parts[17]) : {}
         };
 
         const idx = products.findIndex(x => x.id === p.id && x.store_id === storeId);
