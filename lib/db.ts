@@ -70,6 +70,7 @@ export interface OrderItem {
   price: number;
   quantity: number;
   discount: number;
+  discount_type?: "percentage" | "fixed";
   tax: number;
   done?: boolean;
   status?: "pending" | "preparing" | "done" | "cancelled";
@@ -103,6 +104,9 @@ export interface Order {
   user_name?: string;
   source_type?: string;
   source_id?: string;
+  tip_amount?: number;
+  discount_type?: "percentage" | "fixed";
+  metadata?: any;
 }
 
 export interface Table {
@@ -634,6 +638,10 @@ export interface ActivityLog {
   created_at: string;
 }
 
+export async function dbAddActivityLog(storeId: string, action: string, reason: string, userId: string, userName: string, orderId?: string): Promise<void> {
+  return sql("add_activity_log", { store_id: storeId, action, reason, user_id: userId, user_name: userName, order_id: orderId });
+}
+
 export async function getActivityLogs(storeId: string, limit: number = 100): Promise<ActivityLog[]> {
   return sql<ActivityLog[]>("get_activity_logs", { store_id: storeId, limit });
 }
@@ -850,24 +858,35 @@ export async function syncFromNeon(storeId: string): Promise<{ imported: number;
 }
 
 // ─── Cart Calculation (pure JS, no DB needed) ─────────────────────────────────
-export function calcCart(items: { product: Product; quantity: number; discount: number }[], globalDiscount = 0) {
+export function calcCart(
+  items: { product: Product; quantity: number; discount: number; discount_type?: "percentage" | "fixed"; override_price?: number }[],
+  globalDiscount = 0,
+  globalDiscountType: "percentage" | "fixed" = "percentage"
+) {
   let subtotal = 0;
   let taxAmount = 0;
   let discountAmount = 0;
 
   items.forEach((item) => {
-    const line = item.product.price * item.quantity;
-    const itemDisc = line * (item.discount / 100);
-    const afterDisc = line - itemDisc;
+    const price = item.override_price !== undefined ? item.override_price : item.product.price;
+    const line = price * item.quantity;
+    const itemDisc = item.discount_type === "fixed"
+      ? item.discount
+      : line * (item.discount / 100);
+
+    const afterDisc = Math.max(0, line - itemDisc);
     const tax = afterDisc * (item.product.tax / 100);
     subtotal += afterDisc;
     taxAmount += tax;
     discountAmount += itemDisc;
   });
 
-  const globalDisc = subtotal * (globalDiscount / 100);
+  const globalDisc = globalDiscountType === "fixed"
+    ? globalDiscount
+    : subtotal * (globalDiscount / 100);
+
   discountAmount += globalDisc;
-  const total = subtotal - globalDisc + taxAmount;
+  const total = Math.max(0, subtotal - globalDisc + taxAmount);
 
   return {
     subtotal: r(subtotal),
@@ -906,6 +925,7 @@ export function generateReceipt(order: Order, settings: Settings): string {
   if (order.delivery_phone) lines.push(`Phone:    ${order.delivery_phone}`);
   if (order.table_id) lines.push(`Table:    ${order.table_id}`);
   lines.push(`Type:     ${order.order_type || "dine_in"}`);
+  if (order.user_name) lines.push(`Staff:    ${order.user_name}`);
   lines.push(`--------------------------------`);
   
   // Items
@@ -925,6 +945,10 @@ export function generateReceipt(order: Order, settings: Settings): string {
   // Totals
   lines.push(`Subtotal: ${(c + order.subtotal.toFixed(2)).padStart(18)}`);
   
+  if (order.tip_amount && order.tip_amount > 0) {
+    lines.push(`Tip:      ${(c + order.tip_amount.toFixed(2)).padStart(18)}`);
+  }
+
   // Tax breakdown
   if (settings.show_tax_breakdown && order.tax_amount > 0) {
     const taxName = settings.tax_name || "Tax";
@@ -957,6 +981,13 @@ export function generateReceipt(order: Order, settings: Settings): string {
   if (order.payment_method === "cash") {
     lines.push(`Paid:     ${(c + (order.amount_paid || 0).toFixed(2)).padStart(18)}`);
     lines.push(`Change:   ${(c + (order.change_amount || 0).toFixed(2)).padStart(18)}`);
+  }
+
+  if (order.metadata?.split_payments) {
+    const split = order.metadata.split_payments as { method: string, amount: number }[];
+    split.forEach(s => {
+      lines.push(`${s.method.toUpperCase()}: ${(c + s.amount.toFixed(2)).padStart(21 - s.method.length)}`);
+    });
   }
   
   if (order.amount_paid && order.total && order.amount_paid > order.total) {

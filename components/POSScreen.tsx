@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useRef, useCallback, useState } from "react";
-import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet, Package, QrCode, ShieldCheck } from "lucide-react";
-import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet, Combo, dbHoldOrder, openCashDrawer, printReceipt, openWhatsAppShare, openEmailShare, saveReceiptToFile, Product } from "@/lib/db";
+import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet, Package, QrCode, ShieldCheck, DollarSign, Split } from "lucide-react";
+import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, Coupon, CustomerWallet, Combo, dbHoldOrder, openCashDrawer, printReceipt, openWhatsAppShare, openEmailShare, saveReceiptToFile, Product, sendSmsNotification, dbAddActivityLog } from "@/lib/db";
 import { QRCodeSVG } from "qrcode.react";
 import { useCartStore, useProductsStore, useSettingsStore, useAuthStore, useCombosStore, useStoresStore } from "@/lib/stores";
 import { useGridNavigation } from "@/lib/keyboard";
+import PinModal from "./PinModal";
 import { getIndustryLabels } from "@/lib/industry";
 import { v4 as uuid } from "uuid";
 import { Order } from "@/lib/db";
@@ -26,6 +27,7 @@ export default function POSScreen() {
     amountPaid,
     originalOrderId,
     addItem, 
+    removeItem,
     updateQuantity, 
     updateItemDiscount,
     setOrderType, 
@@ -41,7 +43,14 @@ export default function POSScreen() {
     getDiscountAmount, 
     getTotal,
     getItemCount,
-    toOrder
+    toOrder,
+    globalDiscountType,
+    splitPayments,
+    tipAmount,
+    addCustomItem,
+    overrideItemPrice,
+    setSplitPayments,
+    setTipAmount
   } = useCartStore();
 
   const { 
@@ -70,6 +79,13 @@ export default function POSScreen() {
   const [isGridFocused, setIsGridFocused] = useState(false);
   const [heldOrders, setHeldOrders] = useState<Order[]>([]);
   const [showHeldOrders, setShowHeldOrders] = useState(false);
+  const [showPinModal, setShowPinModal] = useState<{ type: 'price_override' | 'void' | 'no_sale', productId?: string } | null>(null);
+  const [showCustomItemModal, setShowCustomItemModal] = useState(false);
+  const [showSplitPaymentModal, setShowSplitPaymentModal] = useState(false);
+  const [customItem, setCustomItem] = useState({ name: "", price: "" });
+  const [overridePrice, setOverridePrice] = useState("");
+  const [voidReason, setVoidReason] = useState("");
+  const [showVoidReasonModal, setShowVoidReasonModal] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const productGridRef = useRef<HTMLDivElement>(null);
   const [couponCode, setCouponCode] = useState("");
@@ -280,6 +296,13 @@ export default function POSScreen() {
     if (paymentMethod === "cash" && (amountPaid || 0) < finalTotal) {
       newErrors.amount = "Insufficient amount tendered";
     }
+
+    if (paymentMethod === "split") {
+      const splitTotal = splitPayments.reduce((sum, p) => sum + p.amount, 0);
+      if (Math.abs(splitTotal - finalTotal) > 0.01) {
+        newErrors.split = `Split total (${curr}${splitTotal}) does not match order total (${curr}${finalTotal.toFixed(2)})`;
+      }
+    }
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -291,7 +314,7 @@ export default function POSScreen() {
 
     const orderId = originalOrderId || uuid();
     const order = toOrder(orderId, user?.id || "system", user?.name || "System");
-    order.payment_method = paymentMethod;
+    order.payment_method = paymentMethod === 'split' ? 'card' : paymentMethod;
     order.amount_paid = paymentMethod === "cash" ? (amountPaid || 0) : finalTotal;
     order.change_amount = paymentMethod === "cash" ? change : 0;
     order.customer_name = customerInfo?.name || "";
@@ -327,6 +350,8 @@ export default function POSScreen() {
       setUseWallet(false);
       setWalletBalance(0);
       setWalletCustomerId(null);
+      setTipAmount(0);
+      setSplitPayments([]);
       await Promise.all([fetchProducts(), loadHeldOrders()]);
     } catch (err) {
       console.error("Checkout failed:", err);
@@ -516,8 +541,20 @@ export default function POSScreen() {
     }
   };
 
-  const handleClearCart = () => clearCart();
-  const handleRemoveItem = (productId: string) => useCartStore.getState().removeItem(productId);
+  const handleClearCart = () => {
+    if (cart.length === 0) return;
+    setShowVoidReasonModal(true);
+  };
+
+  const handleVoidOrder = async () => {
+    if (!voidReason.trim()) return;
+    setShowPinModal({ type: 'void' });
+  };
+
+  const handleNoSale = async () => {
+    setShowPinModal({ type: 'no_sale' });
+  };
+
   const itemCount = getItemCount();
 
   if (receipt) {
@@ -568,6 +605,20 @@ export default function POSScreen() {
             <button className="btn-ghost py-3 px-3 flex items-center gap-1.5" onClick={handleSaveReceipt} aria-label="Save receipt to file">
               <Save size={16} aria-hidden="true" />
             </button>
+            <button className="btn-ghost py-3 px-3 flex items-center gap-1.5" onClick={async () => {
+              if (lastOrder?.delivery_phone) {
+                try {
+                  await sendSmsNotification(lastOrder.delivery_phone, receipt, activeStoreId);
+                  alert("SMS sent!");
+                } catch (e) {
+                  alert("Failed to send SMS");
+                }
+              } else {
+                alert("No phone number found for this order");
+              }
+            }} aria-label="Share receipt via SMS">
+              <Smartphone size={16} aria-hidden="true" />
+            </button>
           </div>
         </div>
       </div>
@@ -599,6 +650,13 @@ export default function POSScreen() {
             <span id="search-hint" className="sr-only">Press Enter to search by barcode, Escape to clear</span>
           </div>
           <div className="flex gap-1" role="group" aria-label="Filter by category">
+            <button
+              onClick={() => setShowCustomItemModal(true)}
+              className="px-3 py-2 rounded-lg text-xs font-medium transition-all bg-[#141418] text-[#F5C842] border border-[#1E1E26] hover:bg-[#1E1E26] flex items-center gap-1"
+              aria-label="Add custom item"
+            >
+              <Plus size={12} /> Custom
+            </button>
             {allCategories.map((c) => {
               const isSelected = c === "All" ? !selectedCategory : selectedCategory === c;
               const isCombos = c === "Combos";
@@ -759,6 +817,15 @@ export default function POSScreen() {
                 {itemCount} items
               </span>
             )}
+            <button
+              onClick={handleNoSale}
+              className="p-1.5 rounded-lg"
+              style={{ color: "#2ECC71", background: "rgba(46,204,113,0.1)" }}
+              title="No Sale / Open Drawer"
+              aria-label="Open cash drawer"
+            >
+              <Banknote size={14} aria-hidden="true" />
+            </button>
             {cart.length > 0 && (
               <button 
                 onClick={handleClearCart} 
@@ -864,12 +931,28 @@ export default function POSScreen() {
             </div>
           )}
           {cart.map((item) => (
-            <div key={item.product.id} className="card p-3 slide-in" role="listitem">
+            <div key={item.cartItemId} className="card p-3 slide-in" role="listitem">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm truncate">{item.product.name}</div>
                   <div className="text-xs mt-0.5 flex items-center gap-2" style={{ color: "#4A4A5A" }}>
-                    {curr}{item.product.price} × {item.quantity} = {curr}{(item.product.price * item.quantity).toFixed(2)}
+                    <button
+                      onClick={() => setShowPinModal({ type: 'price_override', productId: item.cartItemId })}
+                      className="hover:text-[#F5C842] transition-colors"
+                      title="Override price"
+                    >
+                      {curr}{item.override_price !== undefined ? item.override_price : item.product.price}
+                    </button>
+                    × {item.quantity} = {curr}{((item.override_price !== undefined ? item.override_price : item.product.price) * item.quantity).toFixed(2)}
+                    <button
+                      onClick={() => {
+                        const currentPrice = item.override_price !== undefined ? item.override_price : item.product.price;
+                        overrideItemPrice(item.cartItemId, -currentPrice);
+                      }}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${(item.override_price || item.product.price) < 0 ? 'bg-red-500 text-white' : 'bg-[#1E1E26] text-[#9090A8]'}`}
+                    >
+                      RET
+                    </button>
                     {item.product.metadata?.duration && (
                       <span className="flex items-center gap-1 text-[10px]"><Clock size={10} /> {item.product.metadata.duration}m</span>
                     )}
@@ -881,7 +964,7 @@ export default function POSScreen() {
                   )}
                 </div>
                 <button 
-                  onClick={() => useCartStore.getState().removeItem(item.product.id)} 
+                  onClick={() => removeItem(item.cartItemId)}
                   style={{ color: "#4A4A5A" }}
                   aria-label={`Remove ${item.product.name} from cart`}
                 >
@@ -891,7 +974,7 @@ export default function POSScreen() {
               <div className="flex items-center gap-2 mt-2">
                 <div className="flex items-center gap-1 rounded-lg overflow-hidden" style={{ border: "1px solid #1E1E26" }} role="group" aria-label={`Quantity for ${item.product.name}`}>
                   <button 
-                    onClick={() => updateQuantity(item.product.id, item.quantity - 1)} 
+                    onClick={() => updateQuantity(item.cartItemId, item.quantity - 1)}
                     className="w-10 h-10 flex items-center justify-center touch-manipulation" 
                     style={{ color: "#9090A8" }}
                     aria-label={`Decrease quantity of ${item.product.name}`}
@@ -900,7 +983,7 @@ export default function POSScreen() {
                   </button>
                   <span className="w-10 text-center text-base font-bold" aria-label={`Quantity: ${item.quantity}`}>{item.quantity}</span>
                   <button 
-                    onClick={() => updateQuantity(item.product.id, item.quantity + 1)} 
+                    onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)}
                     className="w-10 h-10 flex items-center justify-center touch-manipulation" 
                     style={{ color: "#9090A8" }}
                     aria-label={`Increase quantity of ${item.product.name}`}
@@ -908,18 +991,23 @@ export default function POSScreen() {
                     <Plus size={16} aria-hidden="true"/>
                   </button>
                 </div>
-                <label htmlFor={`discount-${item.product.id}`} className="sr-only">Discount percentage for {item.product.name}</label>
-                <input 
-                  id={`discount-${item.product.id}`}
-                  type="number" 
-                  placeholder="Disc %" 
-                  value={item.discount || ""}
-                  onChange={(e) => updateItemDiscount(item.product.id, Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                  style={{ fontSize: 12, padding: "4px 8px" }} 
-                  min={0} 
-                  max={100} 
-                  aria-label="Discount percentage"
-                />
+                <div className="flex items-center gap-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
+                  <input
+                    id={`discount-${item.cartItemId}`}
+                    type="number"
+                    placeholder="Disc"
+                    value={item.discount || ""}
+                    onChange={(e) => updateItemDiscount(item.cartItemId, parseFloat(e.target.value) || 0, item.discount_type)}
+                    className="w-16 bg-transparent border-none text-xs px-2"
+                    aria-label={`Discount for ${item.product.name}`}
+                  />
+                  <button
+                    onClick={() => updateItemDiscount(item.cartItemId, item.discount, item.discount_type === 'percentage' ? 'fixed' : 'percentage')}
+                    className="px-2 py-1 text-[10px] font-bold bg-[#1E1E26] text-[#9090A8] hover:text-[#F5C842]"
+                  >
+                    {item.discount_type === 'percentage' ? '%' : curr}
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -928,19 +1016,38 @@ export default function POSScreen() {
         {cart.length > 0 && (
           <div className="p-4 border-t border-border space-y-3" role="region" aria-label="Checkout">
             <div className="flex items-center gap-2">
-              <label htmlFor="order-discount" className="text-sm" style={{ color: "#9090A8" }}>Order Discount</label>
-              <input 
-                id="order-discount"
-                type="number" 
-                placeholder="0" 
-                value={globalDiscount || ""}
-                onChange={(e) => setGlobalDiscount(parseFloat(e.target.value) || 0)}
-                style={{ fontSize: 13, padding: "5px 8px" }} 
-                min={0} 
-                max={100} 
-                aria-label="Order discount percentage"
-              />
-              <span className="text-sm" style={{ color: "#4A4A5A" }}>%</span>
+              <label htmlFor="order-discount" className="text-sm min-w-max" style={{ color: "#9090A8" }}>Order Disc</label>
+              <div className="flex items-center flex-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
+                <input
+                  id="order-discount"
+                  type="number"
+                  placeholder="0"
+                  value={globalDiscount || ""}
+                  onChange={(e) => setGlobalDiscount(parseFloat(e.target.value) || 0)}
+                  className="flex-1 bg-transparent border-none text-sm px-2 py-1"
+                />
+                <button
+                  onClick={() => setGlobalDiscount(globalDiscount, globalDiscountType === 'percentage' ? 'fixed' : 'percentage')}
+                  className="px-3 py-1.5 text-xs font-bold bg-[#1E1E26] text-[#9090A8] hover:text-[#F5C842]"
+                >
+                  {globalDiscountType === 'percentage' ? '%' : curr}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label htmlFor="order-tip" className="text-sm min-w-max" style={{ color: "#9090A8" }}>Add Tip</label>
+              <div className="flex items-center flex-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
+                <span className="pl-2 text-[#4A4A5A] text-sm">{curr}</span>
+                <input
+                  id="order-tip"
+                  type="number"
+                  placeholder="0.00"
+                  value={tipAmount || ""}
+                  onChange={(e) => setTipAmount(parseFloat(e.target.value) || 0)}
+                  className="flex-1 bg-transparent border-none text-sm px-2 py-1"
+                />
+              </div>
             </div>
 
             {/* Coupon Code */}
@@ -1001,16 +1108,19 @@ export default function POSScreen() {
               </div>
             </div>
 
-            <div className="flex gap-2" role="group" aria-label="Payment method">
-              {(["cash", "card", "upi"] as const).map((m) => {
-                const icons = { cash: Banknote, card: CreditCard, upi: Smartphone };
+            <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Payment method">
+              {(["cash", "card", "upi", "split"] as const).map((m) => {
+                const icons = { cash: Banknote, card: CreditCard, upi: Smartphone, split: Split };
                 const Icon = icons[m];
                 return (
                   <button 
                     key={m} 
-                    onClick={() => setPaymentMethod(m)}
+                    onClick={() => {
+                      setPaymentMethod(m);
+                      if (m === 'split') setShowSplitPaymentModal(true);
+                    }}
                     aria-pressed={paymentMethod === m}
-                    className="flex-1 flex flex-col items-center gap-1 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842]"
+                    className="flex-1 min-w-[70px] flex flex-col items-center gap-1 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842]"
                     style={{
                       background: paymentMethod === m ? "rgba(245,200,66,0.12)" : "#141418",
                       border: `1px solid ${paymentMethod === m ? "rgba(245,200,66,0.3)" : "#1E1E26"}`,
@@ -1118,6 +1228,220 @@ export default function POSScreen() {
           </div>
         )}
       </div>
+
+      {/* Custom Item Modal */}
+      {showCustomItemModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+               <Package size={20} className="text-[#F5C842]" /> Add Custom Item
+            </h3>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="text-xs text-[#9090A8] mb-1 block">Item Name</label>
+                <input
+                  autoFocus
+                  placeholder="e.g., Miscellaneous Repair"
+                  className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3"
+                  value={customItem.name}
+                  onChange={(e) => setCustomItem({ ...customItem, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[#9090A8] mb-1 block">Price ({curr})</label>
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3"
+                  value={customItem.price}
+                  onChange={(e) => setCustomItem({ ...customItem, price: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+               <button onClick={() => {setShowCustomItemModal(false); setCustomItem({ name: "", price: "" });}} className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl">Cancel</button>
+               <button
+                 disabled={!customItem.name || !customItem.price}
+                 onClick={() => {
+                   addCustomItem(customItem.name, parseFloat(customItem.price));
+                   setShowCustomItemModal(false);
+                   setCustomItem({ name: "", price: "" });
+                 }}
+                 className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl disabled:opacity-50"
+               >
+                 Add to Cart
+               </button>
+               <button
+                 disabled={!customItem.name || !customItem.price}
+                 onClick={() => {
+                   addCustomItem(`RETURN: ${customItem.name}`, -Math.abs(parseFloat(customItem.price)));
+                   setShowCustomItemModal(false);
+                   setCustomItem({ name: "", price: "" });
+                 }}
+                 className="flex-1 py-3 bg-red-500/10 text-red-500 font-bold border border-red-500/20 rounded-xl disabled:opacity-50"
+               >
+                 Add as Return
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Split Payment Modal */}
+      {showSplitPaymentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+               <Split size={20} className="text-[#F5C842]" /> Split Payment
+            </h3>
+            <p className="text-xs text-[#9090A8] mb-6">Allocate the total amount across different payment methods.</p>
+
+            <div className="space-y-4 mb-6">
+              {['cash', 'card', 'upi'].map(method => {
+                const entry = splitPayments.find(p => p.method === method);
+                return (
+                  <div key={method} className="flex items-center gap-3">
+                    <span className="w-16 text-sm font-bold uppercase text-[#4A4A5A]">{method}</span>
+                    <div className="flex-1 flex items-center bg-[#141418] rounded-xl border border-[#1E1E26] overflow-hidden">
+                      <span className="pl-3 text-[#4A4A5A]">{curr}</span>
+                      <input
+                        type="number"
+                        placeholder="0.00"
+                        value={entry?.amount || ""}
+                        onChange={(e) => {
+                          const amt = parseFloat(e.target.value) || 0;
+                          const others = splitPayments.filter(p => p.method !== method);
+                          setSplitPayments([...others, { method: method as any, amount: amt }]);
+                        }}
+                        className="flex-1 bg-transparent border-none px-3 py-2 text-white"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-4 rounded-xl mb-6 bg-[#141418] border border-[#1E1E26]">
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-[#9090A8]">Order Total</span>
+                <span className="font-bold text-white">{curr}{finalTotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-[#9090A8]">Allocated</span>
+                <span className="font-bold text-[#F5C842]">{curr}{splitPayments.reduce((s, p) => s + p.amount, 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm pt-2 border-t border-[#1E1E26]">
+                <span className="text-[#9090A8]">Remaining</span>
+                <span className={`font-bold ${Math.abs(finalTotal - splitPayments.reduce((s, p) => s + p.amount, 0)) < 0.01 ? 'text-[#2ECC71]' : 'text-[#E74C3C]'}`}>
+                  {curr}{(finalTotal - splitPayments.reduce((s, p) => s + p.amount, 0)).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+               <button onClick={() => {setShowSplitPaymentModal(false); setPaymentMethod('cash');}} className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl">Cancel</button>
+               <button
+                 disabled={Math.abs(finalTotal - splitPayments.reduce((s, p) => s + p.amount, 0)) > 0.01}
+                 onClick={() => setShowSplitPaymentModal(false)}
+                 className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl disabled:opacity-50"
+               >
+                 Confirm Split
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Override Price Input Modal */}
+      {showPinModal?.type === 'price_override' && overridePrice === "" && (
+        <div className="fixed inset-0 z-[101] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+           <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+             <h3 className="text-lg font-bold mb-4">Enter New Price</h3>
+             <input
+               autoFocus
+               type="number"
+               placeholder={`New Price (${curr})`}
+               className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3 mb-6"
+               value={overridePrice}
+               onChange={(e) => setOverridePrice(e.target.value)}
+               onKeyDown={(e) => {
+                 if (e.key === 'Enter' && overridePrice) {
+                    // price entered, PIN handled by PinModal wrapper
+                 }
+               }}
+             />
+             <div className="flex gap-2">
+                <button onClick={() => {setShowPinModal(null); setOverridePrice("");}} className="flex-1 py-3 bg-[#1E1E26] rounded-xl">Cancel</button>
+             </div>
+           </div>
+        </div>
+      )}
+
+      {/* Pin Modals */}
+      {showPinModal && (
+        <PinModal
+          title={
+            showPinModal.type === 'price_override' ? "Authorize Price Override" :
+            showPinModal.type === 'void' ? "Authorize Void Transaction" :
+            "Authorize No Sale"
+          }
+          description="Manager PIN required to perform this action."
+          onCancel={() => {
+            setShowPinModal(null);
+            setOverridePrice("");
+          }}
+          onSuccess={async () => {
+            if (showPinModal.type === 'price_override' && showPinModal.productId && overridePrice) {
+              overrideItemPrice(showPinModal.productId, parseFloat(overridePrice));
+              setShowPinModal(null);
+              setOverridePrice("");
+            } else if (showPinModal.type === 'void') {
+              try {
+                await dbAddActivityLog(activeStoreId, "void_cart", voidReason, user?.id || "system", user?.name || "System");
+                clearCart();
+              } catch (e) {}
+              setShowPinModal(null);
+              setShowVoidReasonModal(false);
+              setVoidReason("");
+            } else if (showPinModal.type === 'no_sale') {
+              try {
+                await dbAddActivityLog(activeStoreId, "no_sale_drawer_open", "Manual drawer opening", user?.id || "system", user?.name || "System");
+                await openCashDrawer();
+              } catch (e) {}
+              setShowPinModal(null);
+            }
+          }}
+        />
+      )}
+
+      {/* Void Reason Modal */}
+      {showVoidReasonModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+               <Trash2 size={20} className="text-[#E74C3C]" /> Void Transaction
+            </h3>
+            <p className="text-xs text-[#9090A8] mb-4">Please provide a reason for cancelling this sale.</p>
+            <textarea
+              autoFocus
+              placeholder="Reason for voiding (e.g., Customer changed mind, Mistake in entry)"
+              className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3 mb-6 h-24 resize-none"
+              value={voidReason}
+              onChange={(e) => setVoidReason(e.target.value)}
+            />
+            <div className="flex gap-2">
+               <button onClick={() => {setShowVoidReasonModal(false); setVoidReason("");}} className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl">Cancel</button>
+               <button
+                 disabled={!voidReason.trim()}
+                 onClick={handleVoidOrder}
+                 className="flex-1 py-3 bg-[#E74C3C] text-white font-bold rounded-xl disabled:opacity-50"
+               >
+                 Confirm Void
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Metadata Prompt Modal */}
       {metadataPrompt && (

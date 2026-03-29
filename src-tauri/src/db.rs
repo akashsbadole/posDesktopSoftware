@@ -119,6 +119,7 @@ pub struct OrderItem {
     pub price: f64,
     pub quantity: i64,
     pub discount: f64,
+    pub discount_type: Option<String>,
     pub tax: f64,
     pub metadata: Option<serde_json::Value>,
 }
@@ -145,6 +146,9 @@ pub struct Order {
     pub synced: Option<bool>,
     pub user_id: Option<String>,
     pub user_name: Option<String>,
+    pub tip_amount: Option<f64>,
+    pub discount_type: Option<String>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -634,6 +638,7 @@ impl Database {
                 subtotal        REAL NOT NULL,
                 tax_amount      REAL NOT NULL,
                 discount_amount REAL NOT NULL,
+                discount_type   TEXT,
                 total           REAL NOT NULL,
                 payment_method  TEXT NOT NULL,
                 amount_paid     REAL NOT NULL,
@@ -646,7 +651,9 @@ impl Database {
                 delivery_phone  TEXT NOT NULL DEFAULT '',
                 user_id         TEXT NOT NULL DEFAULT '',
                 user_name       TEXT NOT NULL DEFAULT '',
+                tip_amount      REAL DEFAULT 0,
                 synced          INTEGER NOT NULL DEFAULT 0,
+                metadata        TEXT,
                 created_at      TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -659,6 +666,7 @@ impl Database {
                 price        REAL NOT NULL,
                 quantity     INTEGER NOT NULL,
                 discount     REAL NOT NULL DEFAULT 0,
+                discount_type TEXT,
                 tax          REAL NOT NULL DEFAULT 18,
                 metadata     TEXT,
                 done         INTEGER NOT NULL DEFAULT 0
@@ -1059,6 +1067,10 @@ impl Database {
             "ALTER TABLE purchase_order_items ADD COLUMN store_id TEXT NOT NULL DEFAULT 'default'",
             [],
         );
+        let _ = self.conn.execute("ALTER TABLE orders ADD COLUMN metadata TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE orders ADD COLUMN tip_amount REAL DEFAULT 0", []);
+        let _ = self.conn.execute("ALTER TABLE orders ADD COLUMN discount_type TEXT", []);
+        let _ = self.conn.execute("ALTER TABLE order_items ADD COLUMN discount_type TEXT", []);
 
         Ok(())
     }
@@ -1680,12 +1692,14 @@ impl Database {
         let limit_val = limit.unwrap_or(500);
         let offset_val = offset.unwrap_or(0);
         let mut stmt = self.conn.prepare(
-            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, created_at
+            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at
              FROM orders WHERE store_id=?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
         )?;
 
         let mut orders: Vec<Order> = stmt
             .query_map(params![store_id, limit_val, offset_val], |row| {
+                let metadata_str: Option<String> = row.get(18)?;
+                let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
                 Ok(Order {
                     id: row.get(0)?,
                     store_id: row.get(1)?,
@@ -1706,14 +1720,17 @@ impl Database {
                     user_id: row.get(15)?,
                     user_name: row.get(16)?,
                     synced: Some(row.get::<_, i32>(17)? == 1),
-                    created_at: row.get(18)?,
+                    metadata,
+                    tip_amount: row.get(19)?,
+                    discount_type: row.get(20)?,
+                    created_at: row.get(21)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
 
         for order in &mut orders {
             let mut item_stmt = self.conn.prepare(
-                "SELECT product_id, product_name, price, quantity, discount, tax, metadata FROM order_items WHERE order_id=?1"
+                "SELECT product_id, product_name, price, quantity, discount, tax, metadata, discount_type FROM order_items WHERE order_id=?1"
             )?;
             order.items = item_stmt
                 .query_map(params![order.id], |row| {
@@ -1727,6 +1744,7 @@ impl Database {
                         discount: row.get(4)?,
                         tax: row.get(5)?,
                         metadata,
+                        discount_type: row.get(7)?,
                     })
                 })?
                 .collect::<Result<Vec<_>>>()?;
@@ -1737,16 +1755,17 @@ impl Database {
 
     pub fn save_order(&self, o: &Order, store_id: &str) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
+        let metadata_str = o.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok());
 
         tx.execute(
             "INSERT OR REPLACE INTO orders
-             (id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, created_at)
-              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,0,?18)",
+             (id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at)
+              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,0,?18,?19,?20,?21)",
             params![
                 o.id, store_id, o.subtotal, o.tax_amount, o.discount_amount, o.total,
                 o.payment_method, o.amount_paid, o.change_amount,
                 o.customer_name, o.status, o.order_type, o.delivery_status,
-                o.delivery_address, o.delivery_phone, o.user_id, o.user_name, o.created_at
+                o.delivery_address, o.delivery_phone, o.user_id, o.user_name, metadata_str, o.tip_amount, o.discount_type, o.created_at
             ],
         )?;
 
@@ -1758,9 +1777,9 @@ impl Database {
                 .as_ref()
                 .and_then(|m| serde_json::to_string(m).ok());
             tx.execute(
-                "INSERT INTO order_items (order_id, store_id, product_id, product_name, price, quantity, discount, tax, metadata)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-                params![o.id, o.store_id, item.product_id, item.product_name, item.price, item.quantity, item.discount, item.tax, metadata_str],
+                "INSERT INTO order_items (order_id, store_id, product_id, product_name, price, quantity, discount, tax, metadata, discount_type)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                params![o.id, o.store_id, item.product_id, item.product_name, item.price, item.quantity, item.discount, item.tax, metadata_str, item.discount_type],
             )?;
 
             if o.status == "completed" {
@@ -2244,10 +2263,12 @@ impl Database {
 
     fn get_order_by_id(&self, id: &str, store_id: &str) -> Result<Order> {
         self.conn.query_row(
-            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, created_at
+            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at
              FROM orders WHERE id=?1 AND store_id=?2",
             params![id, store_id],
             |row| {
+                let metadata_str: Option<String> = row.get(18)?;
+                let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
                 Ok(Order {
                     id: row.get(0)?,
                     store_id: row.get(1)?,
@@ -2268,7 +2289,10 @@ impl Database {
                     user_id: row.get(15)?,
                     user_name: row.get(16)?,
                     synced: Some(row.get::<_, i32>(17)? == 1),
-                    created_at: row.get(18)?,
+                    metadata,
+                    tip_amount: row.get(19)?,
+                    discount_type: row.get(20)?,
+                    created_at: row.get(21)?,
                 })
             }
         )
@@ -3009,6 +3033,30 @@ impl Database {
     ) -> Result<String> {
         Ok("Quickbooks CSV export placeholder".into())
     }
+    pub fn add_activity_log(
+        &self,
+        store_id: &str,
+        action: &str,
+        reason: &str,
+        user_id: &str,
+        user_name: &str,
+        order_id: Option<&str>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO activity_logs (id, store_id, order_id, action, reason, user_id, user_name) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params![
+                uuid::Uuid::new_v4().to_string(),
+                store_id,
+                order_id.unwrap_or(""),
+                action,
+                reason,
+                user_id,
+                user_name
+            ],
+        )?;
+        Ok(())
+    }
+
     pub fn create_compressed_backup(&self, store_id: &str) -> Result<Vec<u8>> {
         let products = self.get_products(store_id)?;
         let orders = self.get_orders(store_id, None, None)?;
