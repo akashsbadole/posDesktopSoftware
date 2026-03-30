@@ -63,15 +63,63 @@ fn delete_product(id: String, store_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn update_stock(id: String, delta: i64, store_id: String) -> Result<(), String> {
+fn update_stock(id: String, delta: i64, store_id: String, user_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.update_stock(&id, delta, &store_id).map_err(|e| e.to_string())
+    db.update_stock(&id, delta, &store_id, &user_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn transfer_stock(id: String, from_store: String, to_store: String, qty: i64) -> Result<(), String> {
+fn transfer_stock(id: String, from_store: String, to_store: String, qty: i64, user_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.transfer_stock(&id, &from_store, &to_store, qty).map_err(|e| e.to_string())
+    db.transfer_stock(&id, &from_store, &to_store, qty, &user_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_batches(product_id: String, store_id: String) -> Result<Vec<db::Batch>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_batches(&product_id, &store_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_batch(batch: db::Batch) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.save_batch(&batch).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_serial_numbers(product_id: String, store_id: String) -> Result<Vec<db::SerialNumber>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_serial_numbers(&product_id, &store_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_serial_number(serial: db::SerialNumber) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.save_serial_number(&serial).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_inventory_transactions(product_id: String, store_id: String) -> Result<Vec<db::InventoryTransaction>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_inventory_transactions(&product_id, &store_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn calculate_inventory_valuation(store_id: String, method: String) -> Result<f64, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.calculate_inventory_valuation(&store_id, &method).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_stock_counts(store_id: String) -> Result<Vec<db::StockCount>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_stock_counts(&store_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_stock_count(count: db::StockCount) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.save_stock_count(&count).map_err(|e| e.to_string())
 }
 
 // ─── Combo Commands ───────────────────────────────────────────────────────────
@@ -1089,6 +1137,14 @@ fn main() {
             check_inventory_alerts,
             create_inventory_alert,
             clear_inventory_alert,
+            get_batches,
+            save_batch,
+            get_serial_numbers,
+            save_serial_number,
+            get_inventory_transactions,
+            calculate_inventory_valuation,
+            get_stock_counts,
+            save_stock_count,
             get_hourly_sales,
             get_staff_performance,
             get_sales_by_item,

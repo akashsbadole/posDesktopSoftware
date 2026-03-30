@@ -19,7 +19,7 @@ import {
   ArrowRightLeft,
   Package
 } from "lucide-react";
-import { useStoresStore, useSettingsStore, useProductsStore } from "@/lib/stores";
+import { useStoresStore, useSettingsStore, useProductsStore, useAuthStore } from "@/lib/stores";
 import { Store, dbTransferStock } from "@/lib/db";
 
 const industryIcons: Record<string, any> = {
@@ -44,6 +44,7 @@ export default function StoresScreen() {
   const { stores, fetchStores, addStore, updateStore, deleteStore, isLoading } = useStoresStore();
   const { activeStoreId, setActiveStore } = useSettingsStore();
   const { products, fetchProducts } = useProductsStore();
+  const { user } = useAuthStore();
   const [isAdding, setIsAdding] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
@@ -102,7 +103,8 @@ export default function StoresScreen() {
         transferData.productId,
         transferData.fromStoreId,
         transferData.toStoreId,
-        transferData.quantity
+        transferData.quantity,
+        user?.id || "system"
       );
       alert("Stock transferred successfully!");
       resetForm();

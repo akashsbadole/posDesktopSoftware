@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useCallback, useState } from "react";
 import { Search, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone, X, Printer, ChevronRight, User, RefreshCw, Share, Mail, Save, MessageCircle, Clock, FolderOpen, Tag, Wallet, Package, QrCode, ShieldCheck, DollarSign, Split } from "lucide-react";
-import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, dbGetCustomerAddresses, Coupon, CustomerWallet, Combo, dbHoldOrder, openCashDrawer, printReceipt, openWhatsAppShare, openEmailShare, saveReceiptToFile, Product, Customer, CustomerAddress, sendSmsNotification, dbAddActivityLog } from "@/lib/db";
+import { dbSaveOrder, generateReceipt, dbGetHeldOrders, dbDeletePendingOrder, validateCoupon, useCoupon, getCustomerWallet, deductWalletBalance, dbGetCustomerByPhone, dbGetCustomerAddresses, Coupon, CustomerWallet, Combo, dbHoldOrder, openCashDrawer, printReceipt, openWhatsAppShare, openEmailShare, saveReceiptToFile, Product, Customer, CustomerAddress, sendSmsNotification, dbAddActivityLog, dbGetBatches, dbGetSerialNumbers, Batch, SerialNumber, ProductVariant } from "@/lib/db";
 import { QRCodeSVG } from "qrcode.react";
 import { useCartStore, useProductsStore, useSettingsStore, useAuthStore, useCombosStore, useStoresStore } from "@/lib/stores";
 import { useGridNavigation } from "@/lib/keyboard";
@@ -79,6 +79,8 @@ export default function POSScreen() {
   const [metadataPrompt, setMetadataPrompt] = useState<{ productId: string, name: string, field: string } | null>(null);
   const [metadataValue, setMetadataValue] = useState("");
   const [variantSelection, setVariantSelection] = useState<{ product: Product, variants: ProductVariant[] } | null>(null);
+  const [batchSelection, setBatchSelection] = useState<{ product: Product, batches: Batch[] } | null>(null);
+  const [serialSelection, setSerialSelection] = useState<{ product: Product, serials: SerialNumber[] } | null>(null);
   const [focusedProductIndex, setFocusedProductIndex] = useState<number>(-1);
   const [isGridFocused, setIsGridFocused] = useState(false);
   const [heldOrders, setHeldOrders] = useState<Order[]>([]);
@@ -200,28 +202,55 @@ export default function POSScreen() {
   };
 
   const handleAddItem = async (product: Product) => {
-    if (product.stock === 0) return;
+    if (product.stock <= 0 && !product.is_digital) return;
 
-    // Check for variants first
+    // 1. Check for variants
     const productVariants = await fetchVariants(product.id);
     if (productVariants && productVariants.length > 0) {
       setVariantSelection({ product, variants: productVariants });
       return;
     }
 
-    if (product.metadata?.track_serial) {
-      setMetadataPrompt({ productId: product.id, name: product.name, field: 'Serial Number' });
-      setMetadataValue("");
-    } else {
-      addItem(product);
+    // 2. Check for batches
+    if (product.metadata?.track_batch) {
+      try {
+        const batches = await dbGetBatches(product.id, activeStoreId);
+        const availableBatches = batches.filter(b => b.quantity > 0);
+        if (availableBatches.length > 0) {
+          setBatchSelection({ product, batches: availableBatches });
+          return;
+        } else if (!product.is_digital) {
+          alert("No available batches for this product.");
+          return;
+        }
+      } catch (err) {
+        console.error("Failed to fetch batches:", err);
+      }
     }
+
+    // 3. Check for serial numbers
+    if (product.metadata?.track_serial) {
+      try {
+        const serials = await dbGetSerialNumbers(product.id, activeStoreId);
+        const availableSerials = serials.filter(s => s.status === 'available');
+        if (availableSerials.length > 0) {
+          setSerialSelection({ product, serials: availableSerials });
+          return;
+        } else if (!product.is_digital) {
+          alert("No available serial numbers for this product.");
+          return;
+        }
+      } catch (err) {
+        console.error("Failed to fetch serials:", err);
+      }
+    }
+
+    addItem(product);
   };
 
   const handleSelectVariant = (variant: ProductVariant) => {
     if (!variantSelection) return;
     const { product } = variantSelection;
-
-    // Create a specialized product entry for the cart using variant details
     const variantProduct: Product = {
       ...product,
       price: variant.price,
@@ -229,9 +258,33 @@ export default function POSScreen() {
       name: `${product.name} (${variant.name}: ${variant.value})`,
       metadata: { ...product.metadata, variant_id: variant.id }
     };
-
     addItem(variantProduct);
     setVariantSelection(null);
+  };
+
+  const handleSelectBatch = (batch: Batch) => {
+    if (!batchSelection) return;
+    const { product } = batchSelection;
+    const batchProduct: Product = {
+      ...product,
+      name: `${product.name} (Batch: ${batch.batch_number})`,
+      metadata: { ...product.metadata, batch_id: batch.id, batch_number: batch.batch_number }
+    };
+    addItem(batchProduct);
+    setBatchSelection(null);
+  };
+
+  const handleSelectSerial = (serial: SerialNumber) => {
+    if (!serialSelection) return;
+    const { product } = serialSelection;
+    const serialProduct: Product = {
+      ...product,
+      name: `${product.name} (S/N: ${serial.serial_number})`,
+      metadata: { ...product.metadata, serial_number_id: serial.id, serial_number: serial.serial_number }
+    };
+    // For serial numbers, we usually want one per line item
+    addItem(serialProduct, 1);
+    setSerialSelection(null);
   };
 
   const handleMetadataSubmit = () => {
@@ -632,7 +685,6 @@ export default function POSScreen() {
     }
   };
 
-  const handleClearCart = () => clearCart();
   const handleRemoveItem = (cartItemId: string) => useCartStore.getState().removeItem(cartItemId);
   const handleClearCart = () => {
     if (cart.length === 0) return;
@@ -1142,8 +1194,8 @@ export default function POSScreen() {
                   </button>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
 
         {cart.length > 0 && (
@@ -1415,6 +1467,68 @@ export default function POSScreen() {
                >
                  Add as Return
                </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Batch Selection Modal */}
+      {batchSelection && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-[#1E1E26] flex items-center justify-between">
+               <h3 className="text-lg font-bold flex items-center gap-2">
+                 <Package size={20} className="text-[#F5C842]" /> Select Batch: {batchSelection.product.name}
+               </h3>
+               <button onClick={() => setBatchSelection(null)} className="text-gray-400 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="p-6 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
+              {batchSelection.batches.map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => handleSelectBatch(b)}
+                  className="flex flex-col p-4 rounded-xl bg-[#141418] border border-[#1E1E26] hover:border-[#F5C842] transition-all text-left"
+                >
+                  <div className="text-xs text-[#9090A8] uppercase font-bold mb-1">Batch #{b.batch_number}</div>
+                  <div className="text-base font-bold mb-2">Expires: {b.expiry_date || 'No Expiry'}</div>
+                  <div className="flex items-center justify-between mt-auto">
+                    <span className="text-[#F5C842] font-bold">Qty: {b.quantity}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="p-4 bg-[#141418] flex justify-end">
+               <button onClick={() => setBatchSelection(null)} className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Serial Selection Modal */}
+      {serialSelection && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-[#1E1E26] flex items-center justify-between">
+               <h3 className="text-lg font-bold flex items-center gap-2">
+                 <Package size={20} className="text-[#F5C842]" /> Select Serial: {serialSelection.product.name}
+               </h3>
+               <button onClick={() => setSerialSelection(null)} className="text-gray-400 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="p-6 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
+              {serialSelection.serials.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => handleSelectSerial(s)}
+                  className="flex flex-col p-4 rounded-xl bg-[#141418] border border-[#1E1E26] hover:border-[#F5C842] transition-all text-left"
+                >
+                  <div className="text-xs text-[#9090A8] uppercase font-bold mb-1">Serial Number</div>
+                  <div className="text-base font-bold mb-2 font-mono">{s.serial_number}</div>
+                  <div className="mt-auto text-[10px] text-green-500 font-bold uppercase tracking-wider">Available</div>
+                </button>
+              ))}
+            </div>
+            <div className="p-4 bg-[#141418] flex justify-end">
+               <button onClick={() => setSerialSelection(null)} className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl">Cancel</button>
             </div>
           </div>
         </div>

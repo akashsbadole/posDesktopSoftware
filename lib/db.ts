@@ -51,6 +51,59 @@ export interface Product {
   combo_items?: ComboItem[];
   combo_discount?: number;
   metadata?: any;
+  base_unit?: string;
+  conversion_factor?: number;
+}
+
+export interface Batch {
+  id: string;
+  product_id: string;
+  store_id: string;
+  batch_number: string;
+  expiry_date?: string;
+  cost_price: number;
+  quantity: number;
+  created_at: string;
+}
+
+export interface SerialNumber {
+  id: string;
+  product_id: string;
+  store_id: string;
+  serial_number: string;
+  status: "available" | "sold" | "returned" | "defective";
+  created_at: string;
+}
+
+export interface InventoryTransaction {
+  id: string;
+  product_id: string;
+  store_id: string;
+  transaction_type: "in" | "out" | "adjustment" | "transfer" | "return";
+  qty_delta: number;
+  batch_id?: string;
+  serial_number_id?: string;
+  reference_type?: "order" | "purchase_order" | "adjustment" | "transfer";
+  reference_id?: string;
+  user_id: string;
+  created_at: string;
+}
+
+export interface StockCount {
+  id: string;
+  store_id: string;
+  status: "draft" | "completed" | "cancelled";
+  created_by: string;
+  created_at: string;
+  items: StockCountItem[];
+}
+
+export interface StockCountItem {
+  id: string;
+  count_id: string;
+  product_id: string;
+  expected_qty: number;
+  actual_qty: number;
 }
 
 export interface ProductVariant {
@@ -529,12 +582,44 @@ export async function dbDeleteProductVariant(id: string, storeId: string): Promi
   return sql("delete_product_variant", { id, store_id: storeId });
 }
 
-export async function dbUpdateStock(id: string, delta: number, storeId: string): Promise<void> {
-  return sql("update_stock", { id, delta, store_id: storeId });
+export async function dbUpdateStock(id: string, delta: number, storeId: string, userId: string): Promise<void> {
+  return sql("update_stock", { id, delta, store_id: storeId, user_id: userId });
 }
 
-export async function dbTransferStock(id: string, fromStore: string, toStore: string, qty: number): Promise<void> {
-  return sql("transfer_stock", { id, from_store: fromStore, to_store: toStore, qty });
+export async function dbTransferStock(id: string, fromStore: string, toStore: string, qty: number, userId: string): Promise<void> {
+  return sql("transfer_stock", { id, from_store: fromStore, to_store: toStore, qty, user_id: userId });
+}
+
+export async function dbGetBatches(productId: string, storeId: string): Promise<Batch[]> {
+  return sql<Batch[]>("get_batches", { product_id: productId, store_id: storeId });
+}
+
+export async function dbSaveBatch(batch: Batch): Promise<void> {
+  return sql("save_batch", { batch });
+}
+
+export async function dbGetSerialNumbers(productId: string, storeId: string): Promise<SerialNumber[]> {
+  return sql<SerialNumber[]>("get_serial_numbers", { product_id: productId, store_id: storeId });
+}
+
+export async function dbSaveSerialNumber(serial: SerialNumber): Promise<void> {
+  return sql("save_serial_number", { serial });
+}
+
+export async function dbGetInventoryTransactions(productId: string, storeId: string): Promise<InventoryTransaction[]> {
+  return sql<InventoryTransaction[]>("get_inventory_transactions", { product_id: productId, store_id: storeId });
+}
+
+export async function dbCalculateValuation(storeId: string, method: "AVG" | "FIFO" | "LIFO"): Promise<number> {
+  return sql<number>("calculate_inventory_valuation", { store_id: storeId, method });
+}
+
+export async function dbGetStockCounts(storeId: string): Promise<StockCount[]> {
+  return sql<StockCount[]>("get_stock_counts", { store_id: storeId });
+}
+
+export async function dbSaveStockCount(count: StockCount): Promise<void> {
+  return sql("save_stock_count", { count });
 }
 
 // ─── Combos ──────────────────────────────────────────────────────────────────
