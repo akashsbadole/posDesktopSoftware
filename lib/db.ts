@@ -1392,6 +1392,12 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
         avg_order_value: c.visits > 0 ? c.total_spent / c.visits : 0
       } as T;
     }
+    case "get_customer_by_phone": {
+      const customers = lsGet<Customer[]>("pos_customers") || [];
+      const phone = (args as any).phone;
+      const c = customers.find(x => x.phone === phone && x.store_id === storeId);
+      return (c || null) as T;
+    }
     case "get_ingredients": return [] as T;
     case "get_recipes": return [] as T;
     case "get_suppliers": return [] as T;
@@ -1399,7 +1405,24 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     case "get_reservations": return [] as T;
     case "get_shifts": return [] as T;
     case "get_expenses": return [] as T;
-    case "get_held_orders": return [] as T;
+    case "hold_order": {
+      const o = (args as any).order as Order;
+      o.store_id = storeId;
+      const held = lsGet<Order[]>("pos_held_orders") || [];
+      held.unshift(o);
+      lsSet("pos_held_orders", held);
+      return undefined as T;
+    }
+    case "get_held_orders": {
+      const held = lsGet<Order[]>("pos_held_orders") || [];
+      return held.filter(o => o.store_id === storeId) as T;
+    }
+    case "delete_pending_order": {
+      const id = (args as any).id;
+      const held = lsGet<Order[]>("pos_held_orders") || [];
+      lsSet("pos_held_orders", held.filter(o => o.id !== id));
+      return undefined as T;
+    }
     case "get_refund_requests": return [] as T;
     case "get_activity_logs": return [] as T;
     case "get_inventory_alerts": return [] as T;
