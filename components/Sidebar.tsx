@@ -194,8 +194,8 @@ export default function Sidebar({
 
   return (
     <aside
-      style={{ width: 72 }}
-      className="flex flex-col items-center py-4 bg-surface border-r border-border h-full shrink-0"
+      style={{ width: 72, zIndex: 60 }}
+      className="flex flex-col items-center py-4 bg-surface border-r border-border h-full shrink-0 relative"
       role="navigation"
       aria-label="Main navigation"
     >

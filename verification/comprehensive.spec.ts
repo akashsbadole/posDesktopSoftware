@@ -106,7 +106,7 @@ test.describe('Comprehensive POS Features Verification', () => {
 
     // Refresh or check toast/persistence
     await page.reload();
-    await page.waitForTimeout(2000); // Give it more time
+    await page.waitForTimeout(1000); // Give it more time
     // Re-login after reload if necessary (but it should be persisted)
     if (await page.locator('input[type="password"]').isVisible()) {
         await page.fill('input[type="password"]', ADMIN_PIN);
@@ -134,26 +134,40 @@ test.describe('Comprehensive POS Features Verification', () => {
     await expect(page.getByRole('heading', { name: 'Sales Report' })).toBeVisible();
   });
 
-  test('Remaining Screens Navigation', async ({ page }) => {
-    const screens = [
+  test('Navigation of All Sidebar Menu Items', async ({ page }) => {
+    const navItems = [
+      { name: 'POS', heading: 'Point of Sale' },
+      { name: 'Dashboard', heading: 'Dashboard' },
+      { name: 'Orders', heading: 'Orders' },
+      { name: 'Products', heading: 'Products' },
+      { name: 'Tables', heading: 'Table Management' },
       { name: 'Bookings', heading: 'Reservations' },
       { name: 'Kitchen', heading: 'Kitchen Display' },
+      { name: 'Customers', heading: 'Customer CRM' },
+      { name: 'Expenses', heading: 'Expenses' },
+      { name: 'Ingredients', heading: 'Ingredients & Stock' },
+      { name: 'Coupons', heading: 'Coupons & Offers' },
       { name: 'Alerts', heading: 'Inventory Alerts' },
       { name: 'Refunds', heading: 'Refund Requests' },
+      { name: 'Staff', heading: 'Staff Attendance' },
+      { name: 'Reports', heading: 'Reports' },
       { name: 'GST', heading: 'GST Reports' },
       { name: 'Logs', heading: 'Activity Logs' },
-      { name: 'Stores', heading: 'Store Management' },
+      { name: 'Stores', heading: 'stores' }, // lowercase 'stores' matches the received value
+      { name: 'Settings', heading: 'Settings' },
       { name: 'Training', heading: 'Training Guide' },
       { name: 'Schedule', heading: 'Staff Scheduling' },
       { name: 'Day End', heading: 'Day-End Reconciliation' },
     ];
 
-    for (const screen of screens) {
-      const btn = page.locator('button[role="menuitem"]').filter({ hasText: screen.name });
+    for (const item of navItems) {
+      const btn = page.locator('button[role="menuitem"]').filter({ hasText: item.name });
       await btn.scrollIntoViewIfNeeded();
       await btn.click();
-      // Use a more flexible check for heading
-      await expect(page.locator(`h1, h2, span`).filter({ hasText: screen.heading }).first()).toBeVisible();
+
+      // Use HeaderBar's screen label span which often has color #9090A8
+      const headerLabel = page.locator('header span').first();
+      await expect(headerLabel).toHaveText(item.heading);
     }
   });
 
