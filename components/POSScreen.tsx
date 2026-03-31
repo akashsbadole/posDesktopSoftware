@@ -429,6 +429,12 @@ export default function POSScreen() {
       const customer = await dbGetCustomerByPhone(phone, activeStoreId);
       if (customer) {
         setActiveCustomer(customer);
+        setCustomerInfo({
+          ...customerInfo,
+          name: customer.name,
+          phone: customer.phone,
+        } as any);
+
         const [wallet, addrs] = await Promise.all([
           getCustomerWallet(customer.id),
           dbGetCustomerAddresses(customer.id),
@@ -1468,14 +1474,18 @@ export default function POSScreen() {
               }
               value={customerInfo?.name || ""}
               onChange={(e) => {
+                const val = e.target.value;
                 setCustomerInfo({
                   ...customerInfo,
-                  name: e.target.value,
+                  name: val,
                   phone: customerInfo?.phone || "",
                   address: customerInfo?.address || "",
                 } as any);
-                if (orderType !== "delivery")
-                  lookupCustomerData(customerInfo?.phone || "");
+                if (orderType !== "delivery") {
+                  if (val.length >= 7 && /^\+?[\d\s-]+$/.test(val)) {
+                    lookupCustomerData(val);
+                  }
+                }
               }}
               style={{
                 paddingLeft: 30,

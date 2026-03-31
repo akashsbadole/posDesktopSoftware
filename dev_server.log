@@ -1,0 +1,171 @@
+
+> pos-tauri@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.2:3000
+✓ Ready in 573ms
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+
+○ Compiling / ...
+ GET / 200 in 10.0s (next.js: 9.3s, application-code: 691ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1621:15)
+[browser] Browser fallback: Command get_customer_orders not fully implemented for store default (lib/db.ts:1621:15)
+ GET / 200 in 277ms (next.js: 32ms, application-code: 245ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 63ms (next.js: 5ms, application-code: 59ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 59ms (next.js: 5ms, application-code: 54ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 59ms (next.js: 5ms, application-code: 54ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 73ms (next.js: 5ms, application-code: 68ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 105ms (next.js: 10ms, application-code: 96ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 55ms (next.js: 4ms, application-code: 52ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 63ms (next.js: 5ms, application-code: 58ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 101ms (next.js: 8ms, application-code: 93ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 54ms (next.js: 5ms, application-code: 49ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 62ms (next.js: 4ms, application-code: 59ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 89ms (next.js: 5ms, application-code: 84ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 57ms (next.js: 3ms, application-code: 54ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 47ms (next.js: 3ms, application-code: 44ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 53ms (next.js: 4ms, application-code: 49ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 52ms (next.js: 3ms, application-code: 49ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 100ms (next.js: 6ms, application-code: 94ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 62ms (next.js: 4ms, application-code: 59ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 61ms (next.js: 4ms, application-code: 57ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 54ms (next.js: 3ms, application-code: 51ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 51ms (next.js: 4ms, application-code: 48ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 51ms (next.js: 3ms, application-code: 48ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 53ms (next.js: 3ms, application-code: 50ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+[browser] Each child in a list should have a unique "key" prop.
+
+Check the render method of `div`. It was passed a child from POSScreen. See https://react.dev/link/warning-keys for more information.
+ GET / 200 in 88ms (next.js: 4ms, application-code: 83ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 60ms (next.js: 3ms, application-code: 57ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 51ms (next.js: 3ms, application-code: 48ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+[browser] Each child in a list should have a unique "key" prop.
+
+Check the render method of `div`. It was passed a child from POSScreen. See https://react.dev/link/warning-keys for more information.
+[browser] Browser fallback: Command get_customer_wallet not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 58ms (next.js: 3ms, application-code: 55ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 51ms (next.js: 3ms, application-code: 47ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 43ms (next.js: 3ms, application-code: 41ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+[browser] Each child in a list should have a unique "key" prop.
+
+Check the render method of `div`. It was passed a child from POSScreen. See https://react.dev/link/warning-keys for more information.
+[browser] Browser fallback: Command get_customer_wallet not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 53ms (next.js: 3ms, application-code: 50ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 61ms (next.js: 4ms, application-code: 57ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 51ms (next.js: 3ms, application-code: 48ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+[browser] Each child in a list should have a unique "key" prop.
+
+Check the render method of `div`. It was passed a child from POSScreen. See https://react.dev/link/warning-keys for more information.
+[browser] Browser fallback: Command get_customer_wallet not fully implemented for store default (lib/db.ts:1627:15)
+[browser] Browser fallback: Command hold_order not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 51ms (next.js: 4ms, application-code: 47ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 59ms (next.js: 3ms, application-code: 56ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 45ms (next.js: 3ms, application-code: 43ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+[browser] Each child in a list should have a unique "key" prop.
+
+Check the render method of `div`. It was passed a child from POSScreen. See https://react.dev/link/warning-keys for more information.
+[browser] Browser fallback: Command get_customer_wallet not fully implemented for store default (lib/db.ts:1627:15)
+[browser] Browser fallback: Command hold_order not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 56ms (next.js: 4ms, application-code: 52ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1627:15)
+ GET / 200 in 145ms (next.js: 6ms, application-code: 139ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 49ms (next.js: 3ms, application-code: 46ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+[browser] Each child in a list should have a unique "key" prop.
+
+Check the render method of `div`. It was passed a child from POSScreen. See https://react.dev/link/warning-keys for more information.
+[browser] Browser fallback: Command get_customer_wallet not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 50ms (next.js: 3ms, application-code: 46ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 48ms (next.js: 3ms, application-code: 45ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 50ms (next.js: 3ms, application-code: 48ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+[browser] Each child in a list should have a unique "key" prop.
+
+Check the render method of `div`. It was passed a child from POSScreen. See https://react.dev/link/warning-keys for more information.
+[browser] Browser fallback: Command get_customer_wallet not fully implemented for store default (lib/db.ts:1644:15)
+[browser] Browser fallback: Command open_cash_drawer not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 59ms (next.js: 3ms, application-code: 55ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 54ms (next.js: 3ms, application-code: 51ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 49ms (next.js: 3ms, application-code: 46ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+[browser] Each child in a list should have a unique "key" prop.
+
+Check the render method of `div`. It was passed a child from POSScreen. See https://react.dev/link/warning-keys for more information.
+[browser] Browser fallback: Command get_customer_wallet not fully implemented for store default (lib/db.ts:1644:15)
+[browser] Browser fallback: Command open_cash_drawer not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 58ms (next.js: 3ms, application-code: 54ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 54ms (next.js: 3ms, application-code: 51ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 44ms (next.js: 3ms, application-code: 41ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+[browser] Each child in a list should have a unique "key" prop.
+
+Check the render method of `div`. It was passed a child from POSScreen. See https://react.dev/link/warning-keys for more information.
+[browser] Browser fallback: Command get_customer_wallet not fully implemented for store default (lib/db.ts:1644:15)
+[browser] Browser fallback: Command open_cash_drawer not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 59ms (next.js: 3ms, application-code: 56ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 49ms (next.js: 3ms, application-code: 46ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 44ms (next.js: 3ms, application-code: 41ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+[browser] Each child in a list should have a unique "key" prop.
+
+Check the render method of `div`. It was passed a child from POSScreen. See https://react.dev/link/warning-keys for more information.
+[browser] Browser fallback: Command get_customer_wallet not fully implemented for store default (lib/db.ts:1644:15)
+[browser] Browser fallback: Command open_cash_drawer not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 53ms (next.js: 5ms, application-code: 48ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+ GET / 200 in 58ms (next.js: 4ms, application-code: 53ms)
+[browser] Browser fallback: Command get_pending_orders_count not fully implemented for store default (lib/db.ts:1644:15)
+[browser] Each child in a list should have a unique "key" prop.
+
+Check the render method of `div`. It was passed a child from POSScreen. See https://react.dev/link/warning-keys for more information.
+[browser] Browser fallback: Command get_customer_wallet not fully implemented for store default (lib/db.ts:1644:15)
