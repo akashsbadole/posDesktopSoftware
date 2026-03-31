@@ -67,6 +67,7 @@ pub struct Store {
     pub created_at: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StoreConfig {
     pub store_id: String,
@@ -279,6 +280,7 @@ pub struct Settings {
     pub onboarding_completed: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TaxRate {
     pub id: String,
@@ -1194,8 +1196,28 @@ impl Database {
     ) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
 
-        Self::adjust_inventory(&tx, id, from_store, -qty, "transfer", Some(to_store), user_id, None, None)?;
-        Self::adjust_inventory(&tx, id, to_store, qty, "transfer", Some(from_store), user_id, None, None)?;
+        Self::adjust_inventory(
+            &tx,
+            id,
+            from_store,
+            -qty,
+            "transfer",
+            Some(to_store),
+            user_id,
+            None,
+            None,
+        )?;
+        Self::adjust_inventory(
+            &tx,
+            id,
+            to_store,
+            qty,
+            "transfer",
+            Some(from_store),
+            user_id,
+            None,
+            None,
+        )?;
 
         tx.commit()?;
         Ok(())
@@ -1851,12 +1873,14 @@ impl Database {
 
     pub fn get_products(&self, store_id: &str) -> Result<Vec<Product>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, store_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, created_at FROM products WHERE store_id=?1 ORDER BY is_favorite DESC, name"
+            "SELECT id, store_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, created_at, base_unit, conversion_factor FROM products WHERE store_id=?1 ORDER BY is_favorite DESC, name"
         )?;
         let products = stmt
             .query_map(params![store_id], |row| {
                 let metadata_str: Option<String> = row.get(18)?;
                 let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
+                let base_unit: Option<String> = row.get(20)?;
+                let conversion_factor: Option<f64> = row.get(21)?;
                 Ok(Product {
                     id: row.get(0)?,
                     store_id: row.get(1)?,
@@ -1878,6 +1902,8 @@ impl Database {
                     image_url: row.get(17)?,
                     metadata,
                     created_at: row.get(19)?,
+                    base_unit,
+                    conversion_factor,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -1905,16 +1931,35 @@ impl Database {
 
     pub fn delete_product(&self, id: &str, store_id: &str) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
-        tx.execute("DELETE FROM recipes WHERE product_id=?1 AND store_id=?2", params![id, store_id])?;
-        tx.execute("DELETE FROM product_variants WHERE product_id=?1 AND store_id=?2", params![id, store_id])?;
-        tx.execute("DELETE FROM products WHERE id=?1 AND store_id=?2", params![id, store_id])?;
+        tx.execute(
+            "DELETE FROM recipes WHERE product_id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
+        tx.execute(
+            "DELETE FROM product_variants WHERE product_id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
+        tx.execute(
+            "DELETE FROM products WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
         tx.commit()?;
         Ok(())
     }
 
     pub fn update_stock(&self, id: &str, delta: i64, store_id: &str, user_id: &str) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
-        Self::adjust_inventory(&tx, id, store_id, delta, "adjustment", None, user_id, None, None)?;
+        Self::adjust_inventory(
+            &tx,
+            id,
+            store_id,
+            delta,
+            "adjustment",
+            None,
+            user_id,
+            None,
+            None,
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -2070,7 +2115,10 @@ impl Database {
         tx.execute("DELETE FROM order_items WHERE order_id=?1", params![o.id])?;
 
         for item in &o.items {
-            let item_metadata_str = item.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok());
+            let item_metadata_str = item
+                .metadata
+                .as_ref()
+                .and_then(|m| serde_json::to_string(m).ok());
             tx.execute(
                 "INSERT INTO order_items (order_id, store_id, product_id, product_name, price, quantity, discount, tax, metadata, discount_type)
                  VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
@@ -2078,11 +2126,29 @@ impl Database {
             )?;
 
             if o.status == "completed" {
-                let batch_id = item.metadata.as_ref().and_then(|m| m.get("batch_id")).and_then(|v| v.as_str());
-                let serial_id = item.metadata.as_ref().and_then(|m| m.get("serial_number_id")).and_then(|v| v.as_str());
+                let batch_id = item
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("batch_id"))
+                    .and_then(|v| v.as_str());
+                let serial_id = item
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("serial_number_id"))
+                    .and_then(|v| v.as_str());
                 let user_id = o.user_id.as_deref().unwrap_or("system");
 
-                Self::adjust_inventory(&tx, &item.product_id, store_id, -item.quantity, "order", Some(&o.id), user_id, batch_id, serial_id)?;
+                Self::adjust_inventory(
+                    &tx,
+                    &item.product_id,
+                    store_id,
+                    -item.quantity,
+                    "order",
+                    Some(&o.id),
+                    user_id,
+                    batch_id,
+                    serial_id,
+                )?;
             }
         }
 
@@ -2099,20 +2165,42 @@ impl Database {
     ) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
 
-        let items = tx.prepare("SELECT product_id, quantity, metadata FROM order_items WHERE order_id=?1")?
+        let items = tx
+            .prepare("SELECT product_id, quantity, metadata FROM order_items WHERE order_id=?1")?
             .query_map(params![id], |row| {
                 let m_str: Option<String> = row.get(2)?;
-                let m: Option<serde_json::Value> = m_str.and_then(|s| serde_json::from_str(&s).ok());
+                let m: Option<serde_json::Value> =
+                    m_str.and_then(|s| serde_json::from_str(&s).ok());
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, m))
-            })?.collect::<Result<Vec<_>>>()?;
+            })?
+            .collect::<Result<Vec<_>>>()?;
 
         for (product_id, qty, metadata) in items {
-            let batch_id = metadata.as_ref().and_then(|m| m.get("batch_id")).and_then(|v| v.as_str());
-            let serial_id = metadata.as_ref().and_then(|m| m.get("serial_number_id")).and_then(|v| v.as_str());
-            Self::adjust_inventory(&tx, &product_id, store_id, qty, "return", Some(id), user_id, batch_id, serial_id)?;
+            let batch_id = metadata
+                .as_ref()
+                .and_then(|m| m.get("batch_id"))
+                .and_then(|v| v.as_str());
+            let serial_id = metadata
+                .as_ref()
+                .and_then(|m| m.get("serial_number_id"))
+                .and_then(|v| v.as_str());
+            Self::adjust_inventory(
+                &tx,
+                &product_id,
+                store_id,
+                qty,
+                "return",
+                Some(id),
+                user_id,
+                batch_id,
+                serial_id,
+            )?;
         }
 
-        tx.execute("UPDATE orders SET status='refunded' WHERE id=?1 AND store_id=?2", params![id, store_id])?;
+        tx.execute(
+            "UPDATE orders SET status='refunded' WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -2609,6 +2697,8 @@ impl Database {
                     image_url,
                     created_at: None,
                     metadata,
+                    base_unit: None,
+                    conversion_factor: None,
                 };
                 if self.upsert_product(&p, store_id).is_ok() {
                     imported += 1;
@@ -3358,7 +3448,17 @@ impl Database {
                 .collect::<Result<Vec<_>>>()?;
 
             for (product_id, qty) in items {
-                Self::adjust_inventory(&tx, &product_id, store_id, qty)?;
+                Self::adjust_inventory(
+                    &tx,
+                    &product_id,
+                    store_id,
+                    qty,
+                    "cancel",
+                    Some(id),
+                    user_id,
+                    None,
+                    None,
+                )?;
             }
         }
 
@@ -3748,7 +3848,7 @@ impl Database {
         store_id: &str,
     ) -> Result<(f64, f64, f64, f64, f64, f64)> {
         self.conn.query_row(
-            "SELECT SUM(subtotal), SUM(tax_amount), 0, 0, 0, 0 FROM orders WHERE store_id=?1 AND status='completed' AND DATE(created_at) BETWEEN ?2 AND ?3",
+            "SELECT COALESCE(SUM(subtotal), 0), COALESCE(SUM(tax_amount), 0), 0, 0, 0, 0 FROM orders WHERE store_id=?1 AND status='completed' AND DATE(created_at) BETWEEN ?2 AND ?3",
             params![store_id, start, end],
             |r| Ok((r.get(0)?, r.get(1)?, 0.0, 0.0, 0.0, 0.0))
         )
@@ -3819,18 +3919,20 @@ impl Database {
 
     pub fn get_batches(&self, product_id: &str, store_id: &str) -> Result<Vec<Batch>> {
         let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, batch_number, expiry_date, cost_price, quantity, created_at FROM batches WHERE product_id=?1 AND store_id=?2")?;
-        let batches = stmt.query_map(params![product_id, store_id], |row| {
-            Ok(Batch {
-                id: row.get(0)?,
-                product_id: row.get(1)?,
-                store_id: row.get(2)?,
-                batch_number: row.get(3)?,
-                expiry_date: row.get(4)?,
-                cost_price: row.get(5)?,
-                quantity: row.get(6)?,
-                created_at: row.get(7)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let batches = stmt
+            .query_map(params![product_id, store_id], |row| {
+                Ok(Batch {
+                    id: row.get(0)?,
+                    product_id: row.get(1)?,
+                    store_id: row.get(2)?,
+                    batch_number: row.get(3)?,
+                    expiry_date: row.get(4)?,
+                    cost_price: row.get(5)?,
+                    quantity: row.get(6)?,
+                    created_at: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(batches)
     }
 
@@ -3844,18 +3946,24 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_serial_numbers(&self, product_id: &str, store_id: &str) -> Result<Vec<SerialNumber>> {
+    pub fn get_serial_numbers(
+        &self,
+        product_id: &str,
+        store_id: &str,
+    ) -> Result<Vec<SerialNumber>> {
         let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, serial_number, status, created_at FROM serial_numbers WHERE product_id=?1 AND store_id=?2")?;
-        let serials = stmt.query_map(params![product_id, store_id], |row| {
-            Ok(SerialNumber {
-                id: row.get(0)?,
-                product_id: row.get(1)?,
-                store_id: row.get(2)?,
-                serial_number: row.get(3)?,
-                status: row.get(4)?,
-                created_at: row.get(5)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let serials = stmt
+            .query_map(params![product_id, store_id], |row| {
+                Ok(SerialNumber {
+                    id: row.get(0)?,
+                    product_id: row.get(1)?,
+                    store_id: row.get(2)?,
+                    serial_number: row.get(3)?,
+                    status: row.get(4)?,
+                    created_at: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(serials)
     }
 
@@ -3869,34 +3977,43 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_inventory_transactions(&self, product_id: &str, store_id: &str) -> Result<Vec<InventoryTransaction>> {
+    pub fn get_inventory_transactions(
+        &self,
+        product_id: &str,
+        store_id: &str,
+    ) -> Result<Vec<InventoryTransaction>> {
         let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, transaction_type, qty_delta, batch_id, serial_number_id, reference_type, reference_id, user_id, created_at FROM inventory_transactions WHERE product_id=?1 AND store_id=?2 ORDER BY created_at DESC")?;
-        let txs = stmt.query_map(params![product_id, store_id], |row| {
-            Ok(InventoryTransaction {
-                id: row.get(0)?,
-                product_id: row.get(1)?,
-                store_id: row.get(2)?,
-                transaction_type: row.get(3)?,
-                qty_delta: row.get(4)?,
-                batch_id: row.get(5)?,
-                serial_number_id: row.get(6)?,
-                reference_type: row.get(7)?,
-                reference_id: row.get(8)?,
-                user_id: row.get(9)?,
-                created_at: row.get(10)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let txs = stmt
+            .query_map(params![product_id, store_id], |row| {
+                Ok(InventoryTransaction {
+                    id: row.get(0)?,
+                    product_id: row.get(1)?,
+                    store_id: row.get(2)?,
+                    transaction_type: row.get(3)?,
+                    qty_delta: row.get(4)?,
+                    batch_id: row.get(5)?,
+                    serial_number_id: row.get(6)?,
+                    reference_type: row.get(7)?,
+                    reference_id: row.get(8)?,
+                    user_id: row.get(9)?,
+                    created_at: row.get(10)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
         Ok(txs)
     }
 
     pub fn calculate_inventory_valuation(&self, store_id: &str, method: &str) -> Result<f64> {
         match method {
             "AVG" => {
-                let val: f64 = self.conn.query_row(
-                    "SELECT SUM(stock * cost_price) FROM products WHERE store_id=?1",
-                    params![store_id],
-                    |r| r.get(0)
-                ).unwrap_or(0.0);
+                let val: f64 = self
+                    .conn
+                    .query_row(
+                        "SELECT SUM(stock * cost_price) FROM products WHERE store_id=?1",
+                        params![store_id],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(0.0);
                 Ok(val)
             }
             "FIFO" | "LIFO" => {
@@ -3913,7 +4030,7 @@ impl Database {
                 }
                 Ok(total)
             }
-            _ => Ok(0.0)
+            _ => Ok(0.0),
         }
     }
 
@@ -3951,18 +4068,37 @@ impl Database {
             params![c.id, c.store_id, c.status, c.created_by],
         )?;
 
-        tx.execute("DELETE FROM stock_count_items WHERE count_id=?1", params![c.id])?;
+        tx.execute(
+            "DELETE FROM stock_count_items WHERE count_id=?1",
+            params![c.id],
+        )?;
         for item in &c.items {
             tx.execute(
                 "INSERT INTO stock_count_items (id, count_id, product_id, expected_qty, actual_qty)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![item.id, c.id, item.product_id, item.expected_qty, item.actual_qty],
+                params![
+                    item.id,
+                    c.id,
+                    item.product_id,
+                    item.expected_qty,
+                    item.actual_qty
+                ],
             )?;
 
             if c.status == "completed" {
                 let diff = item.actual_qty - item.expected_qty;
                 if diff != 0 {
-                    Self::adjust_inventory(&tx, &item.product_id, &c.store_id, diff, "adjustment", Some(&c.id), &c.created_by, None, None)?;
+                    Self::adjust_inventory(
+                        &tx,
+                        &item.product_id,
+                        &c.store_id,
+                        diff,
+                        "adjustment",
+                        Some(&c.id),
+                        &c.created_by,
+                        None,
+                        None,
+                    )?;
                 }
             }
         }

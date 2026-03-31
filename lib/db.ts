@@ -3,7 +3,7 @@
 // Falls back to localStorage when running in browser (dev mode)
 
 import { invoke } from "@tauri-apps/api/tauri";
-import pako from 'pako';
+import pako from "pako";
 
 const IS_TAURI = typeof window !== "undefined" && "__TAURI__" in window;
 
@@ -16,7 +16,13 @@ export async function seedDatabase(): Promise<void> {
 export interface Store {
   id: string;
   name: string;
-  industry: "food" | "retail" | "pharmacy" | "gift_shop" | "salon_spa" | "repair_shop";
+  industry:
+    | "food"
+    | "retail"
+    | "pharmacy"
+    | "gift_shop"
+    | "salon_spa"
+    | "repair_shop";
   is_active: boolean;
   created_at: string;
 }
@@ -164,7 +170,13 @@ export interface Order {
   amount_paid: number;
   change_amount: number;
   customer_name: string;
-  status: "completed" | "refunded" | "hold" | "cancelled" | "pending" | "processing";
+  status:
+    | "completed"
+    | "refunded"
+    | "hold"
+    | "cancelled"
+    | "pending"
+    | "processing";
   order_type: "dine_in" | "takeaway" | "delivery";
   delivery_status: "pending" | "out_for_delivery" | "delivered" | "cancelled";
   delivery_address: string;
@@ -559,63 +571,104 @@ export async function dbDeleteStore(id: string): Promise<void> {
 
 // ─── Products ─────────────────────────────────────────────────────────────────
 export async function dbGetProducts(storeId: string): Promise<Product[]> {
-  return sql<Product[]>("get_products", { store_id: storeId });
+  return sql<Product[]>("get_products", { storeId });
 }
 
-export async function dbSaveProduct(product: Product, storeId: string): Promise<void> {
-  return sql("upsert_product", { product, store_id: storeId });
+export async function dbSaveProduct(
+  product: Product,
+  storeId: string,
+): Promise<void> {
+  return sql("upsert_product", { product, storeId });
 }
 
-export async function dbDeleteProduct(id: string, storeId: string): Promise<void> {
-  return sql("delete_product", { id, store_id: storeId });
+export async function dbDeleteProduct(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("delete_product", { id, storeId });
 }
 
-export async function dbGetProductVariants(productId: string, storeId: string): Promise<ProductVariant[]> {
-  return sql<ProductVariant[]>("get_product_variants", { product_id: productId, store_id: storeId });
+export async function dbGetProductVariants(
+  productId: string,
+  storeId: string,
+): Promise<ProductVariant[]> {
+  return sql<ProductVariant[]>("get_product_variants", { productId, storeId });
 }
 
-export async function dbSaveProductVariant(variant: ProductVariant, storeId: string): Promise<void> {
-  return sql("save_product_variant", { variant, store_id: storeId });
+export async function dbSaveProductVariant(
+  variant: ProductVariant,
+  storeId: string,
+): Promise<void> {
+  return sql("save_product_variant", { variant, storeId });
 }
 
-export async function dbDeleteProductVariant(id: string, storeId: string): Promise<void> {
-  return sql("delete_product_variant", { id, store_id: storeId });
+export async function dbDeleteProductVariant(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("delete_product_variant", { id, storeId });
 }
 
-export async function dbUpdateStock(id: string, delta: number, storeId: string, userId: string): Promise<void> {
-  return sql("update_stock", { id, delta, store_id: storeId, user_id: userId });
+export async function dbUpdateStock(
+  id: string,
+  delta: number,
+  storeId: string,
+  userId: string,
+): Promise<void> {
+  return sql("update_stock", { id, delta, storeId, userId });
 }
 
-export async function dbTransferStock(id: string, fromStore: string, toStore: string, qty: number, userId: string): Promise<void> {
-  return sql("transfer_stock", { id, from_store: fromStore, to_store: toStore, qty, user_id: userId });
+export async function dbTransferStock(
+  id: string,
+  fromStore: string,
+  toStore: string,
+  qty: number,
+  userId: string,
+): Promise<void> {
+  return sql("transfer_stock", { id, fromStore, toStore, qty, userId });
 }
 
-export async function dbGetBatches(productId: string, storeId: string): Promise<Batch[]> {
-  return sql<Batch[]>("get_batches", { product_id: productId, store_id: storeId });
+export async function dbGetBatches(
+  productId: string,
+  storeId: string,
+): Promise<Batch[]> {
+  return sql<Batch[]>("get_batches", { productId, storeId });
 }
 
 export async function dbSaveBatch(batch: Batch): Promise<void> {
   return sql("save_batch", { batch });
 }
 
-export async function dbGetSerialNumbers(productId: string, storeId: string): Promise<SerialNumber[]> {
-  return sql<SerialNumber[]>("get_serial_numbers", { product_id: productId, store_id: storeId });
+export async function dbGetSerialNumbers(
+  productId: string,
+  storeId: string,
+): Promise<SerialNumber[]> {
+  return sql<SerialNumber[]>("get_serial_numbers", { productId, storeId });
 }
 
 export async function dbSaveSerialNumber(serial: SerialNumber): Promise<void> {
   return sql("save_serial_number", { serial });
 }
 
-export async function dbGetInventoryTransactions(productId: string, storeId: string): Promise<InventoryTransaction[]> {
-  return sql<InventoryTransaction[]>("get_inventory_transactions", { product_id: productId, store_id: storeId });
+export async function dbGetInventoryTransactions(
+  productId: string,
+  storeId: string,
+): Promise<InventoryTransaction[]> {
+  return sql<InventoryTransaction[]>("get_inventory_transactions", {
+    productId,
+    storeId,
+  });
 }
 
-export async function dbCalculateValuation(storeId: string, method: "AVG" | "FIFO" | "LIFO"): Promise<number> {
-  return sql<number>("calculate_inventory_valuation", { store_id: storeId, method });
+export async function dbCalculateValuation(
+  storeId: string,
+  method: "AVG" | "FIFO" | "LIFO",
+): Promise<number> {
+  return sql<number>("calculate_inventory_valuation", { storeId, method });
 }
 
 export async function dbGetStockCounts(storeId: string): Promise<StockCount[]> {
-  return sql<StockCount[]>("get_stock_counts", { store_id: storeId });
+  return sql<StockCount[]>("get_stock_counts", { storeId });
 }
 
 export async function dbSaveStockCount(count: StockCount): Promise<void> {
@@ -624,49 +677,82 @@ export async function dbSaveStockCount(count: StockCount): Promise<void> {
 
 // ─── Combos ──────────────────────────────────────────────────────────────────
 export async function dbGetCombos(storeId: string): Promise<Combo[]> {
-  return sql<Combo[]>("get_combos", { store_id: storeId });
+  return sql<Combo[]>("get_combos", { storeId });
 }
 
-export async function dbSaveCombo(combo: Combo, storeId: string): Promise<void> {
-  return sql("save_combo", { combo, store_id: storeId });
+export async function dbSaveCombo(
+  combo: Combo,
+  storeId: string,
+): Promise<void> {
+  return sql("save_combo", { combo, storeId });
 }
 
-export async function dbDeleteCombo(id: string, storeId: string): Promise<void> {
-  return sql("delete_combo", { id, store_id: storeId });
+export async function dbDeleteCombo(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("delete_combo", { id, storeId });
 }
 
-export async function dbToggleCombo(id: string, isActive: boolean, storeId: string): Promise<void> {
-  return sql("toggle_combo", { id, active: isActive, store_id: storeId });
+export async function dbToggleCombo(
+  id: string,
+  isActive: boolean,
+  storeId: string,
+): Promise<void> {
+  return sql("toggle_combo", { id, active: isActive, storeId });
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
-export async function dbGetOrders(storeId: string, limit?: number, offset?: number): Promise<Order[]> {
-  return sql<Order[]>("get_orders", { store_id: storeId, limit, offset });
+export async function dbGetOrders(
+  storeId: string,
+  limit?: number,
+  offset?: number,
+): Promise<Order[]> {
+  return sql<Order[]>("get_orders", { storeId, limit, offset });
 }
 
-export async function dbSaveOrder(order: Order, storeId: string): Promise<void> {
-  return sql("save_order", { order, store_id: storeId });
+export async function dbSaveOrder(
+  order: Order,
+  storeId: string,
+): Promise<void> {
+  return sql("save_order", { order, storeId });
 }
 
-export async function dbRefundOrder(id: string, storeId: string, userId: string = "system", userName: string = "System"): Promise<void> {
-  return sql("refund_order", { id, store_id: storeId, user_id: userId, user_name: userName });
+export async function dbRefundOrder(
+  id: string,
+  storeId: string,
+  userId: string = "system",
+  userName: string = "System",
+): Promise<void> {
+  return sql("refund_order", { id, storeId, userId, userName });
 }
 
-export async function updateDeliveryStatus(id: string, status: string, storeId: string): Promise<void> {
-  return sql("update_delivery_status", { id, status, store_id: storeId });
+export async function updateDeliveryStatus(
+  id: string,
+  status: string,
+  storeId: string,
+): Promise<void> {
+  return sql("update_delivery_status", { id, status, storeId });
 }
 
-export async function dbUpdateOrderStatus(id: string, status: string, storeId: string): Promise<void> {
-  return sql("update_order_status", { id, status, store_id: storeId });
+export async function dbUpdateOrderStatus(
+  id: string,
+  status: string,
+  storeId: string,
+): Promise<void> {
+  return sql("update_order_status", { id, status, storeId });
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 export async function dbGetSettings(storeId: string): Promise<Settings> {
-  return sql<Settings>("get_settings", { store_id: storeId });
+  return sql<Settings>("get_settings", { storeId });
 }
 
-export async function dbSaveSettings(settings: Settings, storeId: string): Promise<void> {
-  return sql("save_settings", { settings, store_id: storeId });
+export async function dbSaveSettings(
+  settings: Settings,
+  storeId: string,
+): Promise<void> {
+  return sql("save_settings", { settings, storeId });
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
@@ -676,48 +762,69 @@ export async function dbGetDailySummary(storeId: string) {
     transactions: number;
     avg_order: number;
     items_sold: number;
-  }>("get_daily_summary", { store_id: storeId });
+  }>("get_daily_summary", { storeId });
 }
 
 export async function dbGetWeeklyRevenue(storeId: string) {
-  return sql<{ label: string; revenue: number }[]>("get_weekly_revenue", { store_id: storeId });
+  return sql<{ label: string; revenue: number }[]>("get_weekly_revenue", {
+    storeId,
+  });
 }
 
 export async function dbGetTopProducts(storeId: string) {
-  return sql<{ name: string; qty: number; revenue: number }[]>("get_top_products", { store_id: storeId });
+  return sql<{ name: string; qty: number; revenue: number }[]>(
+    "get_top_products",
+    { storeId },
+  );
 }
 
 export async function dbGetLowStock(storeId: string) {
-  return sql<{ name: string; stock: number }[]>("get_low_stock", { store_id: storeId });
+  return sql<{ name: string; stock: number }[]>("get_low_stock", { storeId });
 }
 
-export async function getSalesByPaymentMethod(date: string, storeId: string): Promise<{ cash: number; upi: number; card: number }> {
-  const result = await sql<[number, number, number]>("get_sales_by_payment_method", { date, store_id: storeId });
+export async function getSalesByPaymentMethod(
+  date: string,
+  storeId: string,
+): Promise<{ cash: number; upi: number; card: number }> {
+  const result = await sql<[number, number, number]>(
+    "get_sales_by_payment_method",
+    { date, storeId },
+  );
   return { cash: result[0], upi: result[1], card: result[2] };
 }
 
 // ─── CSV Import/Export ─────────────────────────────────────────────────────
 export async function exportProductsCsv(storeId: string): Promise<string> {
-  return sql<string>("export_products_csv", { store_id: storeId });
+  return sql<string>("export_products_csv", { storeId });
 }
 
 export async function exportOrdersCsv(storeId: string): Promise<string> {
-  return sql<string>("export_orders_csv", { store_id: storeId });
+  return sql<string>("export_orders_csv", { storeId });
 }
 
-export async function importProductsCsv(csvData: string, storeId: string): Promise<{ imported: number; errors: number }> {
-  return sql<{ imported: number; errors: number }>("import_products_csv", { csv_data: csvData, store_id: storeId });
+export async function importProductsCsv(
+  csvData: string,
+  storeId: string,
+): Promise<{ imported: number; errors: number }> {
+  return sql<{ imported: number; errors: number }>("import_products_csv", {
+    csvData,
+    storeId,
+  });
 }
 
 // ─── Reports ───────────────────────────────────────────────────────────────
-export async function getSalesReport(startDate: string, endDate: string, storeId: string) {
+export async function getSalesReport(
+  startDate: string,
+  endDate: string,
+  storeId: string,
+) {
   return sql<{
     start_date: string;
     end_date: string;
     total_revenue: number;
     total_orders: number;
     avg_order: number;
-  }>("get_sales_report", { start_date: startDate, end_date: endDate, store_id: storeId });
+  }>("get_sales_report", { startDate, endDate, storeId });
 }
 
 // ─── Users ─────────────────────────────────────────────────────────────────
@@ -742,10 +849,13 @@ export async function getUsers(): Promise<User[]> {
 
 // ─── Backup ─────────────────────────────────────────────────────────────────
 export async function exportBackup(storeId: string): Promise<string> {
-  return sql<string>("export_backup", { store_id: storeId });
+  return sql<string>("export_backup", { storeId });
 }
 
-export async function importBackup(backupJson: string, storeId: string): Promise<{ products_imported: number; orders_imported: number }> {
+export async function importBackup(
+  backupJson: string,
+  storeId: string,
+): Promise<{ products_imported: number; orders_imported: number }> {
   let jsonString = backupJson;
 
   // Detect and decompress gzipped base64 data for backward compatibility
@@ -757,12 +867,15 @@ export async function importBackup(backupJson: string, storeId: string): Promise
       bytes[i] = binaryString.charCodeAt(i);
     }
     // If this succeeds, it's gzipped base64
-    jsonString = pako.ungzip(bytes, { to: 'string' });
+    jsonString = pako.ungzip(bytes, { to: "string" });
   } catch {
     // Not gzipped base64, treat as plain JSON string
   }
 
-  return sql<{ products_imported: number; orders_imported: number }>("import_backup", { backup_json: jsonString, store_id: storeId });
+  return sql<{ products_imported: number; orders_imported: number }>(
+    "import_backup",
+    { backup_json: jsonString, storeId },
+  );
 }
 
 // ─── Activity Logs ─────────────────────────────────────────────────────────
@@ -774,71 +887,122 @@ export interface ActivityLog {
   previous_data: string | null;
   new_data: string | null;
   reason: string;
-  user_id: string;
+  userId: string;
   user_name: string;
   created_at: string;
 }
 
-export async function dbAddActivityLog(storeId: string, action: string, reason: string, userId: string, userName: string, orderId?: string): Promise<void> {
-  return sql("add_activity_log", { store_id: storeId, action, reason, user_id: userId, user_name: userName, order_id: orderId });
+export async function dbAddActivityLog(
+  storeId: string,
+  action: string,
+  reason: string,
+  userId: string,
+  userName: string,
+  orderId?: string,
+): Promise<void> {
+  return sql("add_activity_log", {
+    storeId,
+    action,
+    reason,
+    userId,
+    userName,
+    orderId,
+  });
 }
 
-export async function getActivityLogs(storeId: string, limit: number = 100): Promise<ActivityLog[]> {
-  return sql<ActivityLog[]>("get_activity_logs", { store_id: storeId, limit });
+export async function getActivityLogs(
+  storeId: string,
+  limit: number = 100,
+): Promise<ActivityLog[]> {
+  return sql<ActivityLog[]>("get_activity_logs", { storeId, limit });
 }
 
 // ─── Tables ───────────────────────────────────────────────────────────────────
 export async function dbGetTables(storeId: string): Promise<Table[]> {
-  return sql<Table[]>("get_tables", { store_id: storeId });
+  return sql<Table[]>("get_tables", { storeId });
 }
 
-export async function dbSaveTable(table: Table, storeId: string): Promise<void> {
-  return sql("save_table", { table, store_id: storeId });
+export async function dbSaveTable(
+  table: Table,
+  storeId: string,
+): Promise<void> {
+  return sql("save_table", { table, storeId });
 }
 
-export async function dbDeleteTable(id: string, storeId: string): Promise<void> {
-  return sql("delete_table", { id, store_id: storeId });
+export async function dbDeleteTable(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("delete_table", { id, storeId });
 }
 
-export async function dbUpdateTableStatus(id: string, status: string, storeId: string): Promise<void> {
-  return sql("update_table_status", { id, status, store_id: storeId });
+export async function dbUpdateTableStatus(
+  id: string,
+  status: string,
+  storeId: string,
+): Promise<void> {
+  return sql("update_table_status", { id, status, storeId });
 }
 
 // ─── Staff Attendance ─────────────────────────────────────────────────────────
-export async function dbClockIn(userId: string, userName: string, storeId: string): Promise<void> {
-  return sql("clock_in", { user_id: userId, user_name: userName, store_id: storeId });
+export async function dbClockIn(
+  userId: string,
+  userName: string,
+  storeId: string,
+): Promise<void> {
+  return sql("clock_in", { userId, userName, storeId });
 }
 
-export async function dbClockOut(userId: string, storeId: string): Promise<void> {
-  return sql("clock_out", { user_id: userId, store_id: storeId });
+export async function dbClockOut(
+  userId: string,
+  storeId: string,
+): Promise<void> {
+  return sql("clock_out", { userId, storeId });
 }
 
-export async function dbGetTodayAttendance(storeId: string): Promise<StaffAttendance[]> {
-  return sql<StaffAttendance[]>("get_today_attendance", { store_id: storeId });
+export async function dbGetTodayAttendance(
+  storeId: string,
+): Promise<StaffAttendance[]> {
+  return sql<StaffAttendance[]>("get_today_attendance", { storeId });
 }
 
-export async function dbIsClockedIn(userId: string, storeId: string): Promise<boolean> {
-  return sql<boolean>("is_clocked_in", { user_id: userId, store_id: storeId });
+export async function dbIsClockedIn(
+  userId: string,
+  storeId: string,
+): Promise<boolean> {
+  return sql<boolean>("is_clocked_in", { userId, storeId });
 }
 
 // ─── Customers ──────────────────────────────────────────────────────────────
 export async function dbGetCustomers(storeId: string): Promise<Customer[]> {
-  return sql<Customer[]>("get_customers", { store_id: storeId });
+  return sql<Customer[]>("get_customers", { storeId });
 }
 
-export async function dbSaveCustomer(customer: Customer, storeId: string): Promise<void> {
-  return sql("save_customer", { customer, store_id: storeId });
+export async function dbSaveCustomer(
+  customer: Customer,
+  storeId: string,
+): Promise<void> {
+  return sql("save_customer", { customer, storeId });
 }
 
-export async function dbDeleteCustomer(id: string, storeId: string): Promise<void> {
-  return sql("delete_customer", { id, store_id: storeId });
+export async function dbDeleteCustomer(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("delete_customer", { id, storeId });
 }
 
-export async function dbGetCustomerAddresses(customerId: string): Promise<CustomerAddress[]> {
-  return sql<CustomerAddress[]>("get_customer_addresses", { customer_id: customerId });
+export async function dbGetCustomerAddresses(
+  customerId: string,
+): Promise<CustomerAddress[]> {
+  return sql<CustomerAddress[]>("get_customer_addresses", {
+    customer_id: customerId,
+  });
 }
 
-export async function dbSaveCustomerAddress(address: CustomerAddress): Promise<void> {
+export async function dbSaveCustomerAddress(
+  address: CustomerAddress,
+): Promise<void> {
   return sql("save_customer_address", { address });
 }
 
@@ -847,113 +1011,212 @@ export async function dbDeleteCustomerAddress(id: string): Promise<void> {
 }
 
 export async function exportCustomersCsv(storeId: string): Promise<string> {
-  return sql<string>("export_customers_csv", { store_id: storeId });
+  return sql<string>("export_customers_csv", { storeId });
 }
 
-export async function importCustomersCsv(csvData: string, storeId: string): Promise<{ imported: number; errors: number }> {
-  return sql<{ imported: number; errors: number }>("import_customers_csv", { csv_data: csvData, store_id: storeId });
+export async function importCustomersCsv(
+  csvData: string,
+  storeId: string,
+): Promise<{ imported: number; errors: number }> {
+  return sql<{ imported: number; errors: number }>("import_customers_csv", {
+    csv_data: csvData,
+    storeId,
+  });
 }
 
-export async function dbGetCustomerStatistics(customerId: string): Promise<CustomerStatistics> {
-  return sql<CustomerStatistics>("get_customer_statistics", { customer_id: customerId });
+export async function dbGetCustomerStatistics(
+  customerId: string,
+): Promise<CustomerStatistics> {
+  return sql<CustomerStatistics>("get_customer_statistics", {
+    customer_id: customerId,
+  });
 }
 
-export async function dbGetCustomerByPhone(phone: string, storeId: string): Promise<Customer | null> {
-  return sql<Customer | null>("get_customer_by_phone", { phone, store_id: storeId });
+export async function dbGetCustomerByPhone(
+  phone: string,
+  storeId: string,
+): Promise<Customer | null> {
+  return sql<Customer | null>("get_customer_by_phone", { phone, storeId });
 }
 
-export async function dbAddLoyaltyPoints(customerId: string, points: number, spent: number, storeId: string): Promise<void> {
-  return sql("add_loyalty_points", { customer_id: customerId, points, spent, store_id: storeId });
+export async function dbAddLoyaltyPoints(
+  customerId: string,
+  points: number,
+  spent: number,
+  storeId: string,
+): Promise<void> {
+  return sql("add_loyalty_points", {
+    customer_id: customerId,
+    points,
+    spent,
+    storeId,
+  });
 }
 
-export async function dbGetCustomerOrders(phone: string, storeId: string): Promise<Order[]> {
-  return sql<Order[]>("get_customer_orders", { phone, store_id: storeId });
+export async function dbGetCustomerOrders(
+  phone: string,
+  storeId: string,
+): Promise<Order[]> {
+  return sql<Order[]>("get_customer_orders", { phone, storeId });
 }
 
 // ─── Order Notes ────────────────────────────────────────────────────────────
-export async function dbAddOrderNote(orderId: string, note: string, storeId: string): Promise<void> {
-  return sql("add_order_note", { order_id: orderId, note, store_id: storeId });
+export async function dbAddOrderNote(
+  orderId: string,
+  note: string,
+  storeId: string,
+): Promise<void> {
+  return sql("add_order_note", { order_id: orderId, note, storeId });
 }
 
-export async function dbGetOrderNotes(orderId: string, storeId: string): Promise<OrderNote[]> {
-  return sql<OrderNote[]>("get_order_notes", { order_id: orderId, store_id: storeId });
+export async function dbGetOrderNotes(
+  orderId: string,
+  storeId: string,
+): Promise<OrderNote[]> {
+  return sql<OrderNote[]>("get_order_notes", { order_id: orderId, storeId });
 }
 
 // ─── Inventory Alerts ───────────────────────────────────────────────────────
-export async function dbGetInventoryAlerts(storeId: string): Promise<InventoryAlert[]> {
-  return sql<InventoryAlert[]>("get_inventory_alerts", { store_id: storeId });
+export async function dbGetInventoryAlerts(
+  storeId: string,
+): Promise<InventoryAlert[]> {
+  return sql<InventoryAlert[]>("get_inventory_alerts", { storeId });
 }
 
-export async function dbCheckInventoryAlerts(storeId: string): Promise<InventoryAlert[]> {
-  return sql<InventoryAlert[]>("check_inventory_alerts", { store_id: storeId });
+export async function dbCheckInventoryAlerts(
+  storeId: string,
+): Promise<InventoryAlert[]> {
+  return sql<InventoryAlert[]>("check_inventory_alerts", { storeId });
 }
 
-export async function dbCreateInventoryAlert(alert: InventoryAlert, storeId: string): Promise<void> {
-  return sql("create_inventory_alert", { alert, store_id: storeId });
+export async function dbCreateInventoryAlert(
+  alert: InventoryAlert,
+  storeId: string,
+): Promise<void> {
+  return sql("create_inventory_alert", { alert, storeId });
 }
 
-export async function dbClearInventoryAlert(id: string, storeId: string): Promise<void> {
-  return sql("clear_inventory_alert", { id, store_id: storeId });
+export async function dbClearInventoryAlert(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("clear_inventory_alert", { id, storeId });
 }
 
 // ─── Enhanced Reports ───────────────────────────────────────────────────────
-export async function dbGetHourlySales(date: string, storeId: string): Promise<HourlySales[]> {
-  return sql<HourlySales[]>("get_hourly_sales", { date, store_id: storeId });
+export async function dbGetHourlySales(
+  date: string,
+  storeId: string,
+): Promise<HourlySales[]> {
+  return sql<HourlySales[]>("get_hourly_sales", { date, storeId });
 }
 
-export async function dbGetStaffPerformance(startDate: string, endDate: string, storeId: string): Promise<StaffPerformance[]> {
-  return sql<StaffPerformance[]>("get_staff_performance", { start_date: startDate, end_date: endDate, store_id: storeId });
+export async function dbGetStaffPerformance(
+  startDate: string,
+  endDate: string,
+  storeId: string,
+): Promise<StaffPerformance[]> {
+  return sql<StaffPerformance[]>("get_staff_performance", {
+    startDate,
+    endDate,
+    storeId,
+  });
 }
 
-export async function dbGetSalesByItem(startDate: string, endDate: string, storeId: string): Promise<SalesByItem[]> {
-  return sql<SalesByItem[]>("get_sales_by_item", { start_date: startDate, end_date: endDate, store_id: storeId });
+export async function dbGetSalesByItem(
+  startDate: string,
+  endDate: string,
+  storeId: string,
+): Promise<SalesByItem[]> {
+  return sql<SalesByItem[]>("get_sales_by_item", {
+    startDate,
+    endDate,
+    storeId,
+  });
 }
 
 // ─── Hold & Cancel ──────────────────────────────────────────────────────────
-export async function dbHoldOrder(order: Order, storeId: string): Promise<void> {
-  return sql("hold_order", { order, store_id: storeId });
+export async function dbHoldOrder(
+  order: Order,
+  storeId: string,
+): Promise<void> {
+  return sql("hold_order", { order, storeId });
 }
 
 export async function dbGetHeldOrders(storeId: string): Promise<Order[]> {
-  return sql<Order[]>("get_held_orders", { store_id: storeId });
+  return sql<Order[]>("get_held_orders", { storeId });
 }
 
-export async function dbCancelOrder(id: string, reason: string, userId: string, userName: string, storeId: string): Promise<void> {
-  return sql("cancel_order", { id, reason, user_id: userId, user_name: userName, store_id: storeId });
+export async function dbCancelOrder(
+  id: string,
+  reason: string,
+  userId: string,
+  userName: string,
+  storeId: string,
+): Promise<void> {
+  return sql("cancel_order", { id, reason, userId, userName, storeId });
 }
 
 // ─── Refunds ───────────────────────────────────────────────────────────────
-export async function dbCreateRefundRequest(orderId: string, amount: number, reason: string, storeId: string): Promise<string> {
-  return sql<string>("create_refund_request", { order_id: orderId, amount, reason, store_id: storeId });
+export async function dbCreateRefundRequest(
+  orderId: string,
+  amount: number,
+  reason: string,
+  storeId: string,
+): Promise<string> {
+  return sql<string>("create_refund_request", {
+    orderId,
+    amount,
+    reason,
+    storeId,
+  });
 }
 
-export async function dbGetRefundRequests(storeId: string): Promise<RefundRequest[]> {
-  return sql<RefundRequest[]>("get_refund_requests", { store_id: storeId });
+export async function dbGetRefundRequests(
+  storeId: string,
+): Promise<RefundRequest[]> {
+  return sql<RefundRequest[]>("get_refund_requests", { storeId });
 }
 
-export async function dbApproveRefund(id: string, userId: string, userName: string, storeId: string): Promise<void> {
-  return sql("approve_refund", { id, user_id: userId, user_name: userName, store_id: storeId });
+export async function dbApproveRefund(
+  id: string,
+  userId: string,
+  userName: string,
+  storeId: string,
+): Promise<void> {
+  return sql("approve_refund", { id, userId, userName, storeId });
 }
 
-export async function dbRejectRefund(id: string, storeId: string): Promise<void> {
-  return sql("reject_refund", { id, store_id: storeId });
+export async function dbRejectRefund(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("reject_refund", { id, storeId });
 }
 
 // ─── Crash Recovery ─────────────────────────────────────────────────────────
-export async function dbGetPendingOrdersCount(storeId: string): Promise<number> {
-  return sql<number>("get_pending_orders_count", { store_id: storeId });
+export async function dbGetPendingOrdersCount(
+  storeId: string,
+): Promise<number> {
+  return sql<number>("get_pending_orders_count", { storeId });
 }
 
 export async function dbGetPendingOrders(storeId: string): Promise<Order[]> {
-  return sql<Order[]>("get_pending_orders", { store_id: storeId });
+  return sql<Order[]>("get_pending_orders", { storeId });
 }
 
-export async function dbDeletePendingOrder(id: string, storeId: string): Promise<void> {
-  return sql("delete_pending_order", { id, store_id: storeId });
+export async function dbDeletePendingOrder(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("delete_pending_order", { id, storeId });
 }
 
 // ─── Hardware Integration ───────────────────────────────────────────────────
-export async function printToPrinter(receipt: string, printerName?: string): Promise<void> {
+export async function printToPrinter(
+  receipt: string,
+  printerName?: string,
+): Promise<void> {
   return sql("print_to_printer", { receipt, printerName });
 }
 
@@ -965,7 +1228,10 @@ export async function openCashDrawer(): Promise<void> {
   return sql("open_cash_drawer");
 }
 
-export async function saveReceiptToFile(receipt: string, fileName: string): Promise<string> {
+export async function saveReceiptToFile(
+  receipt: string,
+  fileName: string,
+): Promise<string> {
   return sql<string>("save_receipt_to_file", { receipt, fileName });
 }
 
@@ -973,7 +1239,10 @@ export async function openWhatsAppShare(receipt: string): Promise<void> {
   return sql("open_whatsapp_share", { receipt });
 }
 
-export async function openEmailShare(receipt: string, subject: string): Promise<void> {
+export async function openEmailShare(
+  receipt: string,
+  subject: string,
+): Promise<void> {
   return sql("open_email_share", { receipt, subject });
 }
 
@@ -983,16 +1252,16 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
 
 async function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   maxRetries: number = MAX_RETRIES,
-  delay: number = RETRY_DELAY_MS
+  delay: number = RETRY_DELAY_MS,
 ): Promise<T> {
   let lastError: Error | null = null;
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
@@ -1006,42 +1275,62 @@ async function retryWithBackoff<T>(
   throw lastError;
 }
 
-export async function syncToNeon(storeId: string): Promise<{ synced: number; error?: string }> {
+export async function syncToNeon(
+  storeId: string,
+): Promise<{ synced: number; error?: string }> {
   try {
-    return await retryWithBackoff(() => sql("sync_to_neon", { store_id: storeId }));
+    return await retryWithBackoff(() => sql("sync_to_neon", { storeId }));
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("Neon sync failed after retries:", errorMsg);
-    return { synced: 0, error: `Sync failed: ${errorMsg}. Please check your connection and try again.` };
+    return {
+      synced: 0,
+      error: `Sync failed: ${errorMsg}. Please check your connection and try again.`,
+    };
   }
 }
 
-export async function syncFromNeon(storeId: string): Promise<{ imported: number; error?: string }> {
+export async function syncFromNeon(
+  storeId: string,
+): Promise<{ imported: number; error?: string }> {
   try {
-    return await retryWithBackoff(() => sql("sync_from_neon", { store_id: storeId }));
+    return await retryWithBackoff(() => sql("sync_from_neon", { storeId }));
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("Neon import failed after retries:", errorMsg);
-    return { imported: 0, error: `Import failed: ${errorMsg}. Please check your connection and try again.` };
+    return {
+      imported: 0,
+      error: `Import failed: ${errorMsg}. Please check your connection and try again.`,
+    };
   }
 }
 
 // ─── Cart Calculation (pure JS, no DB needed) ─────────────────────────────────
 export function calcCart(
-  items: { product: Product; quantity: number; discount: number; discount_type?: "percentage" | "fixed"; override_price?: number }[],
+  items: {
+    product: Product;
+    quantity: number;
+    discount: number;
+    discount_type?: "percentage" | "fixed";
+    override_price?: number;
+  }[],
   globalDiscount = 0,
-  globalDiscountType: "percentage" | "fixed" = "percentage"
+  globalDiscountType: "percentage" | "fixed" = "percentage",
 ) {
   let subtotal = 0;
   let taxAmount = 0;
   let discountAmount = 0;
 
   items.forEach((item) => {
-    const price = item.override_price !== undefined ? item.override_price : item.product.price;
+    const price =
+      item.override_price !== undefined
+        ? item.override_price
+        : item.product.price;
     const line = price * item.quantity;
-    const itemDisc = item.discount_type === "fixed"
-      ? item.discount
-      : line * (item.discount / 100);
+    const itemDisc =
+      item.discount_type === "fixed"
+        ? item.discount
+        : line * (item.discount / 100);
 
     const afterDisc = Math.max(0, line - itemDisc);
     const tax = afterDisc * (item.product.tax / 100);
@@ -1050,9 +1339,10 @@ export function calcCart(
     discountAmount += itemDisc;
   });
 
-  const globalDisc = globalDiscountType === "fixed"
-    ? globalDiscount
-    : subtotal * (globalDiscount / 100);
+  const globalDisc =
+    globalDiscountType === "fixed"
+      ? globalDiscount
+      : subtotal * (globalDiscount / 100);
 
   discountAmount += globalDisc;
   const total = Math.max(0, subtotal - globalDisc + taxAmount);
@@ -1074,7 +1364,7 @@ export function generateReceipt(order: Order, settings: Settings): string {
   const c = settings.currency_symbol;
   const isIndia = settings.country === "IN";
   const lines: string[] = [];
-  
+
   // Header
   if (settings.show_logo_on_receipt && settings.logo_url) {
     lines.push(`[LOGO: ${settings.logo_url}]`);
@@ -1083,10 +1373,11 @@ export function generateReceipt(order: Order, settings: Settings): string {
   lines.push(`       ${settings.store_name}`);
   if (settings.address) lines.push(`  ${settings.address}`);
   if (settings.phone) lines.push(`  ${settings.phone}`);
-  if (settings.receipt_header_text) lines.push(`  ${settings.receipt_header_text}`);
+  if (settings.receipt_header_text)
+    lines.push(`  ${settings.receipt_header_text}`);
   if (isIndia && settings.tax_id) lines.push(`  GSTIN: ${settings.tax_id}`);
   lines.push(`================================`);
-  
+
   // Order Info
   lines.push(`Order #: ${order.id.slice(-6).toUpperCase()}`);
   lines.push(`Date:    ${new Date(order.created_at).toLocaleString()}`);
@@ -1096,7 +1387,7 @@ export function generateReceipt(order: Order, settings: Settings): string {
   lines.push(`Type:     ${order.order_type || "dine_in"}`);
   if (order.user_name) lines.push(`Staff:    ${order.user_name}`);
   lines.push(`--------------------------------`);
-  
+
   // Items
   lines.push(`ITEMS`);
   lines.push(`--------------------------------`);
@@ -1106,14 +1397,16 @@ export function generateReceipt(order: Order, settings: Settings): string {
     const right = `${c}${itemTotal.toFixed(2)}`;
     lines.push(`${left.padEnd(22)}${right.padStart(8)}`);
     if (i.discount > 0) {
-      lines.push(`  Discount: -${c}${(itemTotal * i.discount / 100).toFixed(2)}`);
+      lines.push(
+        `  Discount: -${c}${((itemTotal * i.discount) / 100).toFixed(2)}`,
+      );
     }
   });
   lines.push(`--------------------------------`);
-  
+
   // Totals
   lines.push(`Subtotal: ${(c + order.subtotal.toFixed(2)).padStart(18)}`);
-  
+
   if (order.tip_amount && order.tip_amount > 0) {
     lines.push(`Tip:      ${(c + order.tip_amount.toFixed(2)).padStart(18)}`);
   }
@@ -1122,22 +1415,26 @@ export function generateReceipt(order: Order, settings: Settings): string {
   if (settings.show_tax_breakdown && order.tax_amount > 0) {
     const taxName = settings.tax_name || "Tax";
     const taxRate = settings.tax_rate || 0;
-    lines.push(`${taxName} (${taxRate}%): ${(c + order.tax_amount.toFixed(2)).padStart(13)}`);
+    lines.push(
+      `${taxName} (${taxRate}%): ${(c + order.tax_amount.toFixed(2)).padStart(13)}`,
+    );
   }
-  
+
   if (order.discount_amount > 0) {
-    lines.push(`Discount: -${(c + order.discount_amount.toFixed(2)).padStart(16)}`);
+    lines.push(
+      `Discount: -${(c + order.discount_amount.toFixed(2)).padStart(16)}`,
+    );
   }
-  
+
   lines.push(`================================`);
   lines.push(`TOTAL:    ${(c + order.total.toFixed(2)).padStart(18)}`);
   lines.push(`================================`);
-  
+
   // Payment Details
   lines.push(`PAYMENT`);
   lines.push(`--------------------------------`);
   lines.push(`Method:   ${order.payment_method?.toUpperCase() || "CASH"}`);
-  
+
   if (isIndia) {
     if (order.payment_method === "upi" && settings.upi_id) {
       lines.push(`UPI ID:   ${settings.upi_id}`);
@@ -1146,23 +1443,34 @@ export function generateReceipt(order: Order, settings: Settings): string {
       lines.push(`Merchant: ${settings.merchant_id}`);
     }
   }
-  
+
   if (order.payment_method === "cash") {
-    lines.push(`Paid:     ${(c + (order.amount_paid || 0).toFixed(2)).padStart(18)}`);
-    lines.push(`Change:   ${(c + (order.change_amount || 0).toFixed(2)).padStart(18)}`);
+    lines.push(
+      `Paid:     ${(c + (order.amount_paid || 0).toFixed(2)).padStart(18)}`,
+    );
+    lines.push(
+      `Change:   ${(c + (order.change_amount || 0).toFixed(2)).padStart(18)}`,
+    );
   }
 
   if (order.metadata?.split_payments) {
-    const split = order.metadata.split_payments as { method: string, amount: number }[];
-    split.forEach(s => {
-      lines.push(`${s.method.toUpperCase()}: ${(c + s.amount.toFixed(2)).padStart(21 - s.method.length)}`);
+    const split = order.metadata.split_payments as {
+      method: string;
+      amount: number;
+    }[];
+    split.forEach((s) => {
+      lines.push(
+        `${s.method.toUpperCase()}: ${(c + s.amount.toFixed(2)).padStart(21 - s.method.length)}`,
+      );
     });
   }
-  
+
   if (order.amount_paid && order.total && order.amount_paid > order.total) {
-    lines.push(`Balance:  ${(c + (order.amount_paid - order.total).toFixed(2)).padStart(18)}`);
+    lines.push(
+      `Balance:  ${(c + (order.amount_paid - order.total).toFixed(2)).padStart(18)}`,
+    );
   }
-  
+
   // Footer
   lines.push(`================================`);
   if (settings.footer_text) {
@@ -1171,7 +1479,7 @@ export function generateReceipt(order: Order, settings: Settings): string {
     lines.push(`   Thank you! Visit again`);
   }
   lines.push(`================================`);
-  
+
   return lines.filter(Boolean).join("\n");
 }
 
@@ -1241,27 +1549,121 @@ function defaultSettings(): Settings {
 
 function seedProducts(storeId: string): Product[] {
   return [
-    { id: `p1_${storeId}`, store_id: storeId, name: "Coffee", price: 120, cost_price: 50, wholesale_price: 100, category: "Beverages", subcategory: "Hot Coffee", stock: 100, barcode: "001", sku: "COF-001", description: "Rich blend coffee", tax: 5, status: "active", tags: "hot,morning", is_digital: false, is_favorite: true },
-    { id: `p2_${storeId}`, store_id: storeId, name: "Tea", price: 60, cost_price: 20, wholesale_price: 50, category: "Beverages", subcategory: "Hot Tea", stock: 150, barcode: "002", sku: "TEA-002", description: "Green tea", tax: 5, status: "active", tags: "hot,healthy", is_digital: false, is_favorite: false },
-    { id: `p3_${storeId}`, store_id: storeId, name: "Sandwich", price: 180, cost_price: 80, wholesale_price: 150, category: "Food", subcategory: "Snacks", stock: 50, barcode: "003", sku: "SND-003", description: "Club sandwich", tax: 12, status: "active", tags: "snack,lunch", is_digital: false, is_favorite: false },
-    { id: `p4_${storeId}`, store_id: storeId, name: "Burger", price: 250, cost_price: 120, wholesale_price: 220, category: "Food", subcategory: "Main Course", stock: 40, barcode: "004", sku: "BRG-004", description: "Beef burger", tax: 12, status: "active", tags: "heavy,dinner", is_digital: false, is_favorite: true },
+    {
+      id: `p1_${storeId}`,
+      store_id: storeId,
+      name: "Coffee",
+      price: 120,
+      cost_price: 50,
+      wholesale_price: 100,
+      category: "Beverages",
+      subcategory: "Hot Coffee",
+      stock: 100,
+      barcode: "001",
+      sku: "COF-001",
+      description: "Rich blend coffee",
+      tax: 5,
+      status: "active",
+      tags: "hot,morning",
+      is_digital: false,
+      is_favorite: true,
+    },
+    {
+      id: `p2_${storeId}`,
+      store_id: storeId,
+      name: "Tea",
+      price: 60,
+      cost_price: 20,
+      wholesale_price: 50,
+      category: "Beverages",
+      subcategory: "Hot Tea",
+      stock: 150,
+      barcode: "002",
+      sku: "TEA-002",
+      description: "Green tea",
+      tax: 5,
+      status: "active",
+      tags: "hot,healthy",
+      is_digital: false,
+      is_favorite: false,
+    },
+    {
+      id: `p3_${storeId}`,
+      store_id: storeId,
+      name: "Sandwich",
+      price: 180,
+      cost_price: 80,
+      wholesale_price: 150,
+      category: "Food",
+      subcategory: "Snacks",
+      stock: 50,
+      barcode: "003",
+      sku: "SND-003",
+      description: "Club sandwich",
+      tax: 12,
+      status: "active",
+      tags: "snack,lunch",
+      is_digital: false,
+      is_favorite: false,
+    },
+    {
+      id: `p4_${storeId}`,
+      store_id: storeId,
+      name: "Burger",
+      price: 250,
+      cost_price: 120,
+      wholesale_price: 220,
+      category: "Food",
+      subcategory: "Main Course",
+      stock: 40,
+      barcode: "004",
+      sku: "BRG-004",
+      description: "Beef burger",
+      tax: 12,
+      status: "active",
+      tags: "heavy,dinner",
+      is_digital: false,
+      is_favorite: true,
+    },
   ];
 }
 
-async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const storeId = (args?.storeId as string) || (args?.store_id as string) || process.env.NEXT_PUBLIC_DEFAULT_STORE_ID || "default";
+async function browserFallback<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  const storeId =
+    (args?.storeId as string) ||
+    (args?.store_id as string) ||
+    process.env.NEXT_PUBLIC_DEFAULT_STORE_ID ||
+    "default";
 
   // Initialize seed data if not present
   const initSeedData = () => {
     if (!lsGet("pos_initialized")) {
       lsSet(LS.stores, [
-        { id: "default", name: process.env.NEXT_PUBLIC_DEFAULT_STORE_NAME || "Main Store", industry: (process.env.NEXT_PUBLIC_DEFAULT_INDUSTRY as any) || "food", is_active: true, created_at: new Date().toISOString() },
-        { id: "retail1", name: "Fashion Boutique", industry: "retail", is_active: true, created_at: new Date().toISOString() }
+        {
+          id: "default",
+          name: process.env.NEXT_PUBLIC_DEFAULT_STORE_NAME || "Main Store",
+          industry: (process.env.NEXT_PUBLIC_DEFAULT_INDUSTRY as any) || "food",
+          is_active: true,
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: "retail1",
+          name: "Fashion Boutique",
+          industry: "retail",
+          is_active: true,
+          created_at: new Date().toISOString(),
+        },
       ]);
-      lsSet(LS.products, seedProducts("default").concat(seedProducts("retail1")));
+      lsSet(
+        LS.products,
+        seedProducts("default").concat(seedProducts("retail1")),
+      );
       lsSet(LS.settings, {
-        "default": { ...defaultSettings(), onboarding_completed: true },
-        "retail1": { ...defaultSettings(), onboarding_completed: true }
+        default: { ...defaultSettings(), onboarding_completed: true },
+        retail1: { ...defaultSettings(), onboarding_completed: true },
       });
       lsSet("pos_initialized", true);
     }
@@ -1275,47 +1677,58 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     case "seed_database":
       initSeedData();
       return undefined as T;
-    case "get_stores": return (lsGet<Store[]>(LS.stores) || []) as T;
+    case "get_stores":
+      return (lsGet<Store[]>(LS.stores) || []) as T;
     case "upsert_store": {
-        const stores = lsGet<Store[]>(LS.stores) || [];
-        const s = (args as any).store as Store;
-        const idx = stores.findIndex(x => x.id === s.id);
-        if (idx >= 0) stores[idx] = s; else stores.push(s);
-        lsSet(LS.stores, stores);
-        return undefined as T;
+      const stores = lsGet<Store[]>(LS.stores) || [];
+      const s = (args as any).store as Store;
+      const idx = stores.findIndex((x) => x.id === s.id);
+      if (idx >= 0) stores[idx] = s;
+      else stores.push(s);
+      lsSet(LS.stores, stores);
+      return undefined as T;
     }
     case "get_products": {
       const p = lsGet<Product[]>(LS.products) || [];
-      return p.filter(x => x.store_id === storeId) as T;
+      return p.filter((x) => x.store_id === storeId) as T;
     }
     case "upsert_product": {
       const products = lsGet<Product[]>(LS.products) || [];
       const p = (args as any).product as Product;
       p.store_id = storeId;
       // Scoped findIndex
-      const idx = products.findIndex((x) => x.id === p.id && x.store_id === storeId);
-      if (idx >= 0) products[idx] = p; else products.push(p);
+      const idx = products.findIndex(
+        (x) => x.id === p.id && x.store_id === storeId,
+      );
+      if (idx >= 0) products[idx] = p;
+      else products.push(p);
       lsSet(LS.products, products);
       return undefined as T;
     }
     case "transfer_stock": {
       const products = lsGet<Product[]>(LS.products) || [];
       const { id, fromStore, toStore, qty } = args as any;
-      const fromIdx = products.findIndex(p => p.id === id && p.store_id === fromStore);
-      const toIdx = products.findIndex(p => p.id === id && p.store_id === toStore);
+      const fromIdx = products.findIndex(
+        (p) => p.id === id && p.store_id === fromStore,
+      );
+      const toIdx = products.findIndex(
+        (p) => p.id === id && p.store_id === toStore,
+      );
       if (fromIdx >= 0) products[fromIdx].stock -= qty;
       if (toIdx >= 0) products[toIdx].stock += qty;
       lsSet(LS.products, products);
       return undefined as T;
     }
     case "delete_product": {
-      const products = (lsGet<Product[]>(LS.products) || []).filter((p) => !(p.id === (args as any).id && p.store_id === storeId));
+      const products = (lsGet<Product[]>(LS.products) || []).filter(
+        (p) => !(p.id === (args as any).id && p.store_id === storeId),
+      );
       lsSet(LS.products, products);
       return undefined as T;
     }
     case "get_orders": {
       const orders = lsGet<Order[]>(LS.orders) || [];
-      return orders.filter(o => o.store_id === storeId) as T;
+      return orders.filter((o) => o.store_id === storeId) as T;
     }
     case "save_order": {
       const o = (args as any).order as Order;
@@ -1337,39 +1750,50 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     }
     case "get_tables": {
       const tables = lsGet<Table[]>("pos_tables") || [];
-      return tables.filter(t => t.store_id === storeId) as T;
+      return tables.filter((t) => t.store_id === storeId) as T;
     }
     case "verify_pin": {
       const pin = (args as any).pin;
-      if (pin === "1234") return { id: "admin", name: "Administrator", role: "admin" } as T;
-      if (pin === "0000") return { id: "cashier", name: "Cashier", role: "cashier" } as T;
+      if (pin === "1234")
+        return { id: "admin", name: "Administrator", role: "admin" } as T;
+      if (pin === "0000")
+        return { id: "cashier", name: "Cashier", role: "cashier" } as T;
       return null as T;
     }
     case "get_daily_summary": {
-        return { revenue: 0, transactions: 0, avg_order: 0, items_sold: 0 } as T;
+      return { revenue: 0, transactions: 0, avg_order: 0, items_sold: 0 } as T;
     }
-    case "get_weekly_revenue": return [] as T;
-    case "get_top_products": return [] as T;
-    case "get_low_stock": return [] as T;
+    case "get_weekly_revenue":
+      return [] as T;
+    case "get_top_products":
+      return [] as T;
+    case "get_low_stock":
+      return [] as T;
     case "get_expense_categories": {
       const items = lsGet<ExpenseCategory[]>("pos_expense_categories") || [];
-      return items.filter(x => x.store_id === storeId) as T;
+      return items.filter((x) => x.store_id === storeId) as T;
     }
     case "get_product_variants": {
       const items = lsGet<ProductVariant[]>("pos_product_variants") || [];
-      return items.filter(x => x.product_id === (args as any).product_id && x.store_id === storeId) as T;
+      return items.filter(
+        (x) =>
+          x.product_id === (args as any).product_id && x.store_id === storeId,
+      ) as T;
     }
     case "save_product_variant": {
       const items = lsGet<ProductVariant[]>("pos_product_variants") || [];
       const v = (args as any).variant as ProductVariant;
       v.store_id = storeId;
-      const idx = items.findIndex(x => x.id === v.id);
-      if (idx >= 0) items[idx] = v; else items.push(v);
+      const idx = items.findIndex((x) => x.id === v.id);
+      if (idx >= 0) items[idx] = v;
+      else items.push(v);
       lsSet("pos_product_variants", items);
       return undefined as T;
     }
     case "delete_product_variant": {
-      const items = (lsGet<ProductVariant[]>("pos_product_variants") || []).filter(x => !(x.id === (args as any).id && x.store_id === storeId));
+      const items = (
+        lsGet<ProductVariant[]>("pos_product_variants") || []
+      ).filter((x) => !(x.id === (args as any).id && x.store_id === storeId));
       lsSet("pos_product_variants", items);
       return undefined as T;
     }
@@ -1377,58 +1801,95 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       const orders = lsGet<Order[]>(LS.orders) || [];
       const id = (args as any).id;
       const status = (args as any).status;
-      const idx = orders.findIndex(o => o.id === id && o.store_id === storeId);
+      const idx = orders.findIndex(
+        (o) => o.id === id && o.store_id === storeId,
+      );
       if (idx >= 0) orders[idx].status = status;
       lsSet(LS.orders, orders);
       return undefined as T;
     }
-    case "get_combos": return [] as T;
+    case "get_combos":
+      return [] as T;
     case "get_customers": {
       const c = lsGet<Customer[]>("pos_customers") || [];
-      return c.filter(x => x.store_id === storeId) as T;
+      return c.filter((x) => x.store_id === storeId) as T;
     }
     case "save_customer": {
       const customers = lsGet<Customer[]>("pos_customers") || [];
       const c = (args as any).customer as Customer;
       c.store_id = storeId;
-      const idx = customers.findIndex(x => x.id === c.id);
-      if (idx >= 0) customers[idx] = c; else customers.push(c);
+      const idx = customers.findIndex((x) => x.id === c.id);
+      if (idx >= 0) customers[idx] = c;
+      else customers.push(c);
       lsSet("pos_customers", customers);
       return undefined as T;
     }
     case "delete_customer": {
-      const customers = (lsGet<Customer[]>("pos_customers") || []).filter(x => x.id !== (args as any).id);
+      const customers = (lsGet<Customer[]>("pos_customers") || []).filter(
+        (x) => x.id !== (args as any).id,
+      );
       lsSet("pos_customers", customers);
       return undefined as T;
     }
     case "get_customer_addresses": {
       const a = lsGet<CustomerAddress[]>("pos_customer_addresses") || [];
-      return a.filter(x => x.customer_id === (args as any).customer_id) as T;
+      return a.filter((x) => x.customer_id === (args as any).customer_id) as T;
     }
     case "save_customer_address": {
-      const addresses = lsGet<CustomerAddress[]>("pos_customer_addresses") || [];
+      const addresses =
+        lsGet<CustomerAddress[]>("pos_customer_addresses") || [];
       const a = (args as any).address as CustomerAddress;
-      const idx = addresses.findIndex(x => x.id === a.id);
-      if (idx >= 0) addresses[idx] = a; else addresses.push(a);
+      const idx = addresses.findIndex((x) => x.id === a.id);
+      if (idx >= 0) addresses[idx] = a;
+      else addresses.push(a);
       lsSet("pos_customer_addresses", addresses);
       return undefined as T;
     }
     case "delete_customer_address": {
-      const addresses = (lsGet<CustomerAddress[]>("pos_customer_addresses") || []).filter(x => x.id !== (args as any).id);
+      const addresses = (
+        lsGet<CustomerAddress[]>("pos_customer_addresses") || []
+      ).filter((x) => x.id !== (args as any).id);
       lsSet("pos_customer_addresses", addresses);
       return undefined as T;
     }
     case "export_customers_csv": {
       const c = lsGet<Customer[]>("pos_customers") || [];
-      const filtered = c.filter(x => x.store_id === storeId);
-      const header = ["id", "name", "phone", "email", "loyalty_points", "total_spent", "visits", "group_name", "notes", "birthday", "anniversary", "credit_limit", "price_tier", "loyalty_tier"];
-      const rows = filtered.map(x => [
-        x.id, x.name, x.phone, x.email,
-        x.loyalty_points.toString(), x.total_spent.toString(), x.visits.toString(),
-        x.group_name || "", x.notes || "", x.birthday || "", x.anniversary || "",
-        (x.credit_limit || 0).toString(), x.price_tier || "", x.loyalty_tier || ""
+      const filtered = c.filter((x) => x.store_id === storeId);
+      const header = [
+        "id",
+        "name",
+        "phone",
+        "email",
+        "loyalty_points",
+        "total_spent",
+        "visits",
+        "group_name",
+        "notes",
+        "birthday",
+        "anniversary",
+        "credit_limit",
+        "price_tier",
+        "loyalty_tier",
+      ];
+      const rows = filtered.map((x) => [
+        x.id,
+        x.name,
+        x.phone,
+        x.email,
+        x.loyalty_points.toString(),
+        x.total_spent.toString(),
+        x.visits.toString(),
+        x.group_name || "",
+        x.notes || "",
+        x.birthday || "",
+        x.anniversary || "",
+        (x.credit_limit || 0).toString(),
+        x.price_tier || "",
+        x.loyalty_tier || "",
       ]);
-      const csv = [header, ...rows].map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(",")).join("\n");
+      const csv = [header, ...rows]
+        .map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(","))
+        .join("\n");
       return csv as T;
     }
     case "import_customers_csv": {
@@ -1440,8 +1901,13 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        const parts = line.split(",").map(p => p.replace(/^"|"$/g, '').replace(/""/g, '"'));
-        if (parts.length < 3) { errors++; continue; }
+        const parts = line
+          .split(",")
+          .map((p) => p.replace(/^"|"$/g, "").replace(/""/g, '"'));
+        if (parts.length < 3) {
+          errors++;
+          continue;
+        }
         const c: Customer = {
           id: parts[0] || Math.random().toString(36).substr(2, 9),
           store_id: storeId,
@@ -1458,10 +1924,11 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
           credit_limit: parseFloat(parts[11]),
           price_tier: parts[12],
           loyalty_tier: parts[13],
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
         };
-        const idx = customers.findIndex(x => x.id === c.id);
-        if (idx >= 0) customers[idx] = c; else customers.push(c);
+        const idx = customers.findIndex((x) => x.id === c.id);
+        if (idx >= 0) customers[idx] = c;
+        else customers.push(c);
         imported++;
       }
       lsSet("pos_customers", customers);
@@ -1469,27 +1936,36 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     }
     case "get_customer_statistics": {
       const customers = lsGet<Customer[]>("pos_customers") || [];
-      const c = customers.find(x => x.id === (args as any).customer_id);
+      const c = customers.find((x) => x.id === (args as any).customer_id);
       if (!c) return { total_spent: 0, visits: 0, avg_order_value: 0 } as T;
       return {
         total_spent: c.total_spent,
         visits: c.visits,
-        avg_order_value: c.visits > 0 ? c.total_spent / c.visits : 0
+        avg_order_value: c.visits > 0 ? c.total_spent / c.visits : 0,
       } as T;
     }
     case "get_customer_by_phone": {
       const customers = lsGet<Customer[]>("pos_customers") || [];
       const phone = (args as any).phone;
-      const c = customers.find(x => x.phone === phone && x.store_id === storeId);
+      const c = customers.find(
+        (x) => x.phone === phone && x.store_id === storeId,
+      );
       return (c || null) as T;
     }
-    case "get_ingredients": return [] as T;
-    case "get_recipes": return [] as T;
-    case "get_suppliers": return [] as T;
-    case "get_purchase_orders": return [] as T;
-    case "get_reservations": return [] as T;
-    case "get_shifts": return [] as T;
-    case "get_expenses": return [] as T;
+    case "get_ingredients":
+      return [] as T;
+    case "get_recipes":
+      return [] as T;
+    case "get_suppliers":
+      return [] as T;
+    case "get_purchase_orders":
+      return [] as T;
+    case "get_reservations":
+      return [] as T;
+    case "get_shifts":
+      return [] as T;
+    case "get_expenses":
+      return [] as T;
     case "hold_order": {
       const o = (args as any).order as Order;
       o.store_id = storeId;
@@ -1500,34 +1976,59 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
     }
     case "get_held_orders": {
       const held = lsGet<Order[]>("pos_held_orders") || [];
-      return held.filter(o => o.store_id === storeId) as T;
+      return held.filter((o) => o.store_id === storeId) as T;
     }
     case "delete_pending_order": {
       const id = (args as any).id;
       const held = lsGet<Order[]>("pos_held_orders") || [];
-      lsSet("pos_held_orders", held.filter(o => o.id !== id));
+      lsSet(
+        "pos_held_orders",
+        held.filter((o) => o.id !== id),
+      );
       return undefined as T;
     }
-    case "get_refund_requests": return [] as T;
-    case "get_activity_logs": return [] as T;
-    case "get_inventory_alerts": return [] as T;
-    case "check_inventory_alerts": return [] as T;
-    case "get_users": return [
-      { id: "admin", name: "Administrator", role: "admin" },
-      { id: "cashier", name: "Cashier", role: "cashier" }
-    ] as T;
+    case "get_refund_requests":
+      return [] as T;
+    case "get_activity_logs":
+      return [] as T;
+    case "get_inventory_alerts":
+      return [] as T;
+    case "check_inventory_alerts":
+      return [] as T;
+    case "get_users":
+      return [
+        { id: "admin", name: "Administrator", role: "admin" },
+        { id: "cashier", name: "Cashier", role: "cashier" },
+      ] as T;
     case "export_products_csv": {
       const p = lsGet<Product[]>(LS.products) || [];
       const variants = lsGet<ProductVariant[]>("pos_product_variants") || [];
-      const filtered = p.filter(x => x.store_id === storeId);
+      const filtered = p.filter((x) => x.store_id === storeId);
       const header = [
-        "id", "parent_id", "name", "price", "cost_price", "wholesale_price",
-        "category", "subcategory", "stock", "barcode", "sku", "description",
-        "tax", "status", "tags", "is_digital", "is_favorite", "image_url", "metadata", "variant_value"
+        "id",
+        "parent_id",
+        "name",
+        "price",
+        "cost_price",
+        "wholesale_price",
+        "category",
+        "subcategory",
+        "stock",
+        "barcode",
+        "sku",
+        "description",
+        "tax",
+        "status",
+        "tags",
+        "is_digital",
+        "is_favorite",
+        "image_url",
+        "metadata",
+        "variant_value",
       ];
       const rows: string[][] = [];
 
-      filtered.forEach(x => {
+      filtered.forEach((x) => {
         rows.push([
           x.id,
           "", // parent_id
@@ -1548,37 +2049,41 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
           x.is_favorite ? "true" : "false",
           x.image_url || "",
           JSON.stringify(x.metadata || {}),
-          "" // variant_value
+          "", // variant_value
         ]);
 
         // Export variants for this product
-        variants.filter(v => v.product_id === x.id && v.store_id === storeId).forEach(v => {
-          rows.push([
-            v.id,
-            x.id, // parent_id
-            v.name,
-            v.price.toString(),
-            "0", // cost_price
-            "0", // wholesale_price
-            x.category,
-            x.subcategory || "",
-            v.stock.toString(),
-            "", // barcode
-            v.sku || "",
-            "", // description
-            x.tax.toString(),
-            "active",
-            "",
-            "false",
-            "false",
-            "",
-            "{}",
-            v.value
-          ]);
-        });
+        variants
+          .filter((v) => v.product_id === x.id && v.store_id === storeId)
+          .forEach((v) => {
+            rows.push([
+              v.id,
+              x.id, // parent_id
+              v.name,
+              v.price.toString(),
+              "0", // cost_price
+              "0", // wholesale_price
+              x.category,
+              x.subcategory || "",
+              v.stock.toString(),
+              "", // barcode
+              v.sku || "",
+              "", // description
+              x.tax.toString(),
+              "active",
+              "",
+              "false",
+              "false",
+              "",
+              "{}",
+              v.value,
+            ]);
+          });
       });
 
-      const csv = [header, ...rows].map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+      const csv = [header, ...rows]
+        .map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(","))
+        .join("\n");
       return csv as T;
     }
     case "import_products_csv": {
@@ -1596,7 +2101,7 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
         for (let i = 0; i < line.length; i++) {
           const char = line[i];
           if (char === '"') {
-            if (inQuotes && (i + 1 < line.length) && line[i + 1] === '"') {
+            if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
               current += '"';
               i++;
             } else {
@@ -1624,7 +2129,26 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
           continue;
         }
 
-        let id, parent_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, variant_value;
+        let id,
+          parent_id,
+          name,
+          price,
+          cost_price,
+          wholesale_price,
+          category,
+          subcategory,
+          stock,
+          barcode,
+          sku,
+          description,
+          tax,
+          status,
+          tags,
+          is_digital,
+          is_favorite,
+          image_url,
+          metadata,
+          variant_value;
 
         if (len >= 19) {
           id = parts[0];
@@ -1645,7 +2169,11 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
           is_digital = parts[15] === "true";
           is_favorite = parts[16] === "true";
           image_url = parts[17] || "";
-          try { metadata = parts[18] ? JSON.parse(parts[18]) : {}; } catch { metadata = {}; }
+          try {
+            metadata = parts[18] ? JSON.parse(parts[18]) : {};
+          } catch {
+            metadata = {};
+          }
           variant_value = parts[19] || "";
         } else if (len == 18) {
           id = parts[0];
@@ -1666,7 +2194,11 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
           is_digital = parts[14] === "true";
           is_favorite = parts[15] === "true";
           image_url = parts[16] || "";
-          try { metadata = parts[17] ? JSON.parse(parts[17]) : {}; } catch { metadata = {}; }
+          try {
+            metadata = parts[17] ? JSON.parse(parts[17]) : {};
+          } catch {
+            metadata = {};
+          }
           variant_value = "";
         } else {
           id = parts[0];
@@ -1677,7 +2209,18 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
           stock = parseInt(parts[4]) || 0;
           barcode = parts[5] || "";
           tax = parseFloat(parts[6]) || 18;
-          cost_price = 0; wholesale_price = 0; subcategory = ""; sku = ""; description = ""; status = "active"; tags = ""; is_digital = false; is_favorite = false; image_url = ""; metadata = {}; variant_value = "";
+          cost_price = 0;
+          wholesale_price = 0;
+          subcategory = "";
+          sku = "";
+          description = "";
+          status = "active";
+          tags = "";
+          is_digital = false;
+          is_favorite = false;
+          image_url = "";
+          metadata = {};
+          variant_value = "";
         }
 
         if (parent_id) {
@@ -1689,10 +2232,13 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
             value: variant_value,
             sku: sku,
             price: price,
-            stock: stock
+            stock: stock,
           };
-          const idx = variants.findIndex(x => x.id === v.id && x.store_id === storeId);
-          if (idx >= 0) variants[idx] = v; else variants.push(v);
+          const idx = variants.findIndex(
+            (x) => x.id === v.id && x.store_id === storeId,
+          );
+          if (idx >= 0) variants[idx] = v;
+          else variants.push(v);
           imported++;
         } else {
           const p: Product = {
@@ -1714,10 +2260,13 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
             is_digital: is_digital,
             is_favorite: is_favorite,
             image_url: image_url,
-            metadata: metadata
+            metadata: metadata,
           };
-          const idx = products.findIndex(x => x.id === p.id && x.store_id === storeId);
-          if (idx >= 0) products[idx] = p; else products.push(p);
+          const idx = products.findIndex(
+            (x) => x.id === p.id && x.store_id === storeId,
+          );
+          if (idx >= 0) products[idx] = p;
+          else products.push(p);
           imported++;
         }
       }
@@ -1726,7 +2275,9 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       return { imported, errors } as T;
     }
     default:
-      console.warn(`Browser fallback: Command ${cmd} not fully implemented for store ${storeId}`);
+      console.warn(
+        `Browser fallback: Command ${cmd} not fully implemented for store ${storeId}`,
+      );
       return [] as any as T;
   }
 }
@@ -1737,98 +2288,168 @@ export async function openKdsWindow(): Promise<void> {
 }
 
 export async function getKdsOrders(storeId: string): Promise<KdsOrder[]> {
-  return sql<KdsOrder[]>("get_kds_orders", { store_id: storeId });
+  return sql<KdsOrder[]>("get_kds_orders", { storeId });
 }
 
-export async function markKdsItemDone(orderId: string, itemIndex: number, storeId: string): Promise<void> {
-  return sql("mark_kds_item_done", { order_id: orderId, item_index: itemIndex, store_id: storeId });
+export async function markKdsItemDone(
+  orderId: string,
+  itemIndex: number,
+  storeId: string,
+): Promise<void> {
+  return sql("mark_kds_item_done", {
+    order_id: orderId,
+    item_index: itemIndex,
+    storeId,
+  });
 }
 
-export async function startPreparingItem(orderId: string, itemIndex: number, storeId: string): Promise<void> {
-  return sql("start_preparing_item", { order_id: orderId, item_index: itemIndex, store_id: storeId });
+export async function startPreparingItem(
+  orderId: string,
+  itemIndex: number,
+  storeId: string,
+): Promise<void> {
+  return sql("start_preparing_item", {
+    order_id: orderId,
+    item_index: itemIndex,
+    storeId,
+  });
 }
 
-export async function cancelKdsItem(orderId: string, itemIndex: number, storeId: string): Promise<void> {
-  return sql("cancel_kds_item", { order_id: orderId, item_index: itemIndex, store_id: storeId });
+export async function cancelKdsItem(
+  orderId: string,
+  itemIndex: number,
+  storeId: string,
+): Promise<void> {
+  return sql("cancel_kds_item", {
+    order_id: orderId,
+    item_index: itemIndex,
+    storeId,
+  });
 }
 
-export async function recallKdsOrder(orderId: string, storeId: string): Promise<void> {
-  return sql("recall_kds_order", { order_id: orderId, store_id: storeId });
+export async function recallKdsOrder(
+  orderId: string,
+  storeId: string,
+): Promise<void> {
+  return sql("recall_kds_order", { order_id: orderId, storeId });
 }
 
 // ─── Ingredient Functions ───────────────────────────────────────────────────
 export async function getIngredients(storeId: string): Promise<Ingredient[]> {
-  return sql<Ingredient[]>("get_ingredients", { store_id: storeId });
+  return sql<Ingredient[]>("get_ingredients", { storeId });
 }
 
-export async function saveIngredient(ingredient: Ingredient, storeId: string): Promise<void> {
-  return sql("save_ingredient", { ingredient, store_id: storeId });
+export async function saveIngredient(
+  ingredient: Ingredient,
+  storeId: string,
+): Promise<void> {
+  return sql("save_ingredient", { ingredient, storeId });
 }
 
-export async function deleteIngredient(id: string, storeId: string): Promise<void> {
-  return sql("delete_ingredient", { id, store_id: storeId });
+export async function deleteIngredient(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("delete_ingredient", { id, storeId });
 }
 
 // ─── Recipe Functions ───────────────────────────────────────────────────────
 export async function getRecipes(storeId: string): Promise<Recipe[]> {
-  return sql<Recipe[]>("get_recipes", { store_id: storeId });
+  return sql<Recipe[]>("get_recipes", { storeId });
 }
 
-export async function saveRecipe(recipe: Recipe, storeId: string): Promise<void> {
-  return sql("save_recipe", { recipe, store_id: storeId });
+export async function saveRecipe(
+  recipe: Recipe,
+  storeId: string,
+): Promise<void> {
+  return sql("save_recipe", { recipe, storeId });
 }
 
 // ─── Supplier Functions ─────────────────────────────────────────────────────
 export async function getSuppliers(storeId: string): Promise<Supplier[]> {
-  return sql<Supplier[]>("get_suppliers", { store_id: storeId });
+  return sql<Supplier[]>("get_suppliers", { storeId });
 }
 
-export async function saveSupplier(supplier: Supplier, storeId: string): Promise<void> {
-  return sql("save_supplier", { supplier, store_id: storeId });
+export async function saveSupplier(
+  supplier: Supplier,
+  storeId: string,
+): Promise<void> {
+  return sql("save_supplier", { supplier, storeId });
 }
 
-export async function deleteSupplier(id: string, storeId: string): Promise<void> {
-  return sql("delete_supplier", { id, store_id: storeId });
+export async function deleteSupplier(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("delete_supplier", { id, storeId });
 }
 
 // ─── Purchase Order Functions ───────────────────────────────────────────────
-export async function getPurchaseOrders(storeId: string): Promise<PurchaseOrder[]> {
-  return sql<PurchaseOrder[]>("get_purchase_orders", { store_id: storeId });
+export async function getPurchaseOrders(
+  storeId: string,
+): Promise<PurchaseOrder[]> {
+  return sql<PurchaseOrder[]>("get_purchase_orders", { storeId });
 }
 
-export async function savePurchaseOrder(po: PurchaseOrder, storeId: string): Promise<void> {
-  return sql("save_purchase_order", { po, store_id: storeId });
+export async function savePurchaseOrder(
+  po: PurchaseOrder,
+  storeId: string,
+): Promise<void> {
+  return sql("save_purchase_order", { po, storeId });
 }
 
-export async function updatePoStatus(id: string, status: string, storeId: string): Promise<void> {
-  return sql("update_po_status", { id, status, store_id: storeId });
+export async function updatePoStatus(
+  id: string,
+  status: string,
+  storeId: string,
+): Promise<void> {
+  return sql("update_po_status", { id, status, storeId });
 }
 
-export async function receivePurchaseOrder(id: string, storeId: string): Promise<void> {
-  return sql("receive_purchase_order", { id, store_id: storeId });
+export async function receivePurchaseOrder(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("receive_purchase_order", { id, storeId });
 }
 
 // ─── Reservation Functions ─────────────────────────────────────────────────
-export async function getReservations(date: string, storeId: string): Promise<Reservation[]> {
-  return sql<Reservation[]>("get_reservations", { date, store_id: storeId });
+export async function getReservations(
+  date: string,
+  storeId: string,
+): Promise<Reservation[]> {
+  return sql<Reservation[]>("get_reservations", { date, storeId });
 }
 
-export async function saveReservation(reservation: Reservation, storeId: string): Promise<void> {
-  return sql("save_reservation", { reservation, store_id: storeId });
+export async function saveReservation(
+  reservation: Reservation,
+  storeId: string,
+): Promise<void> {
+  return sql("save_reservation", { reservation, storeId });
 }
 
-export async function deleteReservation(id: string, storeId: string): Promise<void> {
-  return sql("delete_reservation", { id, store_id: storeId });
+export async function deleteReservation(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("delete_reservation", { id, storeId });
 }
 
 // ─── SMS Functions ─────────────────────────────────────────────────────────
-export async function sendSmsNotification(phone: string, message: string, storeId: string): Promise<void> {
-  return sql("send_sms_notification", { phone, message, store_id: storeId });
+export async function sendSmsNotification(
+  phone: string,
+  message: string,
+  storeId: string,
+): Promise<void> {
+  return sql("send_sms_notification", { phone, message, storeId });
 }
 
 // ─── LAN Sync Functions ───────────────────────────────────────────────────
-export async function startLanServer(storeId: string, port?: number): Promise<string> {
-  return sql<string>("start_lan_server", { port, store_id: storeId });
+export async function startLanServer(
+  storeId: string,
+  port?: number,
+): Promise<string> {
+  return sql<string>("start_lan_server", { port, storeId });
 }
 
 export async function stopLanServer(): Promise<string> {
@@ -1840,118 +2461,218 @@ export async function getLanServerStatus(): Promise<LanServerStatus> {
 }
 
 // ─── Shift Functions ─────────────────────────────────────────────────────────
-export async function getShifts(date: string, storeId: string): Promise<Shift[]> {
-  return sql<Shift[]>("get_shifts", { date, store_id: storeId });
+export async function getShifts(
+  date: string,
+  storeId: string,
+): Promise<Shift[]> {
+  return sql<Shift[]>("get_shifts", { date, storeId });
 }
 
 export async function saveShift(shift: Shift, storeId: string): Promise<void> {
-  return sql("save_shift", { shift, store_id: storeId });
+  return sql("save_shift", { shift, storeId });
 }
 
 export async function deleteShift(id: string, storeId: string): Promise<void> {
-  return sql("delete_shift", { id, store_id: storeId });
+  return sql("delete_shift", { id, storeId });
 }
 
 // ─── Expense Functions ───────────────────────────────────────────────────────
-export async function getExpenses(date: string, storeId: string): Promise<Expense[]> {
-  return sql<Expense[]>("get_expenses", { date, store_id: storeId });
+export async function getExpenses(
+  date: string,
+  storeId: string,
+): Promise<Expense[]> {
+  return sql<Expense[]>("get_expenses", { date, storeId });
 }
 
-export async function getExpensesByRange(startDate: string, endDate: string, storeId: string): Promise<Expense[]> {
-  return sql<Expense[]>("get_expenses_by_range", { start_date: startDate, end_date: endDate, store_id: storeId });
+export async function getExpensesByRange(
+  startDate: string,
+  endDate: string,
+  storeId: string,
+): Promise<Expense[]> {
+  return sql<Expense[]>("get_expenses_by_range", {
+    startDate,
+    endDate,
+    storeId,
+  });
 }
 
-export async function saveExpense(expense: Expense, storeId: string): Promise<void> {
-  return sql("save_expense", { expense, store_id: storeId });
+export async function saveExpense(
+  expense: Expense,
+  storeId: string,
+): Promise<void> {
+  return sql("save_expense", { expense, storeId });
 }
 
-export async function deleteExpense(id: string, storeId: string): Promise<void> {
-  return sql("delete_expense", { id, store_id: storeId });
+export async function deleteExpense(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("delete_expense", { id, storeId });
 }
 
-export async function getExpenseCategories(storeId: string): Promise<ExpenseCategory[]> {
-  return sql<ExpenseCategory[]>("get_expense_categories", { store_id: storeId });
+export async function getExpenseCategories(
+  storeId: string,
+): Promise<ExpenseCategory[]> {
+  return sql<ExpenseCategory[]>("get_expense_categories", { storeId });
 }
 
-export async function saveExpenseCategory(category: ExpenseCategory, storeId: string): Promise<void> {
-  return sql("save_expense_category", { category, store_id: storeId });
+export async function saveExpenseCategory(
+  category: ExpenseCategory,
+  storeId: string,
+): Promise<void> {
+  return sql("save_expense_category", { category, storeId });
 }
 
 // ─── Wallet Functions ───────────────────────────────────────────────────────
-export async function getCustomerWallet(customerId: string): Promise<CustomerWallet> {
-  return sql<CustomerWallet>("get_customer_wallet", { customer_id: customerId });
+export async function getCustomerWallet(
+  customerId: string,
+): Promise<CustomerWallet> {
+  return sql<CustomerWallet>("get_customer_wallet", {
+    customer_id: customerId,
+  });
 }
 
-export async function addWalletBalance(customerId: string, amount: number, notes: string): Promise<void> {
+export async function addWalletBalance(
+  customerId: string,
+  amount: number,
+  notes: string,
+): Promise<void> {
   return sql("add_wallet_balance", { customer_id: customerId, amount, notes });
 }
 
-export async function deductWalletBalance(customerId: string, amount: number, orderId: string): Promise<void> {
-  return sql("deduct_wallet_balance", { customer_id: customerId, amount, order_id: orderId });
+export async function deductWalletBalance(
+  customerId: string,
+  amount: number,
+  orderId: string,
+): Promise<void> {
+  return sql("deduct_wallet_balance", {
+    customer_id: customerId,
+    amount,
+    order_id: orderId,
+  });
 }
 
-export async function getWalletTransactions(customerId: string): Promise<WalletTransaction[]> {
-  return sql<WalletTransaction[]>("get_wallet_transactions", { customer_id: customerId });
+export async function getWalletTransactions(
+  customerId: string,
+): Promise<WalletTransaction[]> {
+  return sql<WalletTransaction[]>("get_wallet_transactions", {
+    customer_id: customerId,
+  });
 }
 
 // ─── Coupon Functions ───────────────────────────────────────────────────────
 export async function getCoupons(storeId: string): Promise<Coupon[]> {
-  return sql<Coupon[]>("get_coupons", { store_id: storeId });
+  return sql<Coupon[]>("get_coupons", { storeId });
 }
 
-export async function saveCoupon(coupon: Coupon, storeId: string): Promise<void> {
-  return sql("save_coupon", { coupon, store_id: storeId });
+export async function saveCoupon(
+  coupon: Coupon,
+  storeId: string,
+): Promise<void> {
+  return sql("save_coupon", { coupon, storeId });
 }
 
-export async function validateCoupon(code: string, orderAmount: number, storeId: string): Promise<Coupon> {
-  return sql<Coupon>("validate_coupon", { code, order_amount: orderAmount, store_id: storeId });
+export async function validateCoupon(
+  code: string,
+  orderAmount: number,
+  storeId: string,
+): Promise<Coupon> {
+  return sql<Coupon>("validate_coupon", {
+    code,
+    order_amount: orderAmount,
+    storeId,
+  });
 }
 
 export async function useCoupon(code: string, storeId: string): Promise<void> {
-  return sql("use_coupon", { code, store_id: storeId });
+  return sql("use_coupon", { code, storeId });
 }
 
 export async function deleteCoupon(id: string, storeId: string): Promise<void> {
-  return sql("delete_coupon", { id, store_id: storeId });
+  return sql("delete_coupon", { id, storeId });
 }
 
 // ─── Day End Reconciliation Functions ───────────────────────────────────────
-export async function getDayEndReconciliation(date: string, storeId: string): Promise<DayEndReconciliation | null> {
-  return sql<DayEndReconciliation | null>("get_day_end_reconciliation", { date, store_id: storeId });
+export async function getDayEndReconciliation(
+  date: string,
+  storeId: string,
+): Promise<DayEndReconciliation | null> {
+  return sql<DayEndReconciliation | null>("get_day_end_reconciliation", {
+    date,
+    storeId,
+  });
 }
 
-export async function saveDayEndReconciliation(reconciliation: DayEndReconciliation, storeId: string): Promise<void> {
-  return sql("save_day_end_reconciliation", { reconciliation, store_id: storeId });
+export async function saveDayEndReconciliation(
+  reconciliation: DayEndReconciliation,
+  storeId: string,
+): Promise<void> {
+  return sql("save_day_end_reconciliation", { reconciliation, storeId });
 }
 
 // ─── GST Report Functions ───────────────────────────────────────────────────
-export async function getGstr1Report(startDate: string, endDate: string, storeId: string): Promise<GstReport[]> {
-  return sql<GstReport[]>("get_gstr1_report", { start_date: startDate, end_date: endDate, store_id: storeId });
+export async function getGstr1Report(
+  startDate: string,
+  endDate: string,
+  storeId: string,
+): Promise<GstReport[]> {
+  return sql<GstReport[]>("get_gstr1_report", { startDate, endDate, storeId });
 }
 
-export async function getGstr3bReport(startDate: string, endDate: string, storeId: string): Promise<[number, number, number, number, number, number]> {
-  return sql<[number, number, number, number, number, number]>("get_gstr3b_report", { start_date: startDate, end_date: endDate, store_id: storeId });
+export async function getGstr3bReport(
+  startDate: string,
+  endDate: string,
+  storeId: string,
+): Promise<[number, number, number, number, number, number]> {
+  return sql<[number, number, number, number, number, number]>(
+    "get_gstr3b_report",
+    { startDate, endDate, storeId },
+  );
 }
 
 // ─── Activity Log Functions ────────────────────────────────────────────────
-export async function getActivityLogsDetailed(startDate: string, endDate: string, limit: number, storeId: string): Promise<ActivityLogEntry[]> {
-  return sql<ActivityLogEntry[]>("get_activity_logs_range", { start_date: startDate, end_date: endDate, limit, store_id: storeId });
+export async function getActivityLogsDetailed(
+  startDate: string,
+  endDate: string,
+  limit: number,
+  storeId: string,
+): Promise<ActivityLogEntry[]> {
+  return sql<ActivityLogEntry[]>("get_activity_logs_range", {
+    startDate,
+    endDate,
+    limit,
+    storeId,
+  });
 }
 
 // ─── Export Functions ──────────────────────────────────────────────────────
-export async function exportToTally(startDate: string, endDate: string, storeId: string): Promise<string> {
-  return sql<string>("export_to_tally", { start_date: startDate, end_date: endDate, store_id: storeId });
+export async function exportToTally(
+  startDate: string,
+  endDate: string,
+  storeId: string,
+): Promise<string> {
+  return sql<string>("export_to_tally", { startDate, endDate, storeId });
 }
 
-export async function exportToQuickbooks(startDate: string, endDate: string, storeId: string): Promise<string> {
-  return sql<string>("export_to_quickbooks", { start_date: startDate, end_date: endDate, store_id: storeId });
+export async function exportToQuickbooks(
+  startDate: string,
+  endDate: string,
+  storeId: string,
+): Promise<string> {
+  return sql<string>("export_to_quickbooks", { startDate, endDate, storeId });
 }
 
-export async function createCompressedBackup(storeId: string): Promise<number[]> {
-  return sql<number[]>("create_compressed_backup", { store_id: storeId });
+export async function createCompressedBackup(
+  storeId: string,
+): Promise<number[]> {
+  return sql<number[]>("create_compressed_backup", { storeId });
 }
 
 // ─── WhatsApp Functions ───────────────────────────────────────────────────
-export async function sendWhatsAppMessage(phone: string, message: string, storeId: string): Promise<void> {
-  return sql("send_whatsapp_message", { phone, message, store_id: storeId });
+export async function sendWhatsAppMessage(
+  phone: string,
+  message: string,
+  storeId: string,
+): Promise<void> {
+  return sql("send_whatsapp_message", { phone, message, storeId });
 }
