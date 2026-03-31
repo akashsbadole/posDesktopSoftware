@@ -42,7 +42,7 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
 
   return (
     <header 
-      className="h-12 flex items-center justify-between px-4 border-b border-[var(--border)] bg-surface shrink-0"
+      className="h-12 flex items-center justify-between px-4 border-b border-[var(--border)] bg-surface shrink-0 relative z-[60]"
       role="banner"
     >
       <div className="flex items-center gap-6">
