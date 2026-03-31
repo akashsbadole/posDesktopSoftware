@@ -10,11 +10,11 @@ test('verify CRM and POS integration', async ({ page }) => {
   await page.click('button:has-text("Login")');
 
   // Wait for the app to load
-  await page.waitForSelector('text=Point of Sale');
+  await expect(page.getByText('Point of Sale')).toBeVisible();
 
   // Open CRM
-  await page.click('button:has-text("Customers")');
-  await page.waitForSelector('text=Customer Relationship Management');
+  await page.click('button[role="menuitem"]:has-text("Customers")');
+  await expect(page.getByRole('heading', { name: 'Customer Relationship Management' })).toBeVisible();
 
   // Add a customer
   await page.click('button:has(svg.lucide-plus)');
@@ -27,7 +27,7 @@ test('verify CRM and POS integration', async ({ page }) => {
 
   // Select the customer
   await page.click('text=Jane Doe');
-  await page.waitForSelector('text=Jane Doe');
+  await expect(page.getByRole('heading', { name: 'Jane Doe' })).toBeVisible();
   await page.screenshot({ path: 'crm_customer_details.png' });
 
   // Check different tabs
@@ -38,7 +38,7 @@ test('verify CRM and POS integration', async ({ page }) => {
   await page.click('div[role="dialog"] button:has(svg.lucide-x)');
 
   // Go to POS and search for the customer
-  await page.click('button:has-text("POS")');
+  await page.click('button[role="menuitem"]:has-text("POS")');
 
   // Search for the customer by phone in the "Walk-in Customer" input
   await page.fill('input[placeholder="Walk-in Customer"]', '9876543210');
@@ -47,7 +47,7 @@ test('verify CRM and POS integration', async ({ page }) => {
   await page.waitForTimeout(2000);
 
   // Verify customer name is now shown instead of placeholder
-  await expect(page.locator('text=Jane Doe')).toBeVisible();
+  await expect(page.locator('input#customer-name')).toHaveValue('Jane Doe');
 
   await page.screenshot({ path: 'pos_customer_lookup.png' });
 });

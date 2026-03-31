@@ -1254,6 +1254,27 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       const tables = lsGet<Table[]>("pos_tables") || [];
       return tables.filter(t => t.store_id === storeId) as T;
     }
+    case "save_table": {
+      const tables = lsGet<Table[]>("pos_tables") || [];
+      const t = (args as any).table as Table;
+      const idx = tables.findIndex(x => x.id === t.id);
+      if (idx >= 0) tables[idx] = t; else tables.push(t);
+      lsSet("pos_tables", tables);
+      return undefined as T;
+    }
+    case "delete_table": {
+      const tables = (lsGet<Table[]>("pos_tables") || []).filter(t => t.id !== (args as any).id);
+      lsSet("pos_tables", tables);
+      return undefined as T;
+    }
+    case "update_table_status": {
+      const tables = lsGet<Table[]>("pos_tables") || [];
+      const { id, status } = args as any;
+      const idx = tables.findIndex(t => t.id === id);
+      if (idx >= 0) tables[idx].status = status;
+      lsSet("pos_tables", tables);
+      return undefined as T;
+    }
     case "verify_pin": {
       const pin = (args as any).pin;
       if (pin === "1234") return { id: "admin", name: "Administrator", role: "admin" } as T;
@@ -1398,13 +1419,43 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       const c = customers.find(x => x.phone === phone && x.store_id === storeId);
       return (c || null) as T;
     }
-    case "get_ingredients": return [] as T;
-    case "get_recipes": return [] as T;
+    case "get_ingredients": {
+      const items = lsGet<Ingredient[]>("pos_ingredients") || [];
+      return items.filter(x => x.store_id === storeId) as T;
+    }
+    case "save_ingredient": {
+      const items = lsGet<Ingredient[]>("pos_ingredients") || [];
+      const i = (args as any).ingredient as Ingredient;
+      const idx = items.findIndex(x => x.id === i.id);
+      if (idx >= 0) items[idx] = i; else items.push(i);
+      lsSet("pos_ingredients", items);
+      return undefined as T;
+    }
+    case "delete_ingredient": {
+      const items = (lsGet<Ingredient[]>("pos_ingredients") || []).filter(x => x.id !== (args as any).id);
+      lsSet("pos_ingredients", items);
+      return undefined as T;
+    }
+    case "get_recipes": {
+      const items = lsGet<Recipe[]>("pos_recipes") || [];
+      return items.filter(x => x.store_id === storeId) as T;
+    }
+    case "save_recipe": {
+      const items = lsGet<Recipe[]>("pos_recipes") || [];
+      const r = (args as any).recipe as Recipe;
+      const idx = items.findIndex(x => x.id === r.id);
+      if (idx >= 0) items[idx] = r; else items.push(r);
+      lsSet("pos_recipes", items);
+      return undefined as T;
+    }
     case "get_suppliers": return [] as T;
     case "get_purchase_orders": return [] as T;
     case "get_reservations": return [] as T;
     case "get_shifts": return [] as T;
-    case "get_expenses": return [] as T;
+    case "get_expenses": {
+      const items = lsGet<Expense[]>("pos_expenses") || [];
+      return items.filter(x => x.store_id === storeId && x.date === (args as any).date) as T;
+    }
     case "hold_order": {
       const o = (args as any).order as Order;
       o.store_id = storeId;
@@ -1423,6 +1474,49 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       lsSet("pos_held_orders", held.filter(o => o.id !== id));
       return undefined as T;
     }
+    case "get_expenses_by_range": {
+      const items = lsGet<Expense[]>("pos_expenses") || [];
+      const { start_date, end_date } = args as any;
+      return items.filter(x => x.store_id === storeId && x.date >= start_date && x.date <= end_date) as T;
+    }
+    case "save_expense": {
+      const items = lsGet<Expense[]>("pos_expenses") || [];
+      const e = (args as any).expense as Expense;
+      const idx = items.findIndex(x => x.id === e.id);
+      if (idx >= 0) items[idx] = e; else items.push(e);
+      lsSet("pos_expenses", items);
+      return undefined as T;
+    }
+    case "delete_expense": {
+      const items = (lsGet<Expense[]>("pos_expenses") || []).filter(x => x.id !== (args as any).id);
+      lsSet("pos_expenses", items);
+      return undefined as T;
+    }
+    case "save_expense_category": {
+      const items = lsGet<ExpenseCategory[]>("pos_expense_categories") || [];
+      const c = (args as any).category as ExpenseCategory;
+      const idx = items.findIndex(x => x.id === c.id);
+      if (idx >= 0) items[idx] = c; else items.push(c);
+      lsSet("pos_expense_categories", items);
+      return undefined as T;
+    }
+    case "get_coupons": {
+      const items = lsGet<Coupon[]>("pos_coupons") || [];
+      return items.filter(x => x.store_id === storeId) as T;
+    }
+    case "save_coupon": {
+      const items = lsGet<Coupon[]>("pos_coupons") || [];
+      const c = (args as any).coupon as Coupon;
+      const idx = items.findIndex(x => x.id === c.id);
+      if (idx >= 0) items[idx] = c; else items.push(c);
+      lsSet("pos_coupons", items);
+      return undefined as T;
+    }
+    case "delete_coupon": {
+      const items = (lsGet<Coupon[]>("pos_coupons") || []).filter(x => x.id !== (args as any).id);
+      lsSet("pos_coupons", items);
+      return undefined as T;
+    }
     case "get_refund_requests": return [] as T;
     case "get_activity_logs": return [] as T;
     case "get_inventory_alerts": return [] as T;
@@ -1431,6 +1525,38 @@ async function browserFallback<T>(cmd: string, args?: Record<string, unknown>): 
       { id: "admin", name: "Administrator", role: "admin" },
       { id: "cashier", name: "Cashier", role: "cashier" }
     ] as T;
+    case "get_today_attendance": {
+      const items = lsGet<StaffAttendance[]>("pos_attendance") || [];
+      return items.filter(x => x.store_id === storeId) as T;
+    }
+    case "clock_in": {
+      const items = lsGet<StaffAttendance[]>("pos_attendance") || [];
+      const { user_id, user_name } = args as any;
+      items.push({
+        id: Math.random().toString(36).substr(2, 9),
+        store_id: storeId,
+        user_id,
+        user_name,
+        clock_in: new Date().toISOString(),
+        clock_out: null,
+        date: new Date().toISOString().split('T')[0]
+      });
+      lsSet("pos_attendance", items);
+      return undefined as T;
+    }
+    case "clock_out": {
+      const items = lsGet<StaffAttendance[]>("pos_attendance") || [];
+      const { user_id } = args as any;
+      const idx = items.findIndex(x => x.user_id === user_id && !x.clock_out && x.store_id === storeId);
+      if (idx >= 0) items[idx].clock_out = new Date().toISOString();
+      lsSet("pos_attendance", items);
+      return undefined as T;
+    }
+    case "is_clocked_in": {
+      const items = lsGet<StaffAttendance[]>("pos_attendance") || [];
+      const { user_id } = args as any;
+      return items.some(x => x.user_id === user_id && !x.clock_out && x.store_id === storeId) as T;
+    }
     case "export_products_csv": {
       const p = lsGet<Product[]>(LS.products) || [];
       const variants = lsGet<ProductVariant[]>("pos_product_variants") || [];
