@@ -37,6 +37,7 @@ interface CartState {
   globalDiscount: number;
   globalDiscountType: 'percentage' | 'fixed';
   paymentMethod: PaymentMethod | 'split';
+  priceTier: PriceTier;
   splitPayments: PaymentEntry[];
   amountPaid: number;
   tipAmount: number;
@@ -85,6 +86,30 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   setOriginalOrderId: (id) => set({ originalOrderId: id }),
 
+  addCustomItem: (name: string, price: number) => {
+    const product: Product = {
+      id: `custom-${uuid()}`,
+      store_id: useSettingsStore.getState().activeStoreId || 'default',
+      name,
+      price,
+      cost_price: 0,
+      wholesale_price: price,
+      category: 'Custom',
+      subcategory: '',
+      stock: 999,
+      barcode: '',
+      sku: 'CUSTOM',
+      description: 'Custom added item',
+      tax: 0,
+      status: 'active',
+      tags: '',
+      is_digital: true,
+      is_favorite: false,
+      metadata: { is_custom: true }
+    };
+    get().addItem(product);
+  },
+
   addItem: (product: Product, quantity = 1) => {
     set((state) => {
       const tier = state.priceTier;
@@ -111,13 +136,13 @@ export const useCartStore = create<CartState>((set, get) => ({
         };
       }
       const cartItemId = uuid();
-      return { items: [...state.items, { product: { ...finalProduct, cartItemId } as any, quantity, discount: 0 }] };
+      return { items: [...state.items, { cartItemId, product: finalProduct, quantity, discount: 0, discount_type: 'percentage' }] };
     });
   },
 
   removeItem: (cartItemId: string) => {
     set((state) => ({
-      items: state.items.filter((i) => (i.product as any).cartItemId !== cartItemId),
+      items: state.items.filter((i) => i.cartItemId !== cartItemId),
     }));
   },
 

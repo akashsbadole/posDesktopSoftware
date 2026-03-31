@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useSettingsStore } from './settingsStore';
+import { useAuthStore } from './authStore';
 import {
   dbGetProducts, dbSaveProduct, dbDeleteProduct, dbUpdateStock, Product,
   exportProductsCsv, importProductsCsv, ProductVariant, dbGetProductVariants,
@@ -95,6 +96,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
 
   updateStock: async (id: string, delta: number) => {
     const storeId = useSettingsStore.getState().activeStoreId;
+    const userId = useAuthStore.getState().user?.id || "system";
     const previousProducts = get().products;
     set((state) => ({
       products: state.products.map((p) =>
@@ -102,7 +104,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
       ),
     }));
     try {
-      await dbUpdateStock(id, delta, storeId);
+      await dbUpdateStock(id, delta, storeId, userId);
     } catch (err) {
       set({ products: previousProducts, error: (err as Error).message });
       throw err;

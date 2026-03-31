@@ -80,6 +80,12 @@ const allNavItems = [
     adminOnly: false,
   },
   {
+    id: "inventory" as Screen,
+    label: "Inventory",
+    icon: ClipboardList,
+    adminOnly: true,
+  },
+  {
     id: "refund_requests" as Screen,
     label: "Refunds",
     icon: Shield,

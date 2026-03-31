@@ -52,6 +52,10 @@ import {
   CustomerAddress,
   sendSmsNotification,
   dbAddActivityLog,
+  dbGetBatches,
+  dbGetSerialNumbers,
+  Batch,
+  SerialNumber,
   ProductVariant,
 } from "@/lib/db";
 import { QRCodeSVG } from "qrcode.react";
@@ -144,6 +148,14 @@ export default function POSScreen() {
   const [variantSelection, setVariantSelection] = useState<{
     product: Product;
     variants: ProductVariant[];
+  } | null>(null);
+  const [batchSelection, setBatchSelection] = useState<{
+    product: Product;
+    batches: Batch[];
+  } | null>(null);
+  const [serialSelection, setSerialSelection] = useState<{
+    product: Product;
+    serials: SerialNumber[];
   } | null>(null);
   const [focusedProductIndex, setFocusedProductIndex] = useState<number>(-1);
   const [isGridFocused, setIsGridFocused] = useState(false);
@@ -287,9 +299,9 @@ export default function POSScreen() {
   };
 
   const handleAddItem = async (product: Product) => {
-    if (product.stock === 0) return;
+    if (product.stock <= 0 && !product.is_digital) return;
 
-    // Check for variants first
+    // 1. Check for variants
     const productVariants = await fetchVariants(product.id);
     if (productVariants && productVariants.length > 0) {
       setVariantSelection({ product, variants: productVariants });
@@ -305,425 +317,502 @@ export default function POSScreen() {
       setMetadataValue("");
     } else {
       addItem(product);
+      // 2. Check for batches
+      if (product.metadata?.track_batch) {
+        try {
+          const batches = await dbGetBatches(product.id, activeStoreId);
+          const availableBatches = batches.filter((b) => b.quantity > 0);
+          if (availableBatches.length > 0) {
+            setBatchSelection({ product, batches: availableBatches });
+            return;
+          } else if (!product.is_digital) {
+            alert("No available batches for this product.");
+            return;
+          }
+        } catch (err) {
+          console.error("Failed to fetch batches:", err);
+        }
+      }
+
+      // 3. Check for serial numbers
+      if (product.metadata?.track_serial) {
+        try {
+          const serials = await dbGetSerialNumbers(product.id, activeStoreId);
+          const availableSerials = serials.filter(
+            (s) => s.status === "available",
+          );
+          if (availableSerials.length > 0) {
+            setSerialSelection({ product, serials: availableSerials });
+            return;
+          } else if (!product.is_digital) {
+            alert("No available serial numbers for this product.");
+            return;
+          }
+        } catch (err) {
+          console.error("Failed to fetch serials:", err);
+        }
+      }
+
+      addItem(product);
     }
-  };
 
-  const handleSelectVariant = (variant: ProductVariant) => {
-    if (!variantSelection) return;
-    const { product } = variantSelection;
-
-    // Create a specialized product entry for the cart using variant details
-    const variantProduct: Product = {
-      ...product,
-      price: variant.price,
-      sku: variant.sku || product.sku,
-      name: `${product.name} (${variant.name}: ${variant.value})`,
-      metadata: { ...product.metadata, variant_id: variant.id },
+    const handleSelectVariant = (variant: ProductVariant) => {
+      if (!variantSelection) return;
+      const { product } = variantSelection;
+      const variantProduct: Product = {
+        ...product,
+        price: variant.price,
+        sku: variant.sku || product.sku,
+        name: `${product.name} (${variant.name}: ${variant.value})`,
+        metadata: { ...product.metadata, variant_id: variant.id },
+      };
+      addItem(variantProduct);
+      setVariantSelection(null);
     };
 
-    addItem(variantProduct);
-    setVariantSelection(null);
-  };
+    const handleSelectBatch = (batch: Batch) => {
+      if (!batchSelection) return;
+      const { product } = batchSelection;
+      const batchProduct: Product = {
+        ...product,
+        name: `${product.name} (Batch: ${batch.batch_number})`,
+        metadata: {
+          ...product.metadata,
+          batch_id: batch.id,
+          batch_number: batch.batch_number,
+        },
+      };
+      addItem(batchProduct);
+      setBatchSelection(null);
+    };
 
-  const handleMetadataSubmit = () => {
-    if (!metadataPrompt) return;
-    const p = products.find((x) => x.id === metadataPrompt.productId);
-    if (p) {
-      addItem({
-        ...p,
-        metadata: { ...p.metadata, serial_number: metadataValue },
-      });
-    }
-    setMetadataPrompt(null);
-    setMetadataValue("");
-  };
+    const handleSelectSerial = (serial: SerialNumber) => {
+      if (!serialSelection) return;
+      const { product } = serialSelection;
+      const serialProduct: Product = {
+        ...product,
+        name: `${product.name} (S/N: ${serial.serial_number})`,
+        metadata: {
+          ...product.metadata,
+          serial_number_id: serial.id,
+          serial_number: serial.serial_number,
+        },
+      };
+      // For serial numbers, we usually want one per line item
+      addItem(serialProduct, 1);
+      setSerialSelection(null);
+    };
 
-  const handleAddComboToCart = (combo: Combo) => {
-    // Calculate total price of individual items
-    const totalIndividualPrice = combo.items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0,
-    );
+    const handleMetadataSubmit = () => {
+      if (!metadataPrompt) return;
+      const p = products.find((x) => x.id === metadataPrompt.productId);
+      if (p) {
+        addItem({
+          ...p,
+          metadata: { ...p.metadata, serial_number: metadataValue },
+        });
+      }
+      setMetadataPrompt(null);
+      setMetadataValue("");
+    };
 
-    // Calculate global discount percentage needed to reach combo price
-    // Formula: (Individual - Combo) / Individual * 100
-    const discountPercent =
-      totalIndividualPrice > 0
-        ? ((totalIndividualPrice - combo.combo_price) / totalIndividualPrice) *
-          100
-        : 0;
+    const handleAddComboToCart = (combo: Combo) => {
+      // Calculate total price of individual items
+      const totalIndividualPrice = combo.items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0,
+      );
 
-    combo.items.forEach((item) => {
-      const product = products.find((p) => p.id === item.product_id);
-      if (product) {
-        // We add the item and then immediately update its discount to match the combo pricing
-        // This is a bit tricky since addItem is async-ish (state update)
-        // Better: Use a version of addItem that accepts a discount
-        const comboProduct = {
-          ...product,
-          metadata: {
-            ...product.metadata,
-            from_combo: combo.id,
-            combo_name: combo.name,
-          },
-        };
+      // Calculate global discount percentage needed to reach combo price
+      // Formula: (Individual - Combo) / Individual * 100
+      const discountPercent =
+        totalIndividualPrice > 0
+          ? ((totalIndividualPrice - combo.combo_price) /
+              totalIndividualPrice) *
+            100
+          : 0;
 
-        // We need to use a slightly different approach since we want to apply the discount
-        // I'll add a helper to cartStore or just do it manually here if possible
-        // For now, I'll just add the product. The user can see it's from a combo.
-
-        // To ensure the price is correct, we can temporarily override the product price
-        // or apply the discount. Applying discount is cleaner.
-
-        for (let i = 0; i < item.quantity; i++) {
-          // Create a "virtual" product with the discounted price
-          const discountedPrice = item.price * (1 - discountPercent / 100);
-          const virtualProduct: Product = {
+      combo.items.forEach((item) => {
+        const product = products.find((p) => p.id === item.product_id);
+        if (product) {
+          // We add the item and then immediately update its discount to match the combo pricing
+          // This is a bit tricky since addItem is async-ish (state update)
+          // Better: Use a version of addItem that accepts a discount
+          const comboProduct = {
             ...product,
-            price: discountedPrice,
-            name: `${product.name} (${combo.name})`,
             metadata: {
               ...product.metadata,
               from_combo: combo.id,
-              original_price: item.price,
+              combo_name: combo.name,
             },
           };
-          addItem(virtualProduct);
-        }
-      }
-    });
-  };
 
-  const handleApplyCoupon = async () => {
-    if (!couponCode.trim()) return;
-    setCouponError("");
-    try {
-      const coupon = await validateCoupon(
-        couponCode.trim(),
-        getSubtotal(),
-        activeStoreId,
-      );
-      setAppliedCoupon(coupon);
+          // We need to use a slightly different approach since we want to apply the discount
+          // I'll add a helper to cartStore or just do it manually here if possible
+          // For now, I'll just add the product. The user can see it's from a combo.
+
+          // To ensure the price is correct, we can temporarily override the product price
+          // or apply the discount. Applying discount is cleaner.
+
+          for (let i = 0; i < item.quantity; i++) {
+            // Create a "virtual" product with the discounted price
+            const discountedPrice = item.price * (1 - discountPercent / 100);
+            const virtualProduct: Product = {
+              ...product,
+              price: discountedPrice,
+              name: `${product.name} (${combo.name})`,
+              metadata: {
+                ...product.metadata,
+                from_combo: combo.id,
+                original_price: item.price,
+              },
+            };
+            addItem(virtualProduct);
+          }
+        }
+      });
+    };
+
+    const handleApplyCoupon = async () => {
+      if (!couponCode.trim()) return;
       setCouponError("");
-    } catch (err) {
-      setCouponError(String(err));
+      try {
+        const coupon = await validateCoupon(
+          couponCode.trim(),
+          getSubtotal(),
+          activeStoreId,
+        );
+        setAppliedCoupon(coupon);
+        setCouponError("");
+      } catch (err) {
+        setCouponError(String(err));
+        setAppliedCoupon(null);
+      }
+    };
+
+    const handleRemoveCoupon = () => {
       setAppliedCoupon(null);
-    }
-  };
+      setCouponCode("");
+      setCouponError("");
+    };
 
-  const handleRemoveCoupon = () => {
-    setAppliedCoupon(null);
-    setCouponCode("");
-    setCouponError("");
-  };
+    const lookupCustomerData = async (phone: string) => {
+      if (!phone || phone.length < 7) {
+        setActiveCustomer(null);
+        setWalletBalance(0);
+        setWalletCustomerId(null);
+        setCustomerAddresses([]);
+        return;
+      }
+      try {
+        const customer = await dbGetCustomerByPhone(phone, activeStoreId);
+        if (customer) {
+          setActiveCustomer(customer);
+          setCustomerInfo({
+            ...customerInfo,
+            name: customer.name,
+            phone: customer.phone,
+          } as any);
 
-  const lookupCustomerData = async (phone: string) => {
-    if (!phone || phone.length < 7) {
-      setActiveCustomer(null);
-      setWalletBalance(0);
-      setWalletCustomerId(null);
-      setCustomerAddresses([]);
-      return;
-    }
-    try {
-      const customer = await dbGetCustomerByPhone(phone, activeStoreId);
-      if (customer) {
-        setActiveCustomer(customer);
-        setCustomerInfo({
-          ...customerInfo,
-          name: customer.name,
-          phone: customer.phone,
-        } as any);
+          const [wallet, addrs] = await Promise.all([
+            getCustomerWallet(customer.id),
+            dbGetCustomerAddresses(customer.id),
+          ]);
+          setWalletBalance(wallet.balance);
+          setWalletCustomerId(customer.id);
+          setCustomerAddresses(addrs);
 
-        const [wallet, addrs] = await Promise.all([
-          getCustomerWallet(customer.id),
-          dbGetCustomerAddresses(customer.id),
-        ]);
-        setWalletBalance(wallet.balance);
-        setWalletCustomerId(customer.id);
-        setCustomerAddresses(addrs);
-
-        // Apply price tier logic if applicable
-        if (customer.price_tier === "discount") {
-          setGlobalDiscount(10, "percentage");
-        } else if (customer.price_tier === "wholesale") {
-          setGlobalDiscount(15, "percentage");
-        } else if (customer.price_tier === "premium") {
-          setGlobalDiscount(-10, "percentage");
+          // Apply price tier logic if applicable
+          if (customer.price_tier === "discount") {
+            setGlobalDiscount(10, "percentage");
+          } else if (customer.price_tier === "wholesale") {
+            setGlobalDiscount(15, "percentage");
+          } else if (customer.price_tier === "premium") {
+            setGlobalDiscount(-10, "percentage");
+          }
+        } else {
+          setActiveCustomer(null);
+          setWalletBalance(0);
+          setWalletCustomerId(null);
+          setCustomerAddresses([]);
         }
-      } else {
+      } catch {
         setActiveCustomer(null);
         setWalletBalance(0);
         setWalletCustomerId(null);
         setCustomerAddresses([]);
       }
-    } catch {
-      setActiveCustomer(null);
-      setWalletBalance(0);
-      setWalletCustomerId(null);
-      setCustomerAddresses([]);
-    }
-  };
+    };
 
-  const totals = {
-    subtotal: getSubtotal(),
-    tax_amount: getTaxAmount(),
-    discount_amount: getDiscountAmount(),
-    total: getTotal(),
-  };
+    const totals = {
+      subtotal: getSubtotal(),
+      tax_amount: getTaxAmount(),
+      discount_amount: getDiscountAmount(),
+      total: getTotal(),
+    };
 
-  const couponDiscount = appliedCoupon
-    ? appliedCoupon.discount_type === "percentage"
-      ? totals.subtotal * (appliedCoupon.discount_value / 100)
-      : appliedCoupon.discount_value
-    : 0;
-
-  const walletDeduction =
-    useWallet && walletCustomerId
-      ? Math.min(walletBalance, totals.total - couponDiscount)
+    const couponDiscount = appliedCoupon
+      ? appliedCoupon.discount_type === "percentage"
+        ? totals.subtotal * (appliedCoupon.discount_value / 100)
+        : appliedCoupon.discount_value
       : 0;
 
-  const finalTotal = Math.max(
-    0,
-    totals.total - couponDiscount - walletDeduction,
-  );
+    const walletDeduction =
+      useWallet && walletCustomerId
+        ? Math.min(walletBalance, totals.total - couponDiscount)
+        : 0;
 
-  const change = Math.max(0, amountPaid - finalTotal);
-
-  const handleCheckout = async () => {
-    if (cart.length === 0 || processing) return;
-
-    const newErrors: Record<string, string> = {};
-
-    if (orderType === "delivery") {
-      if (!customerInfo?.phone || customerInfo.phone.trim().length < 7) {
-        newErrors.phone = "Phone number required for delivery";
-      }
-      if (!customerInfo?.address || customerInfo.address.trim().length < 5) {
-        newErrors.address = "Delivery address required";
-      }
-    }
-
-    if (paymentMethod === "cash" && (amountPaid || 0) < finalTotal) {
-      newErrors.amount = "Insufficient amount tendered";
-    }
-
-    if (paymentMethod === "split") {
-      const splitTotal = splitPayments.reduce((sum, p) => sum + p.amount, 0);
-      if (Math.abs(splitTotal - finalTotal) > 0.01) {
-        newErrors.split = `Split total (${curr}${splitTotal}) does not match order total (${curr}${finalTotal.toFixed(2)})`;
-      }
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setErrors({});
-    setProcessing(true);
-
-    const orderId = originalOrderId || uuid();
-    const order = toOrder(
-      orderId,
-      user?.id || "system",
-      user?.name || "System",
+    const finalTotal = Math.max(
+      0,
+      totals.total - couponDiscount - walletDeduction,
     );
-    order.payment_method = paymentMethod === "split" ? "card" : paymentMethod;
-    order.amount_paid = paymentMethod === "cash" ? amountPaid || 0 : finalTotal;
-    order.change_amount = paymentMethod === "cash" ? change : 0;
-    order.customer_name = customerInfo?.name || "";
-    order.delivery_status = orderType === "delivery" ? "pending" : "delivered";
-    order.delivery_address = customerInfo?.address || "";
-    order.delivery_phone = customerInfo?.phone || "";
-    order.discount_amount =
-      totals.discount_amount + couponDiscount + walletDeduction;
-    order.total = finalTotal;
 
-    try {
-      await dbSaveOrder(order, activeStoreId);
+    const change = Math.max(0, amountPaid - finalTotal);
 
-      if (appliedCoupon) {
-        try {
-          await useCoupon(appliedCoupon.code, activeStoreId);
-        } catch (e) {
-          console.error("Failed to mark coupon used:", e);
+    const handleCheckout = async () => {
+      if (cart.length === 0 || processing) return;
+
+      const newErrors: Record<string, string> = {};
+
+      if (orderType === "delivery") {
+        if (!customerInfo?.phone || customerInfo.phone.trim().length < 7) {
+          newErrors.phone = "Phone number required for delivery";
+        }
+        if (!customerInfo?.address || customerInfo.address.trim().length < 5) {
+          newErrors.address = "Delivery address required";
         }
       }
-      if (useWallet && walletCustomerId && walletDeduction > 0) {
-        try {
-          await deductWalletBalance(
-            walletCustomerId,
-            walletDeduction,
-            order.id,
-          );
-        } catch (e) {
-          console.error("Failed to deduct wallet:", e);
+
+      if (paymentMethod === "cash" && (amountPaid || 0) < finalTotal) {
+        newErrors.amount = "Insufficient amount tendered";
+      }
+
+      if (paymentMethod === "split") {
+        const splitTotal = splitPayments.reduce((sum, p) => sum + p.amount, 0);
+        if (Math.abs(splitTotal - finalTotal) > 0.01) {
+          newErrors.split = `Split total (${curr}${splitTotal}) does not match order total (${curr}${finalTotal.toFixed(2)})`;
         }
       }
+
+      if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        return;
+      }
+
+      setErrors({});
+      setProcessing(true);
+
+      const orderId = originalOrderId || uuid();
+      const order = toOrder(
+        orderId,
+        user?.id || "system",
+        user?.name || "System",
+      );
+      order.payment_method = paymentMethod === "split" ? "card" : paymentMethod;
+      order.amount_paid =
+        paymentMethod === "cash" ? amountPaid || 0 : finalTotal;
+      order.change_amount = paymentMethod === "cash" ? change : 0;
+      order.customer_name = customerInfo?.name || "";
+      order.delivery_status =
+        orderType === "delivery" ? "pending" : "delivered";
+      order.delivery_address = customerInfo?.address || "";
+      order.delivery_phone = customerInfo?.phone || "";
+      order.discount_amount =
+        totals.discount_amount + couponDiscount + walletDeduction;
+      order.total = finalTotal;
 
       try {
-        await openCashDrawer();
-      } catch (e) {
-        console.log("Cash drawer not available");
+        await dbSaveOrder(order, activeStoreId);
+
+        if (appliedCoupon) {
+          try {
+            await useCoupon(appliedCoupon.code, activeStoreId);
+          } catch (e) {
+            console.error("Failed to mark coupon used:", e);
+          }
+        }
+        if (useWallet && walletCustomerId && walletDeduction > 0) {
+          try {
+            await deductWalletBalance(
+              walletCustomerId,
+              walletDeduction,
+              order.id,
+            );
+          } catch (e) {
+            console.error("Failed to deduct wallet:", e);
+          }
+        }
+
+        try {
+          await openCashDrawer();
+        } catch (e) {
+          console.log("Cash drawer not available");
+        }
+
+        const rec = generateReceipt(order, settings);
+        setReceipt(rec);
+        setLastOrder(order);
+        clearCart();
+        setAppliedCoupon(null);
+        setCouponCode("");
+        setCouponError("");
+        setUseWallet(false);
+        setWalletBalance(0);
+        setWalletCustomerId(null);
+        setTipAmount(0);
+        setSplitPayments([]);
+        setActiveCustomer(null);
+        setCustomerAddresses([]);
+        setSelectedAddressId(null);
+        await Promise.all([fetchProducts(), loadHeldOrders()]);
+      } catch (err) {
+        console.error("Checkout failed:", err);
+        alert("Failed to complete order. Please try again.");
+      } finally {
+        setProcessing(false);
       }
+    };
 
-      const rec = generateReceipt(order, settings);
-      setReceipt(rec);
-      setLastOrder(order);
-      clearCart();
-      setAppliedCoupon(null);
-      setCouponCode("");
-      setCouponError("");
-      setUseWallet(false);
-      setWalletBalance(0);
-      setWalletCustomerId(null);
-      setTipAmount(0);
-      setSplitPayments([]);
-      setActiveCustomer(null);
-      setCustomerAddresses([]);
-      setSelectedAddressId(null);
-      await Promise.all([fetchProducts(), loadHeldOrders()]);
-    } catch (err) {
-      console.error("Checkout failed:", err);
-      alert("Failed to complete order. Please try again.");
-    } finally {
-      setProcessing(false);
-    }
-  };
+    const handleHoldOrder = async () => {
+      if (cart.length === 0 || processing) return;
+      setProcessing(true);
 
-  const handleHoldOrder = async () => {
-    if (cart.length === 0 || processing) return;
-    setProcessing(true);
-
-    const order = toOrder(uuid(), user?.id || "system", user?.name || "System");
-    order.status = "hold";
-    order.payment_method = "cash";
-    order.amount_paid = 0;
-    order.change_amount = 0;
-    order.customer_name = customerInfo?.name || "";
-    order.delivery_status = "pending";
-    order.delivery_address = customerInfo?.address || "";
-    order.delivery_phone = customerInfo?.phone || "";
-
-    try {
-      await dbHoldOrder(order, activeStoreId);
-      alert("Order held successfully!");
-      clearCart();
-      await loadHeldOrders();
-    } catch (err) {
-      console.error("Failed to hold order:", err);
-      alert("Failed to hold order. Please try again.");
-    }
-    setProcessing(false);
-  };
-
-  const handlePrintKOT = async () => {
-    if (cart.length === 0 || processing) return;
-    setProcessing(true);
-
-    const order = toOrder(uuid(), user?.id || "system", user?.name || "System");
-    order.status = "processing";
-    order.payment_method = "cash";
-    order.amount_paid = 0;
-    order.change_amount = 0;
-    order.customer_name = customerInfo?.name || "";
-    order.delivery_status = "pending";
-    order.delivery_address = customerInfo?.address || "";
-    order.delivery_phone = customerInfo?.phone || "";
-
-    try {
-      await dbSaveOrder(order, activeStoreId);
-      const kotText = generateKOTText(order);
-      await printReceipt(kotText);
-      alert("KOT sent to printer!");
-      clearCart();
-    } catch (err) {
-      console.error("Failed to print KOT:", err);
-      alert("Failed to print KOT");
-    }
-    setProcessing(false);
-  };
-
-  const generateKOTText = (order: Order): string => {
-    const lines = [
-      "=".repeat(32),
-      "KITCHEN ORDER TICKET",
-      "=".repeat(32),
-      `Order #: ${order.id.slice(0, 8).toUpperCase()}`,
-      `Type: ${order.order_type.toUpperCase()}`,
-      `Table: ${tableName || "N/A"}`,
-      `Customer: ${order.customer_name || "Guest"}`,
-      `Time: ${new Date().toLocaleTimeString()}`,
-      "-".repeat(32),
-      "ITEMS:",
-      ...order.items.map(
-        (item, idx) => `${idx + 1}. ${item.product_name} x${item.quantity}`,
-      ),
-      "-".repeat(32),
-      notes ? `Notes: ${notes}` : "",
-      "=".repeat(32),
-      "",
-    ].filter(Boolean);
-    return lines.join("\n");
-  };
-
-  const handleRestoreOrder = (order: Order) => {
-    const restoredCart = order.items
-      .map((item) => {
-        const product = products.find((p) => p.id === item.product_id);
-        if (product) {
-          return {
-            product,
-            quantity: item.quantity,
-            discount: item.discount,
-          };
-        }
-        return null;
-      })
-      .filter(
-        (
-          item,
-        ): item is {
-          product: (typeof products)[0];
-          quantity: number;
-          discount: number;
-        } => item !== null,
+      const order = toOrder(
+        uuid(),
+        user?.id || "system",
+        user?.name || "System",
       );
+      order.status = "hold";
+      order.payment_method = "cash";
+      order.amount_paid = 0;
+      order.change_amount = 0;
+      order.customer_name = customerInfo?.name || "";
+      order.delivery_status = "pending";
+      order.delivery_address = customerInfo?.address || "";
+      order.delivery_phone = customerInfo?.phone || "";
 
-    if (restoredCart.length > 0) {
-      restoredCart.forEach((item) => {
-        for (let i = 0; i < item.quantity; i++) {
-          addItem(item.product);
-        }
-      });
-      setCustomerInfo({
-        name: order.customer_name,
-        phone: order.delivery_phone,
-        address: order.delivery_address,
-      });
-      setOrderType(order.order_type as "dine_in" | "takeaway" | "delivery");
-      setShowHeldOrders(false);
-    }
-  };
+      try {
+        await dbHoldOrder(order, activeStoreId);
+        alert("Order held successfully!");
+        clearCart();
+        await loadHeldOrders();
+      } catch (err) {
+        console.error("Failed to hold order:", err);
+        alert("Failed to hold order. Please try again.");
+      }
+      setProcessing(false);
+    };
 
-  const handleDeleteHeldOrder = async (id: string) => {
-    if (!confirm("Delete this held order?")) return;
-    try {
-      await dbDeletePendingOrder(id, activeStoreId);
-      await loadHeldOrders();
-    } catch (err) {
-      console.error("Failed to delete held order:", err);
-    }
-  };
+    const handlePrintKOT = async () => {
+      if (cart.length === 0 || processing) return;
+      setProcessing(true);
 
-  const curr = settings?.currency_symbol ?? "₹";
+      const order = toOrder(
+        uuid(),
+        user?.id || "system",
+        user?.name || "System",
+      );
+      order.status = "processing";
+      order.payment_method = "cash";
+      order.amount_paid = 0;
+      order.change_amount = 0;
+      order.customer_name = customerInfo?.name || "";
+      order.delivery_status = "pending";
+      order.delivery_address = customerInfo?.address || "";
+      order.delivery_phone = customerInfo?.phone || "";
 
-  const handlePrint = async () => {
-    if (!receipt) return;
-    const printWindow = window.open("", "_blank", "width=400,height=600");
-    if (printWindow) {
-      printWindow.document.write(`
+      try {
+        await dbSaveOrder(order, activeStoreId);
+        const kotText = generateKOTText(order);
+        await printReceipt(kotText);
+        alert("KOT sent to printer!");
+        clearCart();
+      } catch (err) {
+        console.error("Failed to print KOT:", err);
+        alert("Failed to print KOT");
+      }
+      setProcessing(false);
+    };
+
+    const generateKOTText = (order: Order): string => {
+      const lines = [
+        "=".repeat(32),
+        "KITCHEN ORDER TICKET",
+        "=".repeat(32),
+        `Order #: ${order.id.slice(0, 8).toUpperCase()}`,
+        `Type: ${order.order_type.toUpperCase()}`,
+        `Table: ${tableName || "N/A"}`,
+        `Customer: ${order.customer_name || "Guest"}`,
+        `Time: ${new Date().toLocaleTimeString()}`,
+        "-".repeat(32),
+        "ITEMS:",
+        ...order.items.map(
+          (item, idx) => `${idx + 1}. ${item.product_name} x${item.quantity}`,
+        ),
+        "-".repeat(32),
+        notes ? `Notes: ${notes}` : "",
+        "=".repeat(32),
+        "",
+      ].filter(Boolean);
+      return lines.join("\n");
+    };
+
+    const handleRestoreOrder = (order: Order) => {
+      const restoredCart = order.items
+        .map((item) => {
+          const product = products.find((p) => p.id === item.product_id);
+          if (product) {
+            return {
+              product,
+              quantity: item.quantity,
+              discount: item.discount,
+            };
+          }
+          return null;
+        })
+        .filter(
+          (
+            item,
+          ): item is {
+            product: (typeof products)[0];
+            quantity: number;
+            discount: number;
+          } => item !== null,
+        );
+
+      if (restoredCart.length > 0) {
+        restoredCart.forEach((item) => {
+          for (let i = 0; i < item.quantity; i++) {
+            addItem(item.product);
+          }
+        });
+        setCustomerInfo({
+          name: order.customer_name,
+          phone: order.delivery_phone,
+          address: order.delivery_address,
+        });
+        setOrderType(order.order_type as "dine_in" | "takeaway" | "delivery");
+        setShowHeldOrders(false);
+      }
+    };
+
+    const handleDeleteHeldOrder = async (id: string) => {
+      if (!confirm("Delete this held order?")) return;
+      try {
+        await dbDeletePendingOrder(id, activeStoreId);
+        await loadHeldOrders();
+      } catch (err) {
+        console.error("Failed to delete held order:", err);
+      }
+    };
+
+    const curr = settings?.currency_symbol ?? "₹";
+
+    const handlePrint = async () => {
+      if (!receipt) return;
+      const printWindow = window.open("", "_blank", "width=400,height=600");
+      if (printWindow) {
+        printWindow.document.write(`
         <html>
           <head>
             <title>Receipt</title>
@@ -743,366 +832,450 @@ export default function POSScreen() {
           <body>${receipt}</body>
         </html>
       `);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
-    } else {
-      window.print();
-    }
-  };
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+          printWindow.print();
+        }, 250);
+      } else {
+        window.print();
+      }
+    };
 
-  const handleWhatsAppShare = async () => {
-    if (!receipt) return;
-    try {
-      await openWhatsAppShare(receipt);
-    } catch {
-      const encoded = encodeURIComponent(receipt);
-      window.open(`https://wa.me/?text=${encoded}`, "_blank");
-    }
-  };
+    const handleWhatsAppShare = async () => {
+      if (!receipt) return;
+      try {
+        await openWhatsAppShare(receipt);
+      } catch {
+        const encoded = encodeURIComponent(receipt);
+        window.open(`https://wa.me/?text=${encoded}`, "_blank");
+      }
+    };
 
-  const handleEmailShare = async () => {
-    if (!receipt) return;
-    const subject = `Receipt - ${new Date().toLocaleDateString()}`;
-    try {
-      await openEmailShare(receipt, subject);
-    } catch {
-      const encoded = encodeURIComponent(receipt);
-      window.open(
-        `mailto:?subject=${encodeURIComponent(subject)}&body=${encoded}`,
-        "_blank",
+    const handleEmailShare = async () => {
+      if (!receipt) return;
+      const subject = `Receipt - ${new Date().toLocaleDateString()}`;
+      try {
+        await openEmailShare(receipt, subject);
+      } catch {
+        const encoded = encodeURIComponent(receipt);
+        window.open(
+          `mailto:?subject=${encodeURIComponent(subject)}&body=${encoded}`,
+          "_blank",
+        );
+      }
+    };
+
+    const handleSaveReceipt = async () => {
+      if (!receipt) return;
+      const date = new Date().toISOString().split("T")[0];
+      const fileName = `receipt_${date}_${uuid()}.txt`;
+      try {
+        const path = await saveReceiptToFile(receipt, fileName);
+        alert(`Receipt saved to: ${path}`);
+      } catch (err) {
+        console.error("Failed to save receipt:", err);
+      }
+    };
+
+    const handleRemoveItem = (cartItemId: string) =>
+      useCartStore.getState().removeItem(cartItemId);
+    const handleClearCart = () => {
+      if (cart.length === 0) return;
+      setShowVoidReasonModal(true);
+    };
+
+    const handleVoidOrder = async () => {
+      if (!voidReason.trim()) return;
+      setShowPinModal({ type: "void" });
+    };
+
+    const handleNoSale = async () => {
+      setShowPinModal({ type: "no_sale" });
+    };
+
+    const itemCount = getItemCount();
+
+    if (receipt) {
+      const upiUrl =
+        settings.country === "IN" &&
+        settings.upi_id &&
+        lastOrder?.payment_method === "upi"
+          ? `upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${lastOrder.total}&cu=INR`
+          : null;
+
+      return (
+        <div
+          className="h-full flex items-center justify-center bg-bg"
+          role="region"
+          aria-label="Order complete"
+        >
+          <div
+            className="card p-6 w-[450px] fade-in"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="receipt-title"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2
+                id="receipt-title"
+                className="font-display text-base"
+                style={{ color: "#F5C842" }}
+              >
+                Order Complete!
+              </h2>
+              <button
+                onClick={() => {
+                  setReceipt(null);
+                  setLastOrder(null);
+                }}
+                className="btn-ghost py-1 px-3"
+                aria-label="Close and start new order"
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="flex gap-4">
+              <pre
+                className="flex-1 text-xs font-mono p-4 rounded-lg overflow-auto"
+                style={{
+                  background: "#0A0A0C",
+                  color: "#9090A8",
+                  maxHeight: 400,
+                  whiteSpace: "pre",
+                  lineHeight: 1.5,
+                }}
+                aria-label="Receipt content"
+                role="region"
+              >
+                {receipt}
+              </pre>
+
+              {upiUrl && (
+                <div className="w-40 flex flex-col items-center gap-3 p-3 rounded-lg border border-border bg-[#141418]">
+                  <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-wider">
+                    Scan to Pay UPI
+                  </div>
+                  <div className="p-2 bg-white rounded-lg">
+                    <QRCodeSVG value={upiUrl} size={120} />
+                  </div>
+                  <div className="text-xs font-bold text-[#F5C842]">
+                    {curr}
+                    {lastOrder?.total.toFixed(2)}
+                  </div>
+                  <div className="text-[9px] text-gray-500 text-center truncate w-full">
+                    {settings.upi_id}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div
+              className="flex gap-2 mt-4"
+              role="group"
+              aria-label="Receipt actions"
+            >
+              <button
+                className="btn-accent flex-1 flex items-center justify-center gap-2 py-3"
+                onClick={() => {
+                  setReceipt(null);
+                  setLastOrder(null);
+                }}
+              >
+                <Plus size={16} aria-hidden="true" /> New Order
+              </button>
+              <button
+                className="btn-ghost py-3 px-3 flex items-center gap-1.5"
+                onClick={handlePrint}
+                aria-label="Print receipt"
+              >
+                <Printer size={16} aria-hidden="true" />
+              </button>
+              <button
+                className="btn-ghost py-3 px-3 flex items-center gap-1.5"
+                onClick={handleWhatsAppShare}
+                aria-label="Share receipt on WhatsApp"
+              >
+                <MessageCircle size={16} aria-hidden="true" />
+              </button>
+              <button
+                className="btn-ghost py-3 px-3 flex items-center gap-1.5"
+                onClick={handleEmailShare}
+                aria-label="Share receipt via email"
+              >
+                <Mail size={16} aria-hidden="true" />
+              </button>
+              <button
+                className="btn-ghost py-3 px-3 flex items-center gap-1.5"
+                onClick={handleSaveReceipt}
+                aria-label="Save receipt to file"
+              >
+                <Save size={16} aria-hidden="true" />
+              </button>
+              <button
+                className="btn-ghost py-3 px-3 flex items-center gap-1.5"
+                onClick={async () => {
+                  if (lastOrder?.delivery_phone) {
+                    try {
+                      await sendSmsNotification(
+                        lastOrder.delivery_phone,
+                        receipt,
+                        activeStoreId,
+                      );
+                      alert("SMS sent!");
+                    } catch (e) {
+                      alert("Failed to send SMS");
+                    }
+                  } else {
+                    alert("No phone number found for this order");
+                  }
+                }}
+                aria-label="Share receipt via SMS"
+              >
+                <Smartphone size={16} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        </div>
       );
     }
-  };
 
-  const handleSaveReceipt = async () => {
-    if (!receipt) return;
-    const date = new Date().toISOString().split("T")[0];
-    const fileName = `receipt_${date}_${uuid()}.txt`;
-    try {
-      const path = await saveReceiptToFile(receipt, fileName);
-      alert(`Receipt saved to: ${path}`);
-    } catch (err) {
-      console.error("Failed to save receipt:", err);
-    }
-  };
-
-  const handleRemoveItem = (cartItemId: string) =>
-    useCartStore.getState().removeItem(cartItemId);
-  const handleClearCart = () => {
-    if (cart.length === 0) return;
-    setShowVoidReasonModal(true);
-  };
-
-  const handleVoidOrder = async () => {
-    if (!voidReason.trim()) return;
-    setShowPinModal({ type: "void" });
-  };
-
-  const handleNoSale = async () => {
-    setShowPinModal({ type: "no_sale" });
-  };
-
-  const itemCount = getItemCount();
-
-  if (receipt) {
-    const upiUrl =
-      settings.country === "IN" &&
-      settings.upi_id &&
-      lastOrder?.payment_method === "upi"
-        ? `upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${lastOrder.total}&cu=INR`
-        : null;
+    const allCategories = ["All", "Combos", ...categories];
+    const activeCombos = getActiveCombos();
+    const showCombos = selectedCategory === "Combos";
 
     return (
       <div
-        className="h-full flex items-center justify-center bg-bg"
-        role="region"
-        aria-label="Order complete"
+        className="flex h-full overflow-hidden"
+        id="main-content"
+        role="main"
+        aria-label="POS Screen"
       >
-        <div
-          className="card p-6 w-[450px] fade-in"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="receipt-title"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h2
-              id="receipt-title"
-              className="font-display text-base"
-              style={{ color: "#F5C842" }}
-            >
-              Order Complete!
-            </h2>
-            <button
-              onClick={() => {
-                setReceipt(null);
-                setLastOrder(null);
-              }}
-              className="btn-ghost py-1 px-3"
-              aria-label="Close and start new order"
-            >
-              <X size={16} aria-hidden="true" />
-            </button>
-          </div>
-
-          <div className="flex gap-4">
-            <pre
-              className="flex-1 text-xs font-mono p-4 rounded-lg overflow-auto"
-              style={{
-                background: "#0A0A0C",
-                color: "#9090A8",
-                maxHeight: 400,
-                whiteSpace: "pre",
-                lineHeight: 1.5,
-              }}
-              aria-label="Receipt content"
-              role="region"
-            >
-              {receipt}
-            </pre>
-
-            {upiUrl && (
-              <div className="w-40 flex flex-col items-center gap-3 p-3 rounded-lg border border-border bg-[#141418]">
-                <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-wider">
-                  Scan to Pay UPI
-                </div>
-                <div className="p-2 bg-white rounded-lg">
-                  <QRCodeSVG value={upiUrl} size={120} />
-                </div>
-                <div className="text-xs font-bold text-[#F5C842]">
-                  {curr}
-                  {lastOrder?.total.toFixed(2)}
-                </div>
-                <div className="text-[9px] text-gray-500 text-center truncate w-full">
-                  {settings.upi_id}
-                </div>
-              </div>
-            )}
-          </div>
-
+        {/* Product Grid */}
+        <div className="flex-1 flex flex-col overflow-hidden p-4">
           <div
-            className="flex gap-2 mt-4"
-            role="group"
-            aria-label="Receipt actions"
+            className="flex gap-3 mb-4"
+            role="search"
+            aria-label="Product search"
           >
-            <button
-              className="btn-accent flex-1 flex items-center justify-center gap-2 py-3"
-              onClick={() => {
-                setReceipt(null);
-                setLastOrder(null);
-              }}
+            <div className="relative flex-1">
+              <Search
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: "#4A4A5A" }}
+                aria-hidden="true"
+              />
+              <label htmlFor="product-search" className="sr-only">
+                Search or scan barcode
+              </label>
+              <input
+                id="product-search"
+                ref={searchInputRef}
+                placeholder="Search or scan barcode..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                style={{ paddingLeft: 36 }}
+                aria-describedby="search-hint"
+              />
+              <span id="search-hint" className="sr-only">
+                Press Enter to search by barcode, Escape to clear
+              </span>
+            </div>
+            <div
+              className="flex gap-1"
+              role="group"
+              aria-label="Filter by category"
             >
-              <Plus size={16} aria-hidden="true" /> New Order
-            </button>
+              <button
+                onClick={() => setShowCustomItemModal(true)}
+                className="px-3 py-2 rounded-lg text-xs font-medium transition-all bg-[#141418] text-[#F5C842] border border-[#1E1E26] hover:bg-[#1E1E26] flex items-center gap-1"
+                aria-label="Add custom item"
+              >
+                <Plus size={12} /> Custom
+              </button>
+              {allCategories.map((c) => {
+                const isSelected =
+                  c === "All" ? !selectedCategory : selectedCategory === c;
+                const isCombos = c === "Combos";
+                return (
+                  <button
+                    key={c}
+                    onClick={() =>
+                      setSelectedCategory(
+                        c === "All" ? null : c === "Combos" ? "Combos" : c,
+                      )
+                    }
+                    aria-pressed={isSelected}
+                    className="px-3 py-2 rounded-lg text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] flex items-center gap-1"
+                    style={{
+                      background: isSelected
+                        ? "rgba(245,200,66,0.1)"
+                        : "#141418",
+                      color: isSelected ? "#F5C842" : "#4A4A5A",
+                      border: `1px solid ${isSelected ? "rgba(245,200,66,0.2)" : "#1E1E26"}`,
+                    }}
+                  >
+                    {isCombos && <Tag size={12} />}
+                    {c}
+                    {isCombos && activeCombos.length > 0 && (
+                      <span
+                        className="ml-1 px-1.5 py-0.5 rounded text-[10px]"
+                        style={{ background: "#2ECC71", color: "#0D0D0F" }}
+                      >
+                        {activeCombos.length}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
             <button
-              className="btn-ghost py-3 px-3 flex items-center gap-1.5"
-              onClick={handlePrint}
-              aria-label="Print receipt"
+              onClick={() => fetchProducts()}
+              className="btn-ghost py-2 px-3"
+              title="Refresh"
+              aria-label="Refresh products"
             >
-              <Printer size={16} aria-hidden="true" />
-            </button>
-            <button
-              className="btn-ghost py-3 px-3 flex items-center gap-1.5"
-              onClick={handleWhatsAppShare}
-              aria-label="Share receipt on WhatsApp"
-            >
-              <MessageCircle size={16} aria-hidden="true" />
-            </button>
-            <button
-              className="btn-ghost py-3 px-3 flex items-center gap-1.5"
-              onClick={handleEmailShare}
-              aria-label="Share receipt via email"
-            >
-              <Mail size={16} aria-hidden="true" />
-            </button>
-            <button
-              className="btn-ghost py-3 px-3 flex items-center gap-1.5"
-              onClick={handleSaveReceipt}
-              aria-label="Save receipt to file"
-            >
-              <Save size={16} aria-hidden="true" />
-            </button>
-            <button
-              className="btn-ghost py-3 px-3 flex items-center gap-1.5"
-              onClick={async () => {
-                if (lastOrder?.delivery_phone) {
-                  try {
-                    await sendSmsNotification(
-                      lastOrder.delivery_phone,
-                      receipt,
-                      activeStoreId,
-                    );
-                    alert("SMS sent!");
-                  } catch (e) {
-                    alert("Failed to send SMS");
-                  }
-                } else {
-                  alert("No phone number found for this order");
-                }
-              }}
-              aria-label="Share receipt via SMS"
-            >
-              <Smartphone size={16} aria-hidden="true" />
+              <RefreshCw
+                size={15}
+                className={productsLoading ? "spin" : ""}
+                aria-hidden="true"
+              />
             </button>
           </div>
-        </div>
-      </div>
-    );
-  }
 
-  const allCategories = ["All", "Combos", ...categories];
-  const activeCombos = getActiveCombos();
-  const showCombos = selectedCategory === "Combos";
-
-  return (
-    <div
-      className="flex h-full overflow-hidden"
-      id="main-content"
-      role="main"
-      aria-label="POS Screen"
-    >
-      {/* Product Grid */}
-      <div className="flex-1 flex flex-col overflow-hidden p-4">
-        <div
-          className="flex gap-3 mb-4"
-          role="search"
-          aria-label="Product search"
-        >
-          <div className="relative flex-1">
-            <Search
-              size={15}
-              className="absolute left-3 top-1/2 -translate-y-1/2"
+          {productsLoading ? (
+            <div
+              className="flex-1 flex items-center justify-center"
               style={{ color: "#4A4A5A" }}
-              aria-hidden="true"
-            />
-            <label htmlFor="product-search" className="sr-only">
-              Search or scan barcode
-            </label>
-            <input
-              id="product-search"
-              ref={searchInputRef}
-              placeholder="Search or scan barcode..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              style={{ paddingLeft: 36 }}
-              aria-describedby="search-hint"
-            />
-            <span id="search-hint" className="sr-only">
-              Press Enter to search by barcode, Escape to clear
-            </span>
-          </div>
-          <div
-            className="flex gap-1"
-            role="group"
-            aria-label="Filter by category"
-          >
-            <button
-              onClick={() => setShowCustomItemModal(true)}
-              className="px-3 py-2 rounded-lg text-xs font-medium transition-all bg-[#141418] text-[#F5C842] border border-[#1E1E26] hover:bg-[#1E1E26] flex items-center gap-1"
-              aria-label="Add custom item"
+              role="status"
+              aria-live="polite"
             >
-              <Plus size={12} /> Custom
-            </button>
-            {allCategories.map((c) => {
-              const isSelected =
-                c === "All" ? !selectedCategory : selectedCategory === c;
-              const isCombos = c === "Combos";
-              return (
-                <button
-                  key={c}
-                  onClick={() =>
-                    setSelectedCategory(
-                      c === "All" ? null : c === "Combos" ? "Combos" : c,
-                    )
-                  }
-                  aria-pressed={isSelected}
-                  className="px-3 py-2 rounded-lg text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] flex items-center gap-1"
-                  style={{
-                    background: isSelected ? "rgba(245,200,66,0.1)" : "#141418",
-                    color: isSelected ? "#F5C842" : "#4A4A5A",
-                    border: `1px solid ${isSelected ? "rgba(245,200,66,0.2)" : "#1E1E26"}`,
-                  }}
-                >
-                  {isCombos && <Tag size={12} />}
-                  {c}
-                  {isCombos && activeCombos.length > 0 && (
-                    <span
-                      className="ml-1 px-1.5 py-0.5 rounded text-[10px]"
-                      style={{ background: "#2ECC71", color: "#0D0D0F" }}
-                    >
-                      {activeCombos.length}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          <button
-            onClick={() => fetchProducts()}
-            className="btn-ghost py-2 px-3"
-            title="Refresh"
-            aria-label="Refresh products"
-          >
-            <RefreshCw
-              size={15}
-              className={productsLoading ? "spin" : ""}
-              aria-hidden="true"
-            />
-          </button>
-        </div>
-
-        {productsLoading ? (
-          <div
-            className="flex-1 flex items-center justify-center"
-            style={{ color: "#4A4A5A" }}
-            role="status"
-            aria-live="polite"
-          >
-            <RefreshCw size={24} className="spin" aria-hidden="true" />
-            <span className="sr-only">Loading products</span>
-          </div>
-        ) : (
-          <div
-            ref={productGridRef}
-            className="flex-1 overflow-y-auto"
-            tabIndex={0}
-            onKeyDown={handleProductGridKeyDown}
-            onFocus={() => setIsGridFocused(true)}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))",
-              gap: 12,
-              alignContent: "start",
-              outline: "none",
-            }}
-            role="grid"
-            aria-label={showCombos ? "Combo deals grid" : "Product grid"}
-            aria-readonly="true"
-          >
-            {showCombos ? (
-              activeCombos.length === 0 ? (
-                <div
-                  className="col-span-full flex flex-col items-center justify-center py-12"
-                  style={{ color: "#4A4A5A" }}
-                >
-                  <Tag size={48} className="mb-4 opacity-50" />
-                  <p className="text-base mb-2">No Active Combos</p>
-                  <p className="text-sm">Create combo deals in Products menu</p>
-                </div>
+              <RefreshCw size={24} className="spin" aria-hidden="true" />
+              <span className="sr-only">Loading products</span>
+            </div>
+          ) : (
+            <div
+              ref={productGridRef}
+              className="flex-1 overflow-y-auto"
+              tabIndex={0}
+              onKeyDown={handleProductGridKeyDown}
+              onFocus={() => setIsGridFocused(true)}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))",
+                gap: 12,
+                alignContent: "start",
+                outline: "none",
+              }}
+              role="grid"
+              aria-label={showCombos ? "Combo deals grid" : "Product grid"}
+              aria-readonly="true"
+            >
+              {showCombos ? (
+                activeCombos.length === 0 ? (
+                  <div
+                    className="col-span-full flex flex-col items-center justify-center py-12"
+                    style={{ color: "#4A4A5A" }}
+                  >
+                    <Tag size={48} className="mb-4 opacity-50" />
+                    <p className="text-base mb-2">No Active Combos</p>
+                    <p className="text-sm">
+                      Create combo deals in Products menu
+                    </p>
+                  </div>
+                ) : (
+                  activeCombos.map((combo, idx) => {
+                    const totalItemsPrice = combo.items.reduce(
+                      (sum, item) => sum + item.price * item.quantity,
+                      0,
+                    );
+                    const isFocused = focusedProductIndex === idx;
+                    return (
+                      <button
+                        key={combo.id}
+                        onClick={() => handleAddComboToCart(combo)}
+                        ref={(el) => {
+                          if (isFocused && el) {
+                            el.focus();
+                          }
+                        }}
+                        className="card card-hover p-3 text-left transition-all relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842]"
+                        style={{
+                          border: isFocused ? "2px solid #F5C842" : undefined,
+                        }}
+                        role="gridcell"
+                        aria-label={`Combo: ${combo.name}, ${combo.items.length} items, ${curr}${combo.combo_price}`}
+                      >
+                        <div
+                          className="absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold"
+                          style={{ background: "#2ECC71", color: "#0D0D0F" }}
+                        >
+                          {combo.discount_percent.toFixed(0)}% OFF
+                        </div>
+                        <div
+                          className="w-10 h-10 rounded-lg mb-2 flex items-center justify-center"
+                          style={{ background: "#F5C842" }}
+                          aria-hidden="true"
+                        >
+                          <Tag size={20} color="#0D0D0F" />
+                        </div>
+                        <div className="text-sm font-medium leading-tight mb-1">
+                          {combo.name}
+                        </div>
+                        <div
+                          className="text-xs mb-2"
+                          style={{ color: "#4A4A5A" }}
+                        >
+                          {combo.items.length} items
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span
+                            className="font-bold"
+                            style={{ color: "#2ECC71", fontSize: 16 }}
+                          >
+                            {curr}
+                            {combo.combo_price.toFixed(0)}
+                          </span>
+                          <span
+                            className="text-xs line-through"
+                            style={{ color: "#4A4A5A" }}
+                          >
+                            {curr}
+                            {totalItemsPrice.toFixed(0)}
+                          </span>
+                        </div>
+                        <div
+                          className="mt-2 text-[10px]"
+                          style={{ color: "#9090A8" }}
+                        >
+                          {combo.items.slice(0, 2).map((item, i) => (
+                            <span key={i}>
+                              {item.quantity}x {item.product_name}
+                              {i < Math.min(combo.items.length, 2) - 1
+                                ? ", "
+                                : ""}
+                            </span>
+                          ))}
+                          {combo.items.length > 2 && (
+                            <span> +{combo.items.length - 2} more</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })
+                )
               ) : (
-                activeCombos.map((combo, idx) => {
-                  const totalItemsPrice = combo.items.reduce(
-                    (sum, item) => sum + item.price * item.quantity,
-                    0,
-                  );
+                filtered.map((p, idx) => {
+                  const inCart = cart.find((i) => i.product.id === p.id);
+                  const oos = p.stock === 0;
                   const isFocused = focusedProductIndex === idx;
                   return (
                     <button
-                      key={combo.id}
-                      onClick={() => handleAddComboToCart(combo)}
+                      key={p.id}
+                      onClick={() => handleAddItem(p)}
+                      disabled={oos}
                       ref={(el) => {
                         if (isFocused && el) {
                           el.focus();
@@ -1110,1446 +1283,1481 @@ export default function POSScreen() {
                       }}
                       className="card card-hover p-3 text-left transition-all relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842]"
                       style={{
-                        border: isFocused ? "2px solid #F5C842" : undefined,
+                        opacity: oos ? 0.4 : 1,
+                        border: inCart
+                          ? "1px solid rgba(245,200,66,0.3)"
+                          : isFocused
+                            ? "2px solid #F5C842"
+                            : undefined,
                       }}
                       role="gridcell"
-                      aria-label={`Combo: ${combo.name}, ${combo.items.length} items, ${curr}${combo.combo_price}`}
+                      aria-label={`${p.name}, ${p.category}, ${curr}${p.price}, Stock: ${p.stock}${inCart ? `, Quantity in cart: ${inCart.quantity}` : ""}${oos ? ", Out of stock" : ""}`}
                     >
-                      <div
-                        className="absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold"
-                        style={{ background: "#2ECC71", color: "#0D0D0F" }}
-                      >
-                        {combo.discount_percent.toFixed(0)}% OFF
-                      </div>
-                      <div
-                        className="w-10 h-10 rounded-lg mb-2 flex items-center justify-center"
-                        style={{ background: "#F5C842" }}
-                        aria-hidden="true"
-                      >
-                        <Tag size={20} color="#0D0D0F" />
-                      </div>
+                      {inCart && (
+                        <div
+                          className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ background: "#F5C842", color: "#0D0D0F" }}
+                          aria-hidden="true"
+                        >
+                          {inCart.quantity}
+                        </div>
+                      )}
+                      {p.image_url ? (
+                        <img
+                          src={p.image_url}
+                          alt={p.name}
+                          className="w-full h-16 rounded-lg mb-2 object-cover"
+                          style={{ background: "#1E1E26" }}
+                        />
+                      ) : (
+                        <div
+                          className="w-full h-16 rounded-lg mb-2 flex items-center justify-center text-base font-semibold"
+                          style={{
+                            background: "rgba(245,200,66,0.08)",
+                            color: "#F5C842",
+                          }}
+                          aria-hidden="true"
+                        >
+                          {p.name[0]}
+                        </div>
+                      )}
                       <div className="text-sm font-medium leading-tight mb-1">
-                        {combo.name}
+                        {p.name}
+                      </div>
+                      <div className="text-xs" style={{ color: "#4A4A5A" }}>
+                        {p.category}
                       </div>
                       <div
-                        className="text-xs mb-2"
-                        style={{ color: "#4A4A5A" }}
+                        className="mt-2 font-semibold"
+                        style={{ color: "#F5C842", fontSize: 14 }}
                       >
-                        {combo.items.length} items
+                        {curr}
+                        {p.price}
                       </div>
-                      <div className="flex items-baseline gap-2">
-                        <span
-                          className="font-bold"
-                          style={{ color: "#2ECC71", fontSize: 16 }}
+                      <div style={{ color: "#4A4A5A", fontSize: 10 }}>
+                        Stock: {p.stock}
+                      </div>
+                      {oos && (
+                        <div
+                          className="absolute inset-0 flex items-center justify-center rounded-xl"
+                          style={{
+                            background: "rgba(13,13,15,0.7)",
+                            fontSize: 10,
+                            color: "#E74C3C",
+                          }}
+                          aria-hidden="true"
                         >
-                          {curr}
-                          {combo.combo_price.toFixed(0)}
-                        </span>
-                        <span
-                          className="text-xs line-through"
-                          style={{ color: "#4A4A5A" }}
-                        >
-                          {curr}
-                          {totalItemsPrice.toFixed(0)}
-                        </span>
-                      </div>
-                      <div
-                        className="mt-2 text-[10px]"
-                        style={{ color: "#9090A8" }}
-                      >
-                        {combo.items.slice(0, 2).map((item, i) => (
-                          <span key={i}>
-                            {item.quantity}x {item.product_name}
-                            {i < Math.min(combo.items.length, 2) - 1
-                              ? ", "
-                              : ""}
-                          </span>
-                        ))}
-                        {combo.items.length > 2 && (
-                          <span> +{combo.items.length - 2} more</span>
-                        )}
-                      </div>
+                          OUT OF STOCK
+                        </div>
+                      )}
                     </button>
                   );
                 })
-              )
-            ) : (
-              filtered.map((p, idx) => {
-                const inCart = cart.find((i) => i.product.id === p.id);
-                const oos = p.stock === 0;
-                const isFocused = focusedProductIndex === idx;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => handleAddItem(p)}
-                    disabled={oos}
-                    ref={(el) => {
-                      if (isFocused && el) {
-                        el.focus();
-                      }
-                    }}
-                    className="card card-hover p-3 text-left transition-all relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842]"
-                    style={{
-                      opacity: oos ? 0.4 : 1,
-                      border: inCart
-                        ? "1px solid rgba(245,200,66,0.3)"
-                        : isFocused
-                          ? "2px solid #F5C842"
-                          : undefined,
-                    }}
-                    role="gridcell"
-                    aria-label={`${p.name}, ${p.category}, ${curr}${p.price}, Stock: ${p.stock}${inCart ? `, Quantity in cart: ${inCart.quantity}` : ""}${oos ? ", Out of stock" : ""}`}
-                  >
-                    {inCart && (
-                      <div
-                        className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
-                        style={{ background: "#F5C842", color: "#0D0D0F" }}
-                        aria-hidden="true"
-                      >
-                        {inCart.quantity}
-                      </div>
-                    )}
-                    {p.image_url ? (
-                      <img
-                        src={p.image_url}
-                        alt={p.name}
-                        className="w-full h-16 rounded-lg mb-2 object-cover"
-                        style={{ background: "#1E1E26" }}
-                      />
-                    ) : (
-                      <div
-                        className="w-full h-16 rounded-lg mb-2 flex items-center justify-center text-base font-semibold"
-                        style={{
-                          background: "rgba(245,200,66,0.08)",
-                          color: "#F5C842",
-                        }}
-                        aria-hidden="true"
-                      >
-                        {p.name[0]}
-                      </div>
-                    )}
-                    <div className="text-sm font-medium leading-tight mb-1">
-                      {p.name}
-                    </div>
-                    <div className="text-xs" style={{ color: "#4A4A5A" }}>
-                      {p.category}
-                    </div>
-                    <div
-                      className="mt-2 font-semibold"
-                      style={{ color: "#F5C842", fontSize: 14 }}
-                    >
-                      {curr}
-                      {p.price}
-                    </div>
-                    <div style={{ color: "#4A4A5A", fontSize: 10 }}>
-                      Stock: {p.stock}
-                    </div>
-                    {oos && (
-                      <div
-                        className="absolute inset-0 flex items-center justify-center rounded-xl"
-                        style={{
-                          background: "rgba(13,13,15,0.7)",
-                          fontSize: 10,
-                          color: "#E74C3C",
-                        }}
-                        aria-hidden="true"
-                      >
-                        OUT OF STOCK
-                      </div>
-                    )}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        )}
-      </div>
+              )}
+            </div>
+          )}
+        </div>
 
-      {/* Cart */}
-      <div
-        className="flex flex-col border-l border-border"
-        style={{ width: 360 }}
-        role="region"
-        aria-label="Shopping cart"
-      >
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <span className="font-display font-bold text-base" id="cart-title">
-            Cart
-          </span>
-          <div className="flex gap-2 items-center">
-            {cart.length > 0 && (
-              <span
-                className="px-2 py-0.5 rounded-full text-xs font-bold"
-                style={{
-                  background: "rgba(245,200,66,0.15)",
-                  color: "#F5C842",
-                }}
-                aria-label={`${itemCount} items in cart`}
-              >
-                {itemCount} items
-              </span>
-            )}
-            <button
-              onClick={handleNoSale}
-              className="p-1.5 rounded-lg"
-              style={{ color: "#2ECC71", background: "rgba(46,204,113,0.1)" }}
-              title="No Sale / Open Drawer"
-              aria-label="Open cash drawer"
-            >
-              <Banknote size={14} aria-hidden="true" />
-            </button>
-            {cart.length > 0 && (
-              <button
-                onClick={handleClearCart}
-                className="p-1.5 rounded-lg"
-                style={{ color: "#E74C3C", background: "rgba(231,76,60,0.1)" }}
-                aria-label="Clear cart"
-              >
-                <Trash2 size={14} aria-hidden="true" />
-              </button>
-            )}
-            <button
-              onClick={() => setShowHeldOrders(true)}
-              className="p-1.5 rounded-lg relative"
-              style={{ color: "#F5C842", background: "rgba(245,200,66,0.1)" }}
-              aria-label="View held orders"
-            >
-              <Clock size={14} aria-hidden="true" />
-              {heldOrders.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
-                  {heldOrders.length}
+        {/* Cart */}
+        <div
+          className="flex flex-col border-l border-border"
+          style={{ width: 360 }}
+          role="region"
+          aria-label="Shopping cart"
+        >
+          <div className="p-4 border-b border-border flex items-center justify-between">
+            <span className="font-display font-bold text-base" id="cart-title">
+              Cart
+            </span>
+            <div className="flex gap-2 items-center">
+              {cart.length > 0 && (
+                <span
+                  className="px-2 py-0.5 rounded-full text-xs font-bold"
+                  style={{
+                    background: "rgba(245,200,66,0.15)",
+                    color: "#F5C842",
+                  }}
+                  aria-label={`${itemCount} items in cart`}
+                >
+                  {itemCount} items
                 </span>
               )}
-            </button>
-          </div>
-        </div>
-
-        <div className="px-4 pt-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] uppercase font-bold text-[#4A4A5A]">
-              Price Tier
-            </span>
-            <div className="flex bg-[#141418] rounded-lg p-0.5 border border-[#1E1E26]">
               <button
-                onClick={() => setPriceTier("retail")}
-                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${priceTier === "retail" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
+                onClick={handleNoSale}
+                className="p-1.5 rounded-lg"
+                style={{ color: "#2ECC71", background: "rgba(46,204,113,0.1)" }}
+                title="No Sale / Open Drawer"
+                aria-label="Open cash drawer"
               >
-                RETAIL
+                <Banknote size={14} aria-hidden="true" />
               </button>
-              <button
-                onClick={() => setPriceTier("wholesale")}
-                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${priceTier === "wholesale" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
-              >
-                WHOLESALE
-              </button>
-            </div>
-          </div>
-
-          <div className="flex gap-2 mb-3" role="group" aria-label="Order type">
-            <button
-              onClick={() => setOrderType("dine_in")}
-              aria-pressed={orderType === "dine_in"}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "dine_in" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
-            >
-              {labels.dine_in}
-            </button>
-            <button
-              onClick={() => setOrderType("takeaway")}
-              aria-pressed={orderType === "takeaway"}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "takeaway" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
-            >
-              {labels.takeaway.split("/")[1] || "Takeaway"}
-            </button>
-            <button
-              onClick={() => setOrderType("delivery")}
-              aria-pressed={orderType === "delivery"}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "delivery" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
-            >
-              Delivery
-            </button>
-          </div>
-
-          {orderType === "delivery" && (
-            <div className="space-y-2 mb-3">
-              <label htmlFor="delivery-address" className="sr-only">
-                Delivery address
-              </label>
-              <input
-                id="delivery-address"
-                placeholder="Delivery address"
-                value={customerInfo?.address || ""}
-                onChange={(e) => {
-                  setCustomerInfo({
-                    ...customerInfo,
-                    address: e.target.value,
-                    name: customerInfo?.name || "",
-                    phone: customerInfo?.phone || "",
-                  } as any);
-                  setErrors((prev) => ({ ...prev, address: "" }));
-                }}
-                className={`text-sm ${errors.address ? "error" : ""}`}
-                style={{ padding: "7px 12px" }}
-              />
-              {errors.address && (
-                <div className="text-xs px-1" style={{ color: "#E74C3C" }}>
-                  {errors.address}
-                </div>
-              )}
-              <label htmlFor="delivery-phone" className="sr-only">
-                Phone number
-              </label>
-              <input
-                id="delivery-phone"
-                placeholder="Phone number"
-                value={customerInfo?.phone || ""}
-                onChange={(e) => {
-                  setCustomerInfo({
-                    ...customerInfo,
-                    phone: e.target.value,
-                    name: customerInfo?.name || "",
-                    address: customerInfo?.address || "",
-                  } as any);
-                  setErrors((prev) => ({ ...prev, phone: "" }));
-                  lookupCustomerData(e.target.value);
-                }}
-                className={`text-sm ${errors.phone ? "error" : ""}`}
-                style={{ padding: "7px 12px" }}
-              />
-
-              {customerAddresses.length > 0 && (
-                <div className="space-y-1 mt-2">
-                  <label className="text-[10px] uppercase font-bold text-gray-500 px-1">
-                    Select Saved Address
-                  </label>
-                  <div className="flex gap-2 overflow-x-auto pb-2 px-1">
-                    {customerAddresses.map((addr) => (
-                      <button
-                        key={addr.id}
-                        onClick={() => {
-                          setSelectedAddressId(addr.id);
-                          setCustomerInfo({
-                            ...customerInfo,
-                            address: addr.address,
-                            phone: addr.phone,
-                            name: customerInfo?.name || "",
-                          } as any);
-                        }}
-                        className={`flex-shrink-0 px-3 py-2 rounded-lg text-xs border transition-all ${
-                          selectedAddressId === addr.id
-                            ? "bg-yellow-400/10 border-yellow-400 text-yellow-400"
-                            : "bg-[#1E1E26] border-transparent text-gray-400"
-                        }`}
-                      >
-                        <div className="font-bold">{addr.label}</div>
-                        <div className="text-[10px] truncate max-w-[100px] opacity-70">
-                          {addr.address}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {errors.phone && (
-                <div className="text-xs px-1" style={{ color: "#E74C3C" }}>
-                  {errors.phone}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="relative">
-            <User
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2"
-              style={{ color: "#4A4A5A" }}
-              aria-hidden="true"
-            />
-            <label htmlFor="customer-name" className="sr-only">
-              Customer name (optional)
-            </label>
-            <input
-              id="customer-name"
-              placeholder={
-                activeCustomer ? activeCustomer.name : "Walk-in Customer"
-              }
-              value={customerInfo?.name || ""}
-              onChange={(e) => {
-                const val = e.target.value;
-                setCustomerInfo({
-                  ...customerInfo,
-                  name: val,
-                  phone: customerInfo?.phone || "",
-                  address: customerInfo?.address || "",
-                } as any);
-                if (orderType !== "delivery") {
-                  if (val.length >= 7 && /^\+?[\d\s-]+$/.test(val)) {
-                    lookupCustomerData(val);
-                  }
-                }
-              }}
-              style={{
-                paddingLeft: 30,
-                fontSize: 13,
-                padding: "7px 12px 7px 30px",
-              }}
-            />
-          </div>
-        </div>
-
-        <div
-          className="flex-1 overflow-y-auto p-4 space-y-2"
-          role="list"
-          aria-label="Cart items"
-        >
-          {cart.length === 0 && (
-            <div
-              className="flex flex-col items-center justify-center h-full"
-              style={{ color: "#2A2A36" }}
-              role="status"
-            >
-              <svg
-                width="48"
-                height="48"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                aria-hidden="true"
-              >
-                <circle cx="9" cy="21" r="1" />
-                <circle cx="20" cy="21" r="1" />
-                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-              </svg>
-              <div className="mt-3 text-sm">Cart is empty</div>
-            </div>
-          )}
-          {cart.map((item) => (
-            <div
-              key={item.cartItemId}
-              className="card p-3 slide-in"
-              role="listitem"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm truncate">
-                    {item.product.name}
-                  </div>
-                  <div
-                    className="text-xs mt-0.5 flex items-center gap-2"
-                    style={{ color: "#4A4A5A" }}
-                  >
-                    <button
-                      onClick={() =>
-                        setShowPinModal({
-                          type: "price_override",
-                          productId: item.cartItemId,
-                        })
-                      }
-                      className="hover:text-[#F5C842] transition-colors"
-                      title="Override price"
-                    >
-                      {curr}
-                      {item.override_price !== undefined
-                        ? item.override_price
-                        : item.product.price}
-                    </button>
-                    × {item.quantity} = {curr}
-                    {(
-                      (item.override_price !== undefined
-                        ? item.override_price
-                        : item.product.price) * item.quantity
-                    ).toFixed(2)}
-                    <button
-                      onClick={() => {
-                        const currentPrice =
-                          item.override_price !== undefined
-                            ? item.override_price
-                            : item.product.price;
-                        overrideItemPrice(item.cartItemId, -currentPrice);
-                      }}
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${(item.override_price || item.product.price) < 0 ? "bg-red-500 text-white" : "bg-[#1E1E26] text-[#9090A8]"}`}
-                    >
-                      RET
-                    </button>
-                    {item.product.metadata?.duration && (
-                      <span className="flex items-center gap-1 text-[10px]">
-                        <Clock size={10} /> {item.product.metadata.duration}m
-                      </span>
-                    )}
-                  </div>
-                  {item.product.metadata?.serial_number && (
-                    <div className="text-[10px] text-[#F5C842] flex items-center gap-1 mt-1 font-mono">
-                      <ShieldCheck size={10} /> SN:{" "}
-                      {item.product.metadata.serial_number}
-                    </div>
-                  )}
-                </div>
+              {cart.length > 0 && (
                 <button
-                  onClick={() => removeItem(item.cartItemId)}
-                  style={{ color: "#4A4A5A" }}
-                  aria-label={`Remove ${item.product.name} from cart`}
+                  onClick={handleClearCart}
+                  className="p-1.5 rounded-lg"
+                  style={{
+                    color: "#E74C3C",
+                    background: "rgba(231,76,60,0.1)",
+                  }}
+                  aria-label="Clear cart"
                 >
-                  <X size={14} aria-hidden="true" />
+                  <Trash2 size={14} aria-hidden="true" />
+                </button>
+              )}
+              <button
+                onClick={() => setShowHeldOrders(true)}
+                className="p-1.5 rounded-lg relative"
+                style={{ color: "#F5C842", background: "rgba(245,200,66,0.1)" }}
+                aria-label="View held orders"
+              >
+                <Clock size={14} aria-hidden="true" />
+                {heldOrders.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+                    {heldOrders.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="px-4 pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] uppercase font-bold text-[#4A4A5A]">
+                Price Tier
+              </span>
+              <div className="flex bg-[#141418] rounded-lg p-0.5 border border-[#1E1E26]">
+                <button
+                  onClick={() => setPriceTier("retail")}
+                  className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${priceTier === "retail" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
+                >
+                  RETAIL
+                </button>
+                <button
+                  onClick={() => setPriceTier("wholesale")}
+                  className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${priceTier === "wholesale" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
+                >
+                  WHOLESALE
                 </button>
               </div>
-              <div className="flex items-center gap-2 mt-2">
-                <div
-                  className="flex items-center gap-1 rounded-lg overflow-hidden"
-                  style={{ border: "1px solid #1E1E26" }}
-                  role="group"
-                  aria-label={`Quantity for ${item.product.name}`}
+            </div>
+
+            <div
+              className="flex gap-2 mb-3"
+              role="group"
+              aria-label="Order type"
+            >
+              <button
+                onClick={() => setOrderType("dine_in")}
+                aria-pressed={orderType === "dine_in"}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "dine_in" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
+              >
+                {labels.dine_in}
+              </button>
+              <button
+                onClick={() => setOrderType("takeaway")}
+                aria-pressed={orderType === "takeaway"}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "takeaway" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
+              >
+                {labels.takeaway.split("/")[1] || "Takeaway"}
+              </button>
+              <button
+                onClick={() => setOrderType("delivery")}
+                aria-pressed={orderType === "delivery"}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "delivery" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
+              >
+                Delivery
+              </button>
+            </div>
+
+            {orderType === "delivery" && (
+              <div className="space-y-2 mb-3">
+                <label htmlFor="delivery-address" className="sr-only">
+                  Delivery address
+                </label>
+                <input
+                  id="delivery-address"
+                  placeholder="Delivery address"
+                  value={customerInfo?.address || ""}
+                  onChange={(e) => {
+                    setCustomerInfo({
+                      ...customerInfo,
+                      address: e.target.value,
+                      name: customerInfo?.name || "",
+                      phone: customerInfo?.phone || "",
+                    } as any);
+                    setErrors((prev) => ({ ...prev, address: "" }));
+                  }}
+                  className={`text-sm ${errors.address ? "error" : ""}`}
+                  style={{ padding: "7px 12px" }}
+                />
+                {errors.address && (
+                  <div className="text-xs px-1" style={{ color: "#E74C3C" }}>
+                    {errors.address}
+                  </div>
+                )}
+                <label htmlFor="delivery-phone" className="sr-only">
+                  Phone number
+                </label>
+                <input
+                  id="delivery-phone"
+                  placeholder="Phone number"
+                  value={customerInfo?.phone || ""}
+                  onChange={(e) => {
+                    setCustomerInfo({
+                      ...customerInfo,
+                      phone: e.target.value,
+                      name: customerInfo?.name || "",
+                      address: customerInfo?.address || "",
+                    } as any);
+                    setErrors((prev) => ({ ...prev, phone: "" }));
+                    lookupCustomerData(e.target.value);
+                  }}
+                  className={`text-sm ${errors.phone ? "error" : ""}`}
+                  style={{ padding: "7px 12px" }}
+                />
+
+                {customerAddresses.length > 0 && (
+                  <div className="space-y-1 mt-2">
+                    <label className="text-[10px] uppercase font-bold text-gray-500 px-1">
+                      Select Saved Address
+                    </label>
+                    <div className="flex gap-2 overflow-x-auto pb-2 px-1">
+                      {customerAddresses.map((addr) => (
+                        <button
+                          key={addr.id}
+                          onClick={() => {
+                            setSelectedAddressId(addr.id);
+                            setCustomerInfo({
+                              ...customerInfo,
+                              address: addr.address,
+                              phone: addr.phone,
+                              name: customerInfo?.name || "",
+                            } as any);
+                          }}
+                          className={`flex-shrink-0 px-3 py-2 rounded-lg text-xs border transition-all ${
+                            selectedAddressId === addr.id
+                              ? "bg-yellow-400/10 border-yellow-400 text-yellow-400"
+                              : "bg-[#1E1E26] border-transparent text-gray-400"
+                          }`}
+                        >
+                          <div className="font-bold">{addr.label}</div>
+                          <div className="text-[10px] truncate max-w-[100px] opacity-70">
+                            {addr.address}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {errors.phone && (
+                  <div className="text-xs px-1" style={{ color: "#E74C3C" }}>
+                    {errors.phone}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="relative">
+              <User
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: "#4A4A5A" }}
+                aria-hidden="true"
+              />
+              <label htmlFor="customer-name" className="sr-only">
+                Customer name (optional)
+              </label>
+              <input
+                id="customer-name"
+                placeholder={
+                  activeCustomer ? activeCustomer.name : "Walk-in Customer"
+                }
+                value={customerInfo?.name || ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomerInfo({
+                    ...customerInfo,
+                    name: val,
+                    phone: customerInfo?.phone || "",
+                    address: customerInfo?.address || "",
+                  } as any);
+                  if (orderType !== "delivery") {
+                    if (val.length >= 7 && /^\+?[\d\s-]+$/.test(val)) {
+                      lookupCustomerData(val);
+                    }
+                  }
+                }}
+                style={{
+                  paddingLeft: 30,
+                  fontSize: 13,
+                  padding: "7px 12px 7px 30px",
+                }}
+              />
+            </div>
+          </div>
+
+          <div
+            className="flex-1 overflow-y-auto p-4 space-y-2"
+            role="list"
+            aria-label="Cart items"
+          >
+            {cart.length === 0 && (
+              <div
+                className="flex flex-col items-center justify-center h-full"
+                style={{ color: "#2A2A36" }}
+                role="status"
+              >
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  aria-hidden="true"
                 >
+                  <circle cx="9" cy="21" r="1" />
+                  <circle cx="20" cy="21" r="1" />
+                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+                </svg>
+                <div className="mt-3 text-sm">Cart is empty</div>
+              </div>
+            )}
+            {cart.map((item) => (
+              <div
+                key={item.cartItemId}
+                className="card p-3 slide-in"
+                role="listitem"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate">
+                      {item.product.name}
+                    </div>
+                    <div
+                      className="text-xs mt-0.5 flex items-center gap-2"
+                      style={{ color: "#4A4A5A" }}
+                    >
+                      <button
+                        onClick={() =>
+                          setShowPinModal({
+                            type: "price_override",
+                            productId: item.cartItemId,
+                          })
+                        }
+                        className="hover:text-[#F5C842] transition-colors"
+                        title="Override price"
+                      >
+                        {curr}
+                        {item.override_price !== undefined
+                          ? item.override_price
+                          : item.product.price}
+                      </button>
+                      × {item.quantity} = {curr}
+                      {(
+                        (item.override_price !== undefined
+                          ? item.override_price
+                          : item.product.price) * item.quantity
+                      ).toFixed(2)}
+                      <button
+                        onClick={() => {
+                          const currentPrice =
+                            item.override_price !== undefined
+                              ? item.override_price
+                              : item.product.price;
+                          overrideItemPrice(item.cartItemId, -currentPrice);
+                        }}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${(item.override_price || item.product.price) < 0 ? "bg-red-500 text-white" : "bg-[#1E1E26] text-[#9090A8]"}`}
+                      >
+                        RET
+                      </button>
+                      {item.product.metadata?.duration && (
+                        <span className="flex items-center gap-1 text-[10px]">
+                          <Clock size={10} /> {item.product.metadata.duration}m
+                        </span>
+                      )}
+                    </div>
+                    {item.product.metadata?.serial_number && (
+                      <div className="text-[10px] text-[#F5C842] flex items-center gap-1 mt-1 font-mono">
+                        <ShieldCheck size={10} /> SN:{" "}
+                        {item.product.metadata.serial_number}
+                      </div>
+                    )}
+                  </div>
                   <button
-                    onClick={() =>
-                      updateQuantity(item.cartItemId, item.quantity - 1)
-                    }
-                    className="w-10 h-10 flex items-center justify-center touch-manipulation"
-                    style={{ color: "#9090A8" }}
-                    aria-label={`Decrease quantity of ${item.product.name}`}
-                  >
-                    <Minus size={16} aria-hidden="true" />
-                  </button>
-                  <span
-                    className="w-10 text-center text-base font-bold"
-                    aria-label={`Quantity: ${item.quantity}`}
-                  >
-                    {item.quantity}
-                  </span>
-                  <button
-                    onClick={() =>
-                      updateQuantity(item.cartItemId, item.quantity + 1)
-                    }
-                    className="w-10 h-10 flex items-center justify-center touch-manipulation"
-                    style={{ color: "#9090A8" }}
-                    aria-label={`Increase quantity of ${item.product.name}`}
+                    onClick={() => removeItem(item.cartItemId)}
+                    style={{ color: "#4A4A5A" }}
+                    aria-label={`Remove ${item.product.name} from cart`}
                   >
                     <X size={14} aria-hidden="true" />
                   </button>
                 </div>
-                <div className="flex items-center gap-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
+                <div className="flex items-center gap-2 mt-2">
+                  <div
+                    className="flex items-center gap-1 rounded-lg overflow-hidden"
+                    style={{ border: "1px solid #1E1E26" }}
+                    role="group"
+                    aria-label={`Quantity for ${item.product.name}`}
+                  >
+                    <button
+                      onClick={() =>
+                        updateQuantity(item.cartItemId, item.quantity - 1)
+                      }
+                      className="w-10 h-10 flex items-center justify-center touch-manipulation"
+                      style={{ color: "#9090A8" }}
+                      aria-label={`Decrease quantity of ${item.product.name}`}
+                    >
+                      <Minus size={16} aria-hidden="true" />
+                    </button>
+                    <span
+                      className="w-10 text-center text-base font-bold"
+                      aria-label={`Quantity: ${item.quantity}`}
+                    >
+                      {item.quantity}
+                    </span>
+                    <button
+                      onClick={() =>
+                        updateQuantity(item.cartItemId, item.quantity + 1)
+                      }
+                      className="w-10 h-10 flex items-center justify-center touch-manipulation"
+                      style={{ color: "#9090A8" }}
+                      aria-label={`Increase quantity of ${item.product.name}`}
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
+                    <input
+                      id={`discount-${item.cartItemId}`}
+                      type="number"
+                      placeholder="Disc"
+                      value={item.discount || ""}
+                      onChange={(e) =>
+                        updateItemDiscount(
+                          item.cartItemId,
+                          parseFloat(e.target.value) || 0,
+                          item.discount_type,
+                        )
+                      }
+                      className="w-16 bg-transparent border-none text-xs px-2"
+                      aria-label={`Discount for ${item.product.name}`}
+                    />
+                    <button
+                      onClick={() =>
+                        updateItemDiscount(
+                          item.cartItemId,
+                          item.discount,
+                          item.discount_type === "percentage"
+                            ? "fixed"
+                            : "percentage",
+                        )
+                      }
+                      className="px-2 py-1 text-[10px] font-bold bg-[#1E1E26] text-[#9090A8] hover:text-[#F5C842]"
+                    >
+                      {item.discount_type === "percentage" ? "%" : curr}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {cart.length > 0 && (
+            <div
+              className="p-4 border-t border-border space-y-3"
+              role="region"
+              aria-label="Checkout"
+            >
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="order-discount"
+                  className="text-sm min-w-max"
+                  style={{ color: "#9090A8" }}
+                >
+                  Order Disc
+                </label>
+                <div className="flex items-center flex-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
                   <input
-                    id={`discount-${item.cartItemId}`}
+                    id="order-discount"
                     type="number"
-                    placeholder="Disc"
-                    value={item.discount || ""}
+                    placeholder="0"
+                    value={globalDiscount || ""}
                     onChange={(e) =>
-                      updateItemDiscount(
-                        item.cartItemId,
-                        parseFloat(e.target.value) || 0,
-                        item.discount_type,
-                      )
+                      setGlobalDiscount(parseFloat(e.target.value) || 0)
                     }
-                    className="w-16 bg-transparent border-none text-xs px-2"
-                    aria-label={`Discount for ${item.product.name}`}
+                    className="flex-1 bg-transparent border-none text-sm px-2 py-1"
                   />
                   <button
                     onClick={() =>
-                      updateItemDiscount(
-                        item.cartItemId,
-                        item.discount,
-                        item.discount_type === "percentage"
+                      setGlobalDiscount(
+                        globalDiscount,
+                        globalDiscountType === "percentage"
                           ? "fixed"
                           : "percentage",
                       )
                     }
-                    className="px-2 py-1 text-[10px] font-bold bg-[#1E1E26] text-[#9090A8] hover:text-[#F5C842]"
+                    className="px-3 py-1.5 text-xs font-bold bg-[#1E1E26] text-[#9090A8] hover:text-[#F5C842]"
                   >
-                    {item.discount_type === "percentage" ? "%" : curr}
+                    {globalDiscountType === "percentage" ? "%" : curr}
                   </button>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
 
-        {cart.length > 0 && (
-          <div
-            className="p-4 border-t border-border space-y-3"
-            role="region"
-            aria-label="Checkout"
-          >
-            <div className="flex items-center gap-2">
-              <label
-                htmlFor="order-discount"
-                className="text-sm min-w-max"
-                style={{ color: "#9090A8" }}
-              >
-                Order Disc
-              </label>
-              <div className="flex items-center flex-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
-                <input
-                  id="order-discount"
-                  type="number"
-                  placeholder="0"
-                  value={globalDiscount || ""}
-                  onChange={(e) =>
-                    setGlobalDiscount(parseFloat(e.target.value) || 0)
-                  }
-                  className="flex-1 bg-transparent border-none text-sm px-2 py-1"
-                />
-                <button
-                  onClick={() =>
-                    setGlobalDiscount(
-                      globalDiscount,
-                      globalDiscountType === "percentage"
-                        ? "fixed"
-                        : "percentage",
-                    )
-                  }
-                  className="px-3 py-1.5 text-xs font-bold bg-[#1E1E26] text-[#9090A8] hover:text-[#F5C842]"
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="order-tip"
+                  className="text-sm min-w-max"
+                  style={{ color: "#9090A8" }}
                 >
-                  {globalDiscountType === "percentage" ? "%" : curr}
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <label
-                htmlFor="order-tip"
-                className="text-sm min-w-max"
-                style={{ color: "#9090A8" }}
-              >
-                Add Tip
-              </label>
-              <div className="flex items-center flex-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
-                <span className="pl-2 text-[#4A4A5A] text-sm">{curr}</span>
-                <input
-                  id="order-tip"
-                  type="number"
-                  placeholder="0.00"
-                  value={tipAmount || ""}
-                  onChange={(e) =>
-                    setTipAmount(parseFloat(e.target.value) || 0)
-                  }
-                  className="flex-1 bg-transparent border-none text-sm px-2 py-1"
-                />
-              </div>
-            </div>
-
-            {/* Coupon Code */}
-            <div className="flex items-center gap-2">
-              <Tag size={14} style={{ color: "#4A4A5A" }} />
-              <input
-                value={couponCode}
-                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                placeholder="Coupon code"
-                className="flex-1"
-                style={{ fontSize: 13, padding: "5px 8px" }}
-                disabled={!!appliedCoupon}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleApplyCoupon();
-                }}
-              />
-              {appliedCoupon ? (
-                <button
-                  onClick={handleRemoveCoupon}
-                  className="btn-ghost py-1 px-2 text-xs"
-                  style={{ color: "#E74C3C" }}
-                >
-                  Remove
-                </button>
-              ) : (
-                <button
-                  onClick={handleApplyCoupon}
-                  className="btn-ghost py-1 px-2 text-xs"
-                  disabled={!couponCode.trim()}
-                >
-                  Apply
-                </button>
-              )}
-            </div>
-            {couponError && (
-              <div className="text-xs" style={{ color: "#E74C3C" }}>
-                {couponError}
-              </div>
-            )}
-            {appliedCoupon && (
-              <div className="text-xs" style={{ color: "#2ECC71" }}>
-                ✓ Coupon "{appliedCoupon.code}" applied (
-                {appliedCoupon.discount_type === "percentage"
-                  ? `${appliedCoupon.discount_value}%`
-                  : `${curr}${appliedCoupon.discount_value}`}
-                )
-              </div>
-            )}
-
-            {/* Wallet */}
-            {walletCustomerId && walletBalance > 0 && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Wallet size={14} style={{ color: "#3498DB" }} />
-                  <span className="text-sm" style={{ color: "#9090A8" }}>
-                    Wallet: {curr}
-                    {walletBalance.toFixed(2)}
-                  </span>
-                </div>
-                <button
-                  onClick={() => setUseWallet(!useWallet)}
-                  style={{
-                    width: 44,
-                    height: 24,
-                    borderRadius: 12,
-                    background: useWallet ? "#3498DB" : "#1E1E26",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      background: "#fff",
-                      position: "relative",
-                      left: useWallet ? 24 : 2,
-                      transition: "left 0.2s",
-                    }}
-                  />
-                </button>
-              </div>
-            )}
-
-            <div
-              className="space-y-1.5 text-sm"
-              role="status"
-              aria-live="polite"
-            >
-              <div
-                className="flex justify-between"
-                style={{ color: "#9090A8" }}
-              >
-                <span>Subtotal</span>
-                <span>
-                  {curr}
-                  {totals.subtotal.toFixed(2)}
-                </span>
-              </div>
-              <div
-                className="flex justify-between"
-                style={{ color: "#9090A8" }}
-              >
-                <span>Tax</span>
-                <span>
-                  +{curr}
-                  {totals.tax_amount.toFixed(2)}
-                </span>
-              </div>
-              {totals.discount_amount > 0 && (
-                <div
-                  className="flex justify-between"
-                  style={{ color: "#2ECC71" }}
-                >
-                  <span>Discount</span>
-                  <span>
-                    −{curr}
-                    {totals.discount_amount.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              {couponDiscount > 0 && (
-                <div
-                  className="flex justify-between"
-                  style={{ color: "#2ECC71" }}
-                >
-                  <span>Coupon</span>
-                  <span>
-                    −{curr}
-                    {couponDiscount.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              {walletDeduction > 0 && (
-                <div
-                  className="flex justify-between"
-                  style={{ color: "#3498DB" }}
-                >
-                  <span>Wallet</span>
-                  <span>
-                    −{curr}
-                    {walletDeduction.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between font-bold text-base pt-1 border-t border-border">
-                <span>Total</span>
-                <span
-                  style={{ color: "#F5C842" }}
-                  aria-label={`Total amount: ${curr}${finalTotal.toFixed(2)}`}
-                >
-                  {curr}
-                  {finalTotal.toFixed(2)}
-                </span>
-              </div>
-            </div>
-
-            <div
-              className="flex gap-2 overflow-x-auto pb-1"
-              role="group"
-              aria-label="Payment method"
-            >
-              {(["cash", "card", "upi", "split"] as const).map((m) => {
-                const icons = {
-                  cash: Banknote,
-                  card: CreditCard,
-                  upi: Smartphone,
-                  split: Split,
-                };
-                const Icon = icons[m];
-                return (
-                  <button
-                    key={m}
-                    onClick={() => {
-                      setPaymentMethod(m);
-                      if (m === "split") setShowSplitPaymentModal(true);
-                    }}
-                    aria-pressed={paymentMethod === m}
-                    className="flex-1 min-w-[70px] flex flex-col items-center gap-1 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842]"
-                    style={{
-                      background:
-                        paymentMethod === m
-                          ? "rgba(245,200,66,0.12)"
-                          : "#141418",
-                      border: `1px solid ${paymentMethod === m ? "rgba(245,200,66,0.3)" : "#1E1E26"}`,
-                      color: paymentMethod === m ? "#F5C842" : "#4A4A5A",
-                    }}
-                  >
-                    <Icon size={16} aria-hidden="true" />
-                    {m}
-                  </button>
-                );
-              })}
-            </div>
-
-            {paymentMethod === "upi" &&
-              settings.country === "IN" &&
-              settings.upi_id && (
-                <div className="card p-4 flex flex-col items-center gap-2 mt-2 bg-[#141418]">
-                  <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    Scan to Pay
-                  </div>
-                  <div className="p-2 bg-white rounded-lg">
-                    <QRCodeSVG
-                      value={`upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${finalTotal}&cu=INR`}
-                      size={160}
-                    />
-                  </div>
-                  <div className="text-sm font-bold text-[#F5C842]">
-                    {curr}
-                    {finalTotal.toFixed(2)}
-                  </div>
-                  <div className="text-[10px] text-gray-500">
-                    {settings.upi_id}
-                  </div>
-                </div>
-              )}
-
-            {paymentMethod === "cash" && (
-              <div>
-                <div className="flex gap-2 mb-2 items-end">
-                  <label htmlFor="amount-tendered" className="sr-only">
-                    Amount tendered
-                  </label>
+                  Add Tip
+                </label>
+                <div className="flex items-center flex-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
+                  <span className="pl-2 text-[#4A4A5A] text-sm">{curr}</span>
                   <input
-                    id="amount-tendered"
+                    id="order-tip"
                     type="number"
-                    placeholder={`Amount tendered (${curr})`}
-                    value={amountPaid}
-                    onChange={(e) => {
-                      setAmountPaid(parseFloat(e.target.value) || 0);
-                      setErrors((prev) => ({ ...prev, amount: "" }));
-                    }}
-                    className={`text-sm ${errors.amount ? "error" : ""}`}
-                    style={{ flex: 1 }}
-                    aria-describedby="change-display"
+                    placeholder="0.00"
+                    value={tipAmount || ""}
+                    onChange={(e) =>
+                      setTipAmount(parseFloat(e.target.value) || 0)
+                    }
+                    className="flex-1 bg-transparent border-none text-sm px-2 py-1"
                   />
-                  <button
-                    onClick={() => setAmountPaid(totals.total)}
-                    className="btn-ghost py-2 px-3"
-                    aria-label="Copy total to amount tendered"
-                  >
-                    Copy Total
-                  </button>
                 </div>
+              </div>
 
-                {errors.amount && (
-                  <div
-                    className="text-xs px-1 mb-2"
+              {/* Coupon Code */}
+              <div className="flex items-center gap-2">
+                <Tag size={14} style={{ color: "#4A4A5A" }} />
+                <input
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  placeholder="Coupon code"
+                  className="flex-1"
+                  style={{ fontSize: 13, padding: "5px 8px" }}
+                  disabled={!!appliedCoupon}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleApplyCoupon();
+                  }}
+                />
+                {appliedCoupon ? (
+                  <button
+                    onClick={handleRemoveCoupon}
+                    className="btn-ghost py-1 px-2 text-xs"
                     style={{ color: "#E74C3C" }}
                   >
-                    {errors.amount}
-                  </div>
-                )}
-
-                {amountPaid >= totals.total && (
-                  <div
-                    id="change-display"
-                    className="text-sm mt-1.5 font-semibold"
-                    style={{ color: "#2ECC71" }}
-                    role="status"
-                    aria-live="polite"
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleApplyCoupon}
+                    className="btn-ghost py-1 px-2 text-xs"
+                    disabled={!couponCode.trim()}
                   >
-                    Change: {curr}
-                    {change.toFixed(2)}
-                  </div>
+                    Apply
+                  </button>
                 )}
               </div>
-            )}
-
-            <div className="flex gap-2">
-              {cart.length > 0 && (
-                <>
-                  <button
-                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
-                    style={{
-                      background: "transparent",
-                      border: "1px solid #2E2E3E",
-                      color: "#9090A8",
-                    }}
-                    onClick={handlePrintKOT}
-                    disabled={processing}
-                    aria-label="Print Kitchen Order Ticket"
-                  >
-                    <Printer size={14} />
-                    KOT
-                  </button>
-                  <button
-                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
-                    style={{
-                      background: "transparent",
-                      border: "1px solid #2E2E3E",
-                      color: "#9090A8",
-                    }}
-                    onClick={handleHoldOrder}
-                    disabled={processing}
-                    aria-label="Hold order for later"
-                  >
-                    Hold
-                  </button>
-                </>
+              {couponError && (
+                <div className="text-xs" style={{ color: "#E74C3C" }}>
+                  {couponError}
+                </div>
               )}
-              <button
-                className="btn-accent flex-[2] flex items-center justify-center gap-2 py-3 text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] focus-visible:ring-offset-2 focus-visible:ring-offset-[#141418]"
-                onClick={handleCheckout}
-                disabled={
-                  processing ||
-                  cart.length === 0 ||
-                  (paymentMethod === "cash" && (amountPaid || 0) < finalTotal)
-                }
-                data-checkout-button
-                aria-label={
-                  processing
-                    ? "Processing order..."
-                    : `Complete order - Charge ${curr}${finalTotal.toFixed(2)}`
-                }
+              {appliedCoupon && (
+                <div className="text-xs" style={{ color: "#2ECC71" }}>
+                  ✓ Coupon "{appliedCoupon.code}" applied (
+                  {appliedCoupon.discount_type === "percentage"
+                    ? `${appliedCoupon.discount_value}%`
+                    : `${curr}${appliedCoupon.discount_value}`}
+                  )
+                </div>
+              )}
+
+              {/* Wallet */}
+              {walletCustomerId && walletBalance > 0 && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Wallet size={14} style={{ color: "#3498DB" }} />
+                    <span className="text-sm" style={{ color: "#9090A8" }}>
+                      Wallet: {curr}
+                      {walletBalance.toFixed(2)}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setUseWallet(!useWallet)}
+                    style={{
+                      width: 44,
+                      height: 24,
+                      borderRadius: 12,
+                      background: useWallet ? "#3498DB" : "#1E1E26",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        background: "#fff",
+                        position: "relative",
+                        left: useWallet ? 24 : 2,
+                        transition: "left 0.2s",
+                      }}
+                    />
+                  </button>
+                </div>
+              )}
+
+              <div
+                className="space-y-1.5 text-sm"
+                role="status"
+                aria-live="polite"
               >
-                {processing ? (
-                  <RefreshCw size={16} className="spin" aria-hidden="true" />
-                ) : (
-                  <ChevronRight size={16} aria-hidden="true" />
+                <div
+                  className="flex justify-between"
+                  style={{ color: "#9090A8" }}
+                >
+                  <span>Subtotal</span>
+                  <span>
+                    {curr}
+                    {totals.subtotal.toFixed(2)}
+                  </span>
+                </div>
+                <div
+                  className="flex justify-between"
+                  style={{ color: "#9090A8" }}
+                >
+                  <span>Tax</span>
+                  <span>
+                    +{curr}
+                    {totals.tax_amount.toFixed(2)}
+                  </span>
+                </div>
+                {totals.discount_amount > 0 && (
+                  <div
+                    className="flex justify-between"
+                    style={{ color: "#2ECC71" }}
+                  >
+                    <span>Discount</span>
+                    <span>
+                      −{curr}
+                      {totals.discount_amount.toFixed(2)}
+                    </span>
+                  </div>
                 )}
-                {processing
-                  ? "Processing..."
-                  : `Charge ${curr}${finalTotal.toFixed(2)}`}
-              </button>
+                {couponDiscount > 0 && (
+                  <div
+                    className="flex justify-between"
+                    style={{ color: "#2ECC71" }}
+                  >
+                    <span>Coupon</span>
+                    <span>
+                      −{curr}
+                      {couponDiscount.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {walletDeduction > 0 && (
+                  <div
+                    className="flex justify-between"
+                    style={{ color: "#3498DB" }}
+                  >
+                    <span>Wallet</span>
+                    <span>
+                      −{curr}
+                      {walletDeduction.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-base pt-1 border-t border-border">
+                  <span>Total</span>
+                  <span
+                    style={{ color: "#F5C842" }}
+                    aria-label={`Total amount: ${curr}${finalTotal.toFixed(2)}`}
+                  >
+                    {curr}
+                    {finalTotal.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                className="flex gap-2 overflow-x-auto pb-1"
+                role="group"
+                aria-label="Payment method"
+              >
+                {(["cash", "card", "upi", "split"] as const).map((m) => {
+                  const icons = {
+                    cash: Banknote,
+                    card: CreditCard,
+                    upi: Smartphone,
+                    split: Split,
+                  };
+                  const Icon = icons[m];
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => {
+                        setPaymentMethod(m);
+                        if (m === "split") setShowSplitPaymentModal(true);
+                      }}
+                      aria-pressed={paymentMethod === m}
+                      className="flex-1 min-w-[70px] flex flex-col items-center gap-1 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842]"
+                      style={{
+                        background:
+                          paymentMethod === m
+                            ? "rgba(245,200,66,0.12)"
+                            : "#141418",
+                        border: `1px solid ${paymentMethod === m ? "rgba(245,200,66,0.3)" : "#1E1E26"}`,
+                        color: paymentMethod === m ? "#F5C842" : "#4A4A5A",
+                      }}
+                    >
+                      <Icon size={16} aria-hidden="true" />
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {paymentMethod === "upi" &&
+                settings.country === "IN" &&
+                settings.upi_id && (
+                  <div className="card p-4 flex flex-col items-center gap-2 mt-2 bg-[#141418]">
+                    <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                      Scan to Pay
+                    </div>
+                    <div className="p-2 bg-white rounded-lg">
+                      <QRCodeSVG
+                        value={`upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${finalTotal}&cu=INR`}
+                        size={160}
+                      />
+                    </div>
+                    <div className="text-sm font-bold text-[#F5C842]">
+                      {curr}
+                      {finalTotal.toFixed(2)}
+                    </div>
+                    <div className="text-[10px] text-gray-500">
+                      {settings.upi_id}
+                    </div>
+                  </div>
+                )}
+
+              {paymentMethod === "cash" && (
+                <div>
+                  <div className="flex gap-2 mb-2 items-end">
+                    <label htmlFor="amount-tendered" className="sr-only">
+                      Amount tendered
+                    </label>
+                    <input
+                      id="amount-tendered"
+                      type="number"
+                      placeholder={`Amount tendered (${curr})`}
+                      value={amountPaid}
+                      onChange={(e) => {
+                        setAmountPaid(parseFloat(e.target.value) || 0);
+                        setErrors((prev) => ({ ...prev, amount: "" }));
+                      }}
+                      className={`text-sm ${errors.amount ? "error" : ""}`}
+                      style={{ flex: 1 }}
+                      aria-describedby="change-display"
+                    />
+                    <button
+                      onClick={() => setAmountPaid(totals.total)}
+                      className="btn-ghost py-2 px-3"
+                      aria-label="Copy total to amount tendered"
+                    >
+                      Copy Total
+                    </button>
+                  </div>
+
+                  {errors.amount && (
+                    <div
+                      className="text-xs px-1 mb-2"
+                      style={{ color: "#E74C3C" }}
+                    >
+                      {errors.amount}
+                    </div>
+                  )}
+
+                  {amountPaid >= totals.total && (
+                    <div
+                      id="change-display"
+                      className="text-sm mt-1.5 font-semibold"
+                      style={{ color: "#2ECC71" }}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      Change: {curr}
+                      {change.toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                {cart.length > 0 && (
+                  <>
+                    <button
+                      className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
+                      style={{
+                        background: "transparent",
+                        border: "1px solid #2E2E3E",
+                        color: "#9090A8",
+                      }}
+                      onClick={handlePrintKOT}
+                      disabled={processing}
+                      aria-label="Print Kitchen Order Ticket"
+                    >
+                      <Printer size={14} />
+                      KOT
+                    </button>
+                    <button
+                      className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
+                      style={{
+                        background: "transparent",
+                        border: "1px solid #2E2E3E",
+                        color: "#9090A8",
+                      }}
+                      onClick={handleHoldOrder}
+                      disabled={processing}
+                      aria-label="Hold order for later"
+                    >
+                      Hold
+                    </button>
+                  </>
+                )}
+                <button
+                  className="btn-accent flex-[2] flex items-center justify-center gap-2 py-3 text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] focus-visible:ring-offset-2 focus-visible:ring-offset-[#141418]"
+                  onClick={handleCheckout}
+                  disabled={
+                    processing ||
+                    cart.length === 0 ||
+                    (paymentMethod === "cash" && (amountPaid || 0) < finalTotal)
+                  }
+                  data-checkout-button
+                  aria-label={
+                    processing
+                      ? "Processing order..."
+                      : `Complete order - Charge ${curr}${finalTotal.toFixed(2)}`
+                  }
+                >
+                  {processing ? (
+                    <RefreshCw size={16} className="spin" aria-hidden="true" />
+                  ) : (
+                    <ChevronRight size={16} aria-hidden="true" />
+                  )}
+                  {processing
+                    ? "Processing..."
+                    : `Charge ${curr}${finalTotal.toFixed(2)}`}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Custom Item Modal */}
+        {showCustomItemModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <Package size={20} className="text-[#F5C842]" /> Add Custom Item
+              </h3>
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="text-xs text-[#9090A8] mb-1 block">
+                    Item Name
+                  </label>
+                  <input
+                    autoFocus
+                    placeholder="e.g., Miscellaneous Repair"
+                    className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3"
+                    value={customItem.name}
+                    onChange={(e) =>
+                      setCustomItem({ ...customItem, name: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-[#9090A8] mb-1 block">
+                    Price ({curr})
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="0.00"
+                    className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3"
+                    value={customItem.price}
+                    onChange={(e) =>
+                      setCustomItem({ ...customItem, price: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowCustomItemModal(false);
+                    setCustomItem({ name: "", price: "" });
+                  }}
+                  className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={!customItem.name || !customItem.price}
+                  onClick={() => {
+                    addCustomItem(
+                      customItem.name,
+                      parseFloat(customItem.price),
+                    );
+                    setShowCustomItemModal(false);
+                    setCustomItem({ name: "", price: "" });
+                  }}
+                  className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl disabled:opacity-50"
+                >
+                  Add to Cart
+                </button>
+                <button
+                  disabled={!customItem.name || !customItem.price}
+                  onClick={() => {
+                    addCustomItem(
+                      `RETURN: ${customItem.name}`,
+                      -Math.abs(parseFloat(customItem.price)),
+                    );
+                    setShowCustomItemModal(false);
+                    setCustomItem({ name: "", price: "" });
+                  }}
+                  className="flex-1 py-3 bg-red-500/10 text-red-500 font-bold border border-red-500/20 rounded-xl disabled:opacity-50"
+                >
+                  Add as Return
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Batch Selection Modal */}
+        {batchSelection && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+              <div className="p-6 border-b border-[#1E1E26] flex items-center justify-between">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <Package size={20} className="text-[#F5C842]" /> Select Batch:{" "}
+                  {batchSelection.product.name}
+                </h3>
+                <button
+                  onClick={() => setBatchSelection(null)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
+                {batchSelection.batches.map((b) => (
+                  <button
+                    key={b.id}
+                    onClick={() => handleSelectBatch(b)}
+                    className="flex flex-col p-4 rounded-xl bg-[#141418] border border-[#1E1E26] hover:border-[#F5C842] transition-all text-left"
+                  >
+                    <div className="text-xs text-[#9090A8] uppercase font-bold mb-1">
+                      Batch #{b.batch_number}
+                    </div>
+                    <div className="text-base font-bold mb-2">
+                      Expires: {b.expiry_date || "No Expiry"}
+                    </div>
+                    <div className="flex items-center justify-between mt-auto">
+                      <span className="text-[#F5C842] font-bold">
+                        Qty: {b.quantity}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="p-4 bg-[#141418] flex justify-end">
+                <button
+                  onClick={() => setBatchSelection(null)}
+                  className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Serial Selection Modal */}
+        {serialSelection && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+              <div className="p-6 border-b border-[#1E1E26] flex items-center justify-between">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <Package size={20} className="text-[#F5C842]" /> Select
+                  Serial: {serialSelection.product.name}
+                </h3>
+                <button
+                  onClick={() => setSerialSelection(null)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
+                {serialSelection.serials.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => handleSelectSerial(s)}
+                    className="flex flex-col p-4 rounded-xl bg-[#141418] border border-[#1E1E26] hover:border-[#F5C842] transition-all text-left"
+                  >
+                    <div className="text-xs text-[#9090A8] uppercase font-bold mb-1">
+                      Serial Number
+                    </div>
+                    <div className="text-base font-bold mb-2 font-mono">
+                      {s.serial_number}
+                    </div>
+                    <div className="mt-auto text-[10px] text-green-500 font-bold uppercase tracking-wider">
+                      Available
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="p-4 bg-[#141418] flex justify-end">
+                <button
+                  onClick={() => setSerialSelection(null)}
+                  className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Split Payment Modal */}
+        {showSplitPaymentModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <Split size={20} className="text-[#F5C842]" /> Split Payment
+              </h3>
+              <p className="text-xs text-[#9090A8] mb-6">
+                Allocate the total amount across different payment methods.
+              </p>
+
+              <div className="space-y-4 mb-6">
+                {["cash", "card", "upi"].map((method) => {
+                  const entry = splitPayments.find((p) => p.method === method);
+                  return (
+                    <div key={method} className="flex items-center gap-3">
+                      <span className="w-16 text-sm font-bold uppercase text-[#4A4A5A]">
+                        {method}
+                      </span>
+                      <div className="flex-1 flex items-center bg-[#141418] rounded-xl border border-[#1E1E26] overflow-hidden">
+                        <span className="pl-3 text-[#4A4A5A]">{curr}</span>
+                        <input
+                          type="number"
+                          placeholder="0.00"
+                          value={entry?.amount || ""}
+                          onChange={(e) => {
+                            const amt = parseFloat(e.target.value) || 0;
+                            const others = splitPayments.filter(
+                              (p) => p.method !== method,
+                            );
+                            setSplitPayments([
+                              ...others,
+                              { method: method as any, amount: amt },
+                            ]);
+                          }}
+                          className="flex-1 bg-transparent border-none px-3 py-2 text-white"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="p-4 rounded-xl mb-6 bg-[#141418] border border-[#1E1E26]">
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-[#9090A8]">Order Total</span>
+                  <span className="font-bold text-white">
+                    {curr}
+                    {finalTotal.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-[#9090A8]">Allocated</span>
+                  <span className="font-bold text-[#F5C842]">
+                    {curr}
+                    {splitPayments.reduce((s, p) => s + p.amount, 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm pt-2 border-t border-[#1E1E26]">
+                  <span className="text-[#9090A8]">Remaining</span>
+                  <span
+                    className={`font-bold ${Math.abs(finalTotal - splitPayments.reduce((s, p) => s + p.amount, 0)) < 0.01 ? "text-[#2ECC71]" : "text-[#E74C3C]"}`}
+                  >
+                    {curr}
+                    {(
+                      finalTotal -
+                      splitPayments.reduce((s, p) => s + p.amount, 0)
+                    ).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowSplitPaymentModal(false);
+                    setPaymentMethod("cash");
+                  }}
+                  className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={
+                    Math.abs(
+                      finalTotal -
+                        splitPayments.reduce((s, p) => s + p.amount, 0),
+                    ) > 0.01
+                  }
+                  onClick={() => setShowSplitPaymentModal(false)}
+                  className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl disabled:opacity-50"
+                >
+                  Confirm Split
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Override Price Input Modal */}
+        {showPinModal?.type === "price_override" && overridePrice === "" && (
+          <div className="fixed inset-0 z-[101] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+              <h3 className="text-lg font-bold mb-4">Enter New Price</h3>
+              <input
+                autoFocus
+                type="number"
+                placeholder={`New Price (${curr})`}
+                className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3 mb-6"
+                value={overridePrice}
+                onChange={(e) => setOverridePrice(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && overridePrice) {
+                    // price entered, PIN handled by PinModal wrapper
+                  }
+                }}
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowPinModal(null);
+                    setOverridePrice("");
+                  }}
+                  className="flex-1 py-3 bg-[#1E1E26] rounded-xl"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Pin Modals */}
+        {showPinModal && (
+          <PinModal
+            title={
+              showPinModal.type === "price_override"
+                ? "Authorize Price Override"
+                : showPinModal.type === "void"
+                  ? "Authorize Void Transaction"
+                  : "Authorize No Sale"
+            }
+            description="Manager PIN required to perform this action."
+            onCancel={() => {
+              setShowPinModal(null);
+              setOverridePrice("");
+            }}
+            onSuccess={async () => {
+              if (
+                showPinModal.type === "price_override" &&
+                showPinModal.productId &&
+                overridePrice
+              ) {
+                overrideItemPrice(
+                  showPinModal.productId,
+                  parseFloat(overridePrice),
+                );
+                setShowPinModal(null);
+                setOverridePrice("");
+              } else if (showPinModal.type === "void") {
+                try {
+                  await dbAddActivityLog(
+                    activeStoreId,
+                    "void_cart",
+                    voidReason,
+                    user?.id || "system",
+                    user?.name || "System",
+                  );
+                  clearCart();
+                } catch (e) {}
+                setShowPinModal(null);
+                setShowVoidReasonModal(false);
+                setVoidReason("");
+              } else if (showPinModal.type === "no_sale") {
+                try {
+                  await dbAddActivityLog(
+                    activeStoreId,
+                    "no_sale_drawer_open",
+                    "Manual drawer opening",
+                    user?.id || "system",
+                    user?.name || "System",
+                  );
+                  await openCashDrawer();
+                } catch (e) {}
+                setShowPinModal(null);
+              }
+            }}
+          />
+        )}
+
+        {/* Void Reason Modal */}
+        {showVoidReasonModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <Trash2 size={20} className="text-[#E74C3C]" /> Void Transaction
+              </h3>
+              <p className="text-xs text-[#9090A8] mb-4">
+                Please provide a reason for cancelling this sale.
+              </p>
+              <textarea
+                autoFocus
+                placeholder="Reason for voiding (e.g., Customer changed mind, Mistake in entry)"
+                className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3 mb-6 h-24 resize-none"
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowVoidReasonModal(false);
+                    setVoidReason("");
+                  }}
+                  className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={!voidReason.trim()}
+                  onClick={handleVoidOrder}
+                  className="flex-1 py-3 bg-[#E74C3C] text-white font-bold rounded-xl disabled:opacity-50"
+                >
+                  Confirm Void
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Metadata Prompt Modal */}
+        {metadataPrompt && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <ShieldCheck size={20} className="text-[#F5C842]" />{" "}
+                {metadataPrompt.name}
+              </h3>
+              <p className="text-xs text-[#9090A8] mb-4">
+                Please enter the {metadataPrompt.field} for this item to
+                proceed.
+              </p>
+              <input
+                autoFocus
+                placeholder={`Enter ${metadataPrompt.field}`}
+                className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3 mb-4"
+                value={metadataValue}
+                onChange={(e) => setMetadataValue(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleMetadataSubmit()}
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setMetadataPrompt(null);
+                    setMetadataValue("");
+                  }}
+                  className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleMetadataSubmit}
+                  className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl"
+                >
+                  Add to Cart
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Variant Selection Modal */}
+        {variantSelection && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+              <div className="p-6 border-b border-[#1E1E26] flex items-center justify-between">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <Package size={20} className="text-[#F5C842]" /> Select
+                  Variant: {variantSelection.product.name}
+                </h3>
+                <button
+                  onClick={() => setVariantSelection(null)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
+                {variantSelection.variants.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => handleSelectVariant(v)}
+                    className="flex flex-col p-4 rounded-xl bg-[#141418] border border-[#1E1E26] hover:border-[#F5C842] transition-all text-left"
+                  >
+                    <div className="text-xs text-[#9090A8] uppercase font-bold mb-1">
+                      {v.name}
+                    </div>
+                    <div className="text-base font-bold mb-2">{v.value}</div>
+                    <div className="flex items-center justify-between mt-auto">
+                      <span className="text-[#F5C842] font-bold">
+                        {curr}
+                        {v.price.toFixed(2)}
+                      </span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded ${v.stock > 0 ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}
+                      >
+                        {v.stock > 0 ? `In Stock: ${v.stock}` : "Out of Stock"}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="p-4 bg-[#141418] flex justify-end">
+                <button
+                  onClick={() => setVariantSelection(null)}
+                  className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Held Orders Modal */}
+        {showHeldOrders && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.7)" }}
+            onClick={(e) =>
+              e.target === e.currentTarget && setShowHeldOrders(false)
+            }
+          >
+            <div
+              className="card p-6 w-[500px] max-h-[80vh] overflow-y-auto fade-in"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="held-orders-title"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2
+                  id="held-orders-title"
+                  className="font-display text-base flex items-center gap-2"
+                  style={{ color: "#F5C842" }}
+                >
+                  <Clock size={20} /> Held Orders
+                </h2>
+                <button
+                  onClick={() => setShowHeldOrders(false)}
+                  className="btn-ghost py-1 px-3"
+                  aria-label="Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {heldOrders.length === 0 ? (
+                <div className="text-center py-8" style={{ color: "#4A4A5A" }}>
+                  <FolderOpen size={48} className="mx-auto mb-4 opacity-50" />
+                  <p>No held orders</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {heldOrders.map((order, idx) => (
+                    <div
+                      key={order.id}
+                      className="p-4 rounded-lg"
+                      style={{ background: "#1E1E26" }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <span className="font-medium">Order #{idx + 1}</span>
+                          <span
+                            className="text-xs ml-2 px-2 py-0.5 rounded"
+                            style={{
+                              background: "rgba(245,200,66,0.2)",
+                              color: "#F5C842",
+                            }}
+                          >
+                            {order.order_type}
+                          </span>
+                        </div>
+                        <span
+                          className="font-semibold"
+                          style={{ color: "#F5C842" }}
+                        >
+                          {curr}
+                          {order.total.toFixed(2)}
+                        </span>
+                      </div>
+                      <div
+                        className="text-sm mb-2"
+                        style={{ color: "#9090A8" }}
+                      >
+                        {order.items.length} items •{" "}
+                        {new Date(order.created_at).toLocaleString()}
+                      </div>
+                      <div
+                        className="text-xs mb-3"
+                        style={{ color: "#4A4A5A" }}
+                      >
+                        {order.items
+                          .map((i) => `${i.product_name}×${i.quantity}`)
+                          .join(", ")}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleRestoreOrder(order)}
+                          className="btn-accent flex-1 py-2 text-sm"
+                        >
+                          Restore
+                        </button>
+                        <button
+                          onClick={() => handleDeleteHeldOrder(order.id)}
+                          className="btn-danger py-2 px-4 text-sm"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
-
-      {/* Custom Item Modal */}
-      {showCustomItemModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Package size={20} className="text-[#F5C842]" /> Add Custom Item
-            </h3>
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="text-xs text-[#9090A8] mb-1 block">
-                  Item Name
-                </label>
-                <input
-                  autoFocus
-                  placeholder="e.g., Miscellaneous Repair"
-                  className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3"
-                  value={customItem.name}
-                  onChange={(e) =>
-                    setCustomItem({ ...customItem, name: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <label className="text-xs text-[#9090A8] mb-1 block">
-                  Price ({curr})
-                </label>
-                <input
-                  type="number"
-                  placeholder="0.00"
-                  className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3"
-                  value={customItem.price}
-                  onChange={(e) =>
-                    setCustomItem({ ...customItem, price: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setShowCustomItemModal(false);
-                  setCustomItem({ name: "", price: "" });
-                }}
-                className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={!customItem.name || !customItem.price}
-                onClick={() => {
-                  addCustomItem(customItem.name, parseFloat(customItem.price));
-                  setShowCustomItemModal(false);
-                  setCustomItem({ name: "", price: "" });
-                }}
-                className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl disabled:opacity-50"
-              >
-                Add to Cart
-              </button>
-              <button
-                disabled={!customItem.name || !customItem.price}
-                onClick={() => {
-                  addCustomItem(
-                    `RETURN: ${customItem.name}`,
-                    -Math.abs(parseFloat(customItem.price)),
-                  );
-                  setShowCustomItemModal(false);
-                  setCustomItem({ name: "", price: "" });
-                }}
-                className="flex-1 py-3 bg-red-500/10 text-red-500 font-bold border border-red-500/20 rounded-xl disabled:opacity-50"
-              >
-                Add as Return
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Split Payment Modal */}
-      {showSplitPaymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Split size={20} className="text-[#F5C842]" /> Split Payment
-            </h3>
-            <p className="text-xs text-[#9090A8] mb-6">
-              Allocate the total amount across different payment methods.
-            </p>
-
-            <div className="space-y-4 mb-6">
-              {["cash", "card", "upi"].map((method) => {
-                const entry = splitPayments.find((p) => p.method === method);
-                return (
-                  <div key={method} className="flex items-center gap-3">
-                    <span className="w-16 text-sm font-bold uppercase text-[#4A4A5A]">
-                      {method}
-                    </span>
-                    <div className="flex-1 flex items-center bg-[#141418] rounded-xl border border-[#1E1E26] overflow-hidden">
-                      <span className="pl-3 text-[#4A4A5A]">{curr}</span>
-                      <input
-                        type="number"
-                        placeholder="0.00"
-                        value={entry?.amount || ""}
-                        onChange={(e) => {
-                          const amt = parseFloat(e.target.value) || 0;
-                          const others = splitPayments.filter(
-                            (p) => p.method !== method,
-                          );
-                          setSplitPayments([
-                            ...others,
-                            { method: method as any, amount: amt },
-                          ]);
-                        }}
-                        className="flex-1 bg-transparent border-none px-3 py-2 text-white"
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="p-4 rounded-xl mb-6 bg-[#141418] border border-[#1E1E26]">
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-[#9090A8]">Order Total</span>
-                <span className="font-bold text-white">
-                  {curr}
-                  {finalTotal.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-[#9090A8]">Allocated</span>
-                <span className="font-bold text-[#F5C842]">
-                  {curr}
-                  {splitPayments.reduce((s, p) => s + p.amount, 0).toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm pt-2 border-t border-[#1E1E26]">
-                <span className="text-[#9090A8]">Remaining</span>
-                <span
-                  className={`font-bold ${Math.abs(finalTotal - splitPayments.reduce((s, p) => s + p.amount, 0)) < 0.01 ? "text-[#2ECC71]" : "text-[#E74C3C]"}`}
-                >
-                  {curr}
-                  {(
-                    finalTotal - splitPayments.reduce((s, p) => s + p.amount, 0)
-                  ).toFixed(2)}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setShowSplitPaymentModal(false);
-                  setPaymentMethod("cash");
-                }}
-                className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={
-                  Math.abs(
-                    finalTotal -
-                      splitPayments.reduce((s, p) => s + p.amount, 0),
-                  ) > 0.01
-                }
-                onClick={() => setShowSplitPaymentModal(false)}
-                className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl disabled:opacity-50"
-              >
-                Confirm Split
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Override Price Input Modal */}
-      {showPinModal?.type === "price_override" && overridePrice === "" && (
-        <div className="fixed inset-0 z-[101] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-sm rounded-2xl p-6 shadow-2xl">
-            <h3 className="text-lg font-bold mb-4">Enter New Price</h3>
-            <input
-              autoFocus
-              type="number"
-              placeholder={`New Price (${curr})`}
-              className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3 mb-6"
-              value={overridePrice}
-              onChange={(e) => setOverridePrice(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && overridePrice) {
-                  // price entered, PIN handled by PinModal wrapper
-                }
-              }}
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setShowPinModal(null);
-                  setOverridePrice("");
-                }}
-                className="flex-1 py-3 bg-[#1E1E26] rounded-xl"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Pin Modals */}
-      {showPinModal && (
-        <PinModal
-          title={
-            showPinModal.type === "price_override"
-              ? "Authorize Price Override"
-              : showPinModal.type === "void"
-                ? "Authorize Void Transaction"
-                : "Authorize No Sale"
-          }
-          description="Manager PIN required to perform this action."
-          onCancel={() => {
-            setShowPinModal(null);
-            setOverridePrice("");
-          }}
-          onSuccess={async () => {
-            if (
-              showPinModal.type === "price_override" &&
-              showPinModal.productId &&
-              overridePrice
-            ) {
-              overrideItemPrice(
-                showPinModal.productId,
-                parseFloat(overridePrice),
-              );
-              setShowPinModal(null);
-              setOverridePrice("");
-            } else if (showPinModal.type === "void") {
-              try {
-                await dbAddActivityLog(
-                  activeStoreId,
-                  "void_cart",
-                  voidReason,
-                  user?.id || "system",
-                  user?.name || "System",
-                );
-                clearCart();
-              } catch (e) {}
-              setShowPinModal(null);
-              setShowVoidReasonModal(false);
-              setVoidReason("");
-            } else if (showPinModal.type === "no_sale") {
-              try {
-                await dbAddActivityLog(
-                  activeStoreId,
-                  "no_sale_drawer_open",
-                  "Manual drawer opening",
-                  user?.id || "system",
-                  user?.name || "System",
-                );
-                await openCashDrawer();
-              } catch (e) {}
-              setShowPinModal(null);
-            }
-          }}
-        />
-      )}
-
-      {/* Void Reason Modal */}
-      {showVoidReasonModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Trash2 size={20} className="text-[#E74C3C]" /> Void Transaction
-            </h3>
-            <p className="text-xs text-[#9090A8] mb-4">
-              Please provide a reason for cancelling this sale.
-            </p>
-            <textarea
-              autoFocus
-              placeholder="Reason for voiding (e.g., Customer changed mind, Mistake in entry)"
-              className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3 mb-6 h-24 resize-none"
-              value={voidReason}
-              onChange={(e) => setVoidReason(e.target.value)}
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setShowVoidReasonModal(false);
-                  setVoidReason("");
-                }}
-                className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={!voidReason.trim()}
-                onClick={handleVoidOrder}
-                className="flex-1 py-3 bg-[#E74C3C] text-white font-bold rounded-xl disabled:opacity-50"
-              >
-                Confirm Void
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Metadata Prompt Modal */}
-      {metadataPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <ShieldCheck size={20} className="text-[#F5C842]" />{" "}
-              {metadataPrompt.name}
-            </h3>
-            <p className="text-xs text-[#9090A8] mb-4">
-              Please enter the {metadataPrompt.field} for this item to proceed.
-            </p>
-            <input
-              autoFocus
-              placeholder={`Enter ${metadataPrompt.field}`}
-              className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3 mb-4"
-              value={metadataValue}
-              onChange={(e) => setMetadataValue(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleMetadataSubmit()}
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setMetadataPrompt(null);
-                  setMetadataValue("");
-                }}
-                className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleMetadataSubmit}
-                className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl"
-              >
-                Add to Cart
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Variant Selection Modal */}
-      {variantSelection && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
-            <div className="p-6 border-b border-[#1E1E26] flex items-center justify-between">
-              <h3 className="text-lg font-bold flex items-center gap-2">
-                <Package size={20} className="text-[#F5C842]" /> Select Variant:{" "}
-                {variantSelection.product.name}
-              </h3>
-              <button
-                onClick={() => setVariantSelection(null)}
-                className="text-gray-400 hover:text-white"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-6 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
-              {variantSelection.variants.map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => handleSelectVariant(v)}
-                  className="flex flex-col p-4 rounded-xl bg-[#141418] border border-[#1E1E26] hover:border-[#F5C842] transition-all text-left"
-                >
-                  <div className="text-xs text-[#9090A8] uppercase font-bold mb-1">
-                    {v.name}
-                  </div>
-                  <div className="text-base font-bold mb-2">{v.value}</div>
-                  <div className="flex items-center justify-between mt-auto">
-                    <span className="text-[#F5C842] font-bold">
-                      {curr}
-                      {v.price.toFixed(2)}
-                    </span>
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded ${v.stock > 0 ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}
-                    >
-                      {v.stock > 0 ? `In Stock: ${v.stock}` : "Out of Stock"}
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <div className="p-4 bg-[#141418] flex justify-end">
-              <button
-                onClick={() => setVariantSelection(null)}
-                className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Held Orders Modal */}
-      {showHeldOrders && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.7)" }}
-          onClick={(e) =>
-            e.target === e.currentTarget && setShowHeldOrders(false)
-          }
-        >
-          <div
-            className="card p-6 w-[500px] max-h-[80vh] overflow-y-auto fade-in"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="held-orders-title"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2
-                id="held-orders-title"
-                className="font-display text-base flex items-center gap-2"
-                style={{ color: "#F5C842" }}
-              >
-                <Clock size={20} /> Held Orders
-              </h2>
-              <button
-                onClick={() => setShowHeldOrders(false)}
-                className="btn-ghost py-1 px-3"
-                aria-label="Close"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {heldOrders.length === 0 ? (
-              <div className="text-center py-8" style={{ color: "#4A4A5A" }}>
-                <FolderOpen size={48} className="mx-auto mb-4 opacity-50" />
-                <p>No held orders</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {heldOrders.map((order, idx) => (
-                  <div
-                    key={order.id}
-                    className="p-4 rounded-lg"
-                    style={{ background: "#1E1E26" }}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <span className="font-medium">Order #{idx + 1}</span>
-                        <span
-                          className="text-xs ml-2 px-2 py-0.5 rounded"
-                          style={{
-                            background: "rgba(245,200,66,0.2)",
-                            color: "#F5C842",
-                          }}
-                        >
-                          {order.order_type}
-                        </span>
-                      </div>
-                      <span
-                        className="font-semibold"
-                        style={{ color: "#F5C842" }}
-                      >
-                        {curr}
-                        {order.total.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="text-sm mb-2" style={{ color: "#9090A8" }}>
-                      {order.items.length} items •{" "}
-                      {new Date(order.created_at).toLocaleString()}
-                    </div>
-                    <div className="text-xs mb-3" style={{ color: "#4A4A5A" }}>
-                      {order.items
-                        .map((i) => `${i.product_name}×${i.quantity}`)
-                        .join(", ")}
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleRestoreOrder(order)}
-                        className="btn-accent flex-1 py-2 text-sm"
-                      >
-                        Restore
-                      </button>
-                      <button
-                        onClick={() => handleDeleteHeldOrder(order.id)}
-                        className="btn-danger py-2 px-4 text-sm"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    );
+  };
 }

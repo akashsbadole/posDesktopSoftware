@@ -97,6 +97,64 @@ pub struct Product {
     pub image_url: Option<String>,
     pub created_at: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    pub base_unit: Option<String>,
+    pub conversion_factor: Option<f64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Batch {
+    pub id: String,
+    pub product_id: String,
+    pub store_id: String,
+    pub batch_number: String,
+    pub expiry_date: Option<String>,
+    pub cost_price: f64,
+    pub quantity: i64,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SerialNumber {
+    pub id: String,
+    pub product_id: String,
+    pub store_id: String,
+    pub serial_number: String,
+    pub status: String,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InventoryTransaction {
+    pub id: String,
+    pub product_id: String,
+    pub store_id: String,
+    pub transaction_type: String, // 'in', 'out', 'adjustment', 'transfer', 'return'
+    pub qty_delta: i64,
+    pub batch_id: Option<String>,
+    pub serial_number_id: Option<String>,
+    pub reference_type: Option<String>, // 'order', 'purchase_order', 'adjustment', 'transfer'
+    pub reference_id: Option<String>,
+    pub user_id: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StockCount {
+    pub id: String,
+    pub store_id: String,
+    pub status: String, // 'draft', 'completed', 'cancelled'
+    pub created_by: String,
+    pub created_at: String,
+    pub items: Vec<StockCountItem>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StockCountItem {
+    pub id: String,
+    pub count_id: String,
+    pub product_id: String,
+    pub expected_qty: i64,
+    pub actual_qty: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -666,7 +724,7 @@ impl Database {
             );
 
             CREATE TABLE IF NOT EXISTS products (
-                id          TEXT PRIMARY KEY,
+                id          TEXT NOT NULL,
                 store_id    TEXT NOT NULL DEFAULT 'default',
                 name        TEXT NOT NULL,
                 price       REAL NOT NULL DEFAULT 0,
@@ -685,7 +743,64 @@ impl Database {
                 is_favorite INTEGER NOT NULL DEFAULT 0,
                 image_url   TEXT NOT NULL DEFAULT '',
                 metadata    TEXT,
+                base_unit   TEXT,
+                conversion_factor REAL,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (id, store_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS batches (
+                id          TEXT PRIMARY KEY,
+                product_id  TEXT NOT NULL,
+                store_id    TEXT NOT NULL,
+                batch_number TEXT NOT NULL,
+                expiry_date TEXT,
+                cost_price  REAL NOT NULL,
+                quantity    INTEGER NOT NULL,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS serial_numbers (
+                id          TEXT PRIMARY KEY,
+                product_id  TEXT NOT NULL,
+                store_id    TEXT NOT NULL,
+                serial_number TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'available',
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS inventory_transactions (
+                id          TEXT PRIMARY KEY,
+                product_id  TEXT NOT NULL,
+                store_id    TEXT NOT NULL,
+                transaction_type TEXT NOT NULL,
+                qty_delta   INTEGER NOT NULL,
+                batch_id    TEXT,
+                serial_number_id TEXT,
+                reference_type TEXT,
+                reference_id TEXT,
+                user_id     TEXT NOT NULL,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS stock_counts (
+                id          TEXT PRIMARY KEY,
+                store_id    TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'draft',
+                created_by  TEXT NOT NULL,
                 created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS stock_count_items (
+                id          TEXT PRIMARY KEY,
+                count_id    TEXT NOT NULL,
+                product_id  TEXT NOT NULL,
+                expected_qty INTEGER NOT NULL,
+                actual_qty  INTEGER NOT NULL,
+                FOREIGN KEY (count_id) REFERENCES stock_counts(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS product_variants (
@@ -1075,16 +1190,13 @@ impl Database {
         from_store: &str,
         to_store: &str,
         qty: i64,
+        user_id: &str,
     ) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
-        tx.execute(
-            "UPDATE products SET stock = MAX(0, stock - ?1) WHERE id = ?2 AND store_id=?3",
-            params![qty, id, from_store],
-        )?;
-        tx.execute(
-            "UPDATE products SET stock = stock + ?1 WHERE id = ?2 AND store_id=?3",
-            params![qty, id, to_store],
-        )?;
+
+        Self::adjust_inventory(&tx, id, from_store, -qty, "transfer", Some(to_store), user_id, None, None)?;
+        Self::adjust_inventory(&tx, id, to_store, qty, "transfer", Some(from_store), user_id, None, None)?;
+
         tx.commit()?;
         Ok(())
     }
@@ -1094,19 +1206,45 @@ impl Database {
         product_id: &str,
         store_id: &str,
         qty_delta: i64,
+        reference_type: &str,
+        reference_id: Option<&str>,
+        user_id: &str,
+        batch_id: Option<&str>,
+        serial_number_id: Option<&str>,
     ) -> Result<()> {
-        if qty_delta < 0 {
+        // 1. Update Product Stock
+        conn.execute(
+            "UPDATE products SET stock = stock + ?1 WHERE id = ?2 AND store_id = ?3",
+            params![qty_delta, product_id, store_id],
+        )?;
+
+        // 2. Log Transaction
+        let tx_id = uuid::Uuid::new_v4().to_string();
+        let transaction_type = if qty_delta > 0 { "in" } else { "out" };
+        conn.execute(
+            "INSERT INTO inventory_transactions (id, product_id, store_id, transaction_type, qty_delta, batch_id, serial_number_id, reference_type, reference_id, user_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![tx_id, product_id, store_id, transaction_type, qty_delta, batch_id, serial_number_id, reference_type, reference_id, user_id],
+        )?;
+
+        // 3. Update Batch if applicable
+        if let Some(bid) = batch_id {
             conn.execute(
-                "UPDATE products SET stock = MAX(0, stock + ?1) WHERE id = ?2 AND store_id = ?3",
-                params![qty_delta, product_id, store_id],
-            )?;
-        } else {
-            conn.execute(
-                "UPDATE products SET stock = stock + ?1 WHERE id = ?2 AND store_id = ?3",
-                params![qty_delta, product_id, store_id],
+                "UPDATE batches SET quantity = quantity + ?1 WHERE id = ?2",
+                params![qty_delta, bid],
             )?;
         }
 
+        // 4. Update Serial Number if applicable
+        if let Some(sid) = serial_number_id {
+            let status = if qty_delta < 0 { "sold" } else { "available" };
+            conn.execute(
+                "UPDATE serial_numbers SET status = ?1 WHERE id = ?2",
+                params![status, sid],
+            )?;
+        }
+
+        // 5. Recipe / Ingredient logic
         let mut stmt = conn.prepare(
             "SELECT ingredient_id, quantity FROM recipes WHERE product_id = ?1 AND store_id = ?2",
         )?;
@@ -1117,17 +1255,10 @@ impl Database {
         for recipe in recipes {
             let (ing_id, recipe_qty) = recipe?;
             let ing_delta = (qty_delta as f64) * recipe_qty;
-            if ing_delta < 0.0 {
-                conn.execute(
-                    "UPDATE ingredients SET stock = MAX(0.0, stock + ?1) WHERE id = ?2 AND store_id = ?3",
-                    params![ing_delta, ing_id, store_id],
-                )?;
-            } else {
-                conn.execute(
-                    "UPDATE ingredients SET stock = stock + ?1 WHERE id = ?2 AND store_id = ?3",
-                    params![ing_delta, ing_id, store_id],
-                )?;
-            }
+            conn.execute(
+                "UPDATE ingredients SET stock = stock + ?1 WHERE id = ?2 AND store_id = ?3",
+                params![ing_delta, ing_id, store_id],
+            )?;
         }
         Ok(())
     }
@@ -1759,31 +1890,32 @@ impl Database {
             .as_ref()
             .and_then(|m| serde_json::to_string(m).ok());
         self.conn.execute(
-            "INSERT INTO products (id, store_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
-             ON CONFLICT(id) DO UPDATE SET
+            "INSERT INTO products (id, store_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, base_unit, conversion_factor)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)
+             ON CONFLICT(id, store_id) DO UPDATE SET
                name=excluded.name, price=excluded.price, cost_price=excluded.cost_price, wholesale_price=excluded.wholesale_price,
                category=excluded.category, subcategory=excluded.subcategory, stock=excluded.stock, barcode=excluded.barcode,
                sku=excluded.sku, description=excluded.description, tax=excluded.tax, status=excluded.status, tags=excluded.tags,
-               is_digital=excluded.is_digital, is_favorite=excluded.is_favorite, image_url=excluded.image_url, metadata=excluded.metadata",
-            params![p.id, store_id, p.name, p.price, p.cost_price, p.wholesale_price, p.category, p.subcategory, p.stock, p.barcode, p.sku, p.description, p.tax, p.status, p.tags, if p.is_digital { 1 } else { 0 }, if p.is_favorite { 1 } else { 0 }, p.image_url, metadata_str],
+               is_digital=excluded.is_digital, is_favorite=excluded.is_favorite, image_url=excluded.image_url, metadata=excluded.metadata,
+               base_unit=excluded.base_unit, conversion_factor=excluded.conversion_factor",
+            params![p.id, store_id, p.name, p.price, p.cost_price, p.wholesale_price, p.category, p.subcategory, p.stock, p.barcode, p.sku, p.description, p.tax, p.status, p.tags, if p.is_digital { 1 } else { 0 }, if p.is_favorite { 1 } else { 0 }, p.image_url, metadata_str, p.base_unit, p.conversion_factor],
         )?;
         Ok(())
     }
 
     pub fn delete_product(&self, id: &str, store_id: &str) -> Result<()> {
-        self.conn.execute(
-            "DELETE FROM products WHERE id=?1 AND store_id=?2",
-            params![id, store_id],
-        )?;
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM recipes WHERE product_id=?1 AND store_id=?2", params![id, store_id])?;
+        tx.execute("DELETE FROM product_variants WHERE product_id=?1 AND store_id=?2", params![id, store_id])?;
+        tx.execute("DELETE FROM products WHERE id=?1 AND store_id=?2", params![id, store_id])?;
+        tx.commit()?;
         Ok(())
     }
 
-    pub fn update_stock(&self, id: &str, delta: i64, store_id: &str) -> Result<()> {
-        self.conn.execute(
-            "UPDATE products SET stock = MAX(0, stock + ?1) WHERE id = ?2 AND store_id=?3",
-            params![delta, id, store_id],
-        )?;
+    pub fn update_stock(&self, id: &str, delta: i64, store_id: &str, user_id: &str) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        Self::adjust_inventory(&tx, id, store_id, delta, "adjustment", None, user_id, None, None)?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -1938,18 +2070,19 @@ impl Database {
         tx.execute("DELETE FROM order_items WHERE order_id=?1", params![o.id])?;
 
         for item in &o.items {
-            let metadata_str = item
-                .metadata
-                .as_ref()
-                .and_then(|m| serde_json::to_string(m).ok());
+            let item_metadata_str = item.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok());
             tx.execute(
                 "INSERT INTO order_items (order_id, store_id, product_id, product_name, price, quantity, discount, tax, metadata, discount_type)
                  VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
-                params![o.id, o.store_id, item.product_id, item.product_name, item.price, item.quantity, item.discount, item.tax, metadata_str, item.discount_type],
+                params![o.id, o.store_id, item.product_id, item.product_name, item.price, item.quantity, item.discount, item.tax, item_metadata_str, item.discount_type],
             )?;
 
             if o.status == "completed" {
-                Self::adjust_inventory(&tx, &item.product_id, store_id, -item.quantity)?;
+                let batch_id = item.metadata.as_ref().and_then(|m| m.get("batch_id")).and_then(|v| v.as_str());
+                let serial_id = item.metadata.as_ref().and_then(|m| m.get("serial_number_id")).and_then(|v| v.as_str());
+                let user_id = o.user_id.as_deref().unwrap_or("system");
+
+                Self::adjust_inventory(&tx, &item.product_id, store_id, -item.quantity, "order", Some(&o.id), user_id, batch_id, serial_id)?;
             }
         }
 
@@ -1961,24 +2094,25 @@ impl Database {
         &self,
         id: &str,
         store_id: &str,
-        _user_id: &str,
+        user_id: &str,
         _user_name: &str,
     ) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
 
-        let items: Vec<(String, i64)> = tx
-            .prepare("SELECT product_id, quantity FROM order_items WHERE order_id=?1")?
-            .query_map(params![id], |row| Ok((row.get(0)?, row.get(1)?)))?
-            .collect::<Result<Vec<_>>>()?;
+        let items = tx.prepare("SELECT product_id, quantity, metadata FROM order_items WHERE order_id=?1")?
+            .query_map(params![id], |row| {
+                let m_str: Option<String> = row.get(2)?;
+                let m: Option<serde_json::Value> = m_str.and_then(|s| serde_json::from_str(&s).ok());
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, m))
+            })?.collect::<Result<Vec<_>>>()?;
 
-        for (product_id, qty) in items {
-            Self::adjust_inventory(&tx, &product_id, store_id, qty)?;
+        for (product_id, qty, metadata) in items {
+            let batch_id = metadata.as_ref().and_then(|m| m.get("batch_id")).and_then(|v| v.as_str());
+            let serial_id = metadata.as_ref().and_then(|m| m.get("serial_number_id")).and_then(|v| v.as_str());
+            Self::adjust_inventory(&tx, &product_id, store_id, qty, "return", Some(id), user_id, batch_id, serial_id)?;
         }
 
-        tx.execute(
-            "UPDATE orders SET status='refunded' WHERE id=?1 AND store_id=?2",
-            params![id, store_id],
-        )?;
+        tx.execute("UPDATE orders SET status='refunded' WHERE id=?1 AND store_id=?2", params![id, store_id])?;
         tx.commit()?;
         Ok(())
     }
@@ -3680,6 +3814,159 @@ impl Database {
                 user_name
             ],
         )?;
+        Ok(())
+    }
+
+    pub fn get_batches(&self, product_id: &str, store_id: &str) -> Result<Vec<Batch>> {
+        let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, batch_number, expiry_date, cost_price, quantity, created_at FROM batches WHERE product_id=?1 AND store_id=?2")?;
+        let batches = stmt.query_map(params![product_id, store_id], |row| {
+            Ok(Batch {
+                id: row.get(0)?,
+                product_id: row.get(1)?,
+                store_id: row.get(2)?,
+                batch_number: row.get(3)?,
+                expiry_date: row.get(4)?,
+                cost_price: row.get(5)?,
+                quantity: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?.collect::<Result<Vec<_>>>()?;
+        Ok(batches)
+    }
+
+    pub fn save_batch(&self, b: &Batch) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO batches (id, product_id, store_id, batch_number, expiry_date, cost_price, quantity)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(id) DO UPDATE SET batch_number=excluded.batch_number, expiry_date=excluded.expiry_date, cost_price=excluded.cost_price, quantity=excluded.quantity",
+            params![b.id, b.product_id, b.store_id, b.batch_number, b.expiry_date, b.cost_price, b.quantity],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_serial_numbers(&self, product_id: &str, store_id: &str) -> Result<Vec<SerialNumber>> {
+        let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, serial_number, status, created_at FROM serial_numbers WHERE product_id=?1 AND store_id=?2")?;
+        let serials = stmt.query_map(params![product_id, store_id], |row| {
+            Ok(SerialNumber {
+                id: row.get(0)?,
+                product_id: row.get(1)?,
+                store_id: row.get(2)?,
+                serial_number: row.get(3)?,
+                status: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })?.collect::<Result<Vec<_>>>()?;
+        Ok(serials)
+    }
+
+    pub fn save_serial_number(&self, s: &SerialNumber) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO serial_numbers (id, product_id, store_id, serial_number, status)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO UPDATE SET serial_number=excluded.serial_number, status=excluded.status",
+            params![s.id, s.product_id, s.store_id, s.serial_number, s.status],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_inventory_transactions(&self, product_id: &str, store_id: &str) -> Result<Vec<InventoryTransaction>> {
+        let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, transaction_type, qty_delta, batch_id, serial_number_id, reference_type, reference_id, user_id, created_at FROM inventory_transactions WHERE product_id=?1 AND store_id=?2 ORDER BY created_at DESC")?;
+        let txs = stmt.query_map(params![product_id, store_id], |row| {
+            Ok(InventoryTransaction {
+                id: row.get(0)?,
+                product_id: row.get(1)?,
+                store_id: row.get(2)?,
+                transaction_type: row.get(3)?,
+                qty_delta: row.get(4)?,
+                batch_id: row.get(5)?,
+                serial_number_id: row.get(6)?,
+                reference_type: row.get(7)?,
+                reference_id: row.get(8)?,
+                user_id: row.get(9)?,
+                created_at: row.get(10)?,
+            })
+        })?.collect::<Result<Vec<_>>>()?;
+        Ok(txs)
+    }
+
+    pub fn calculate_inventory_valuation(&self, store_id: &str, method: &str) -> Result<f64> {
+        match method {
+            "AVG" => {
+                let val: f64 = self.conn.query_row(
+                    "SELECT SUM(stock * cost_price) FROM products WHERE store_id=?1",
+                    params![store_id],
+                    |r| r.get(0)
+                ).unwrap_or(0.0);
+                Ok(val)
+            }
+            "FIFO" | "LIFO" => {
+                let order = if method == "FIFO" { "ASC" } else { "DESC" };
+                let sql = format!("SELECT cost_price, quantity FROM batches WHERE store_id=?1 ORDER BY created_at {}", order);
+                let mut stmt = self.conn.prepare(&sql)?;
+                let batches = stmt.query_map(params![store_id], |row| {
+                    Ok((row.get::<_, f64>(0)?, row.get::<_, i64>(1)?))
+                })?;
+                let mut total = 0.0;
+                for b in batches {
+                    let (cp, qty) = b?;
+                    total += cp * (qty as f64);
+                }
+                Ok(total)
+            }
+            _ => Ok(0.0)
+        }
+    }
+
+    pub fn get_stock_counts(&self, store_id: &str) -> Result<Vec<StockCount>> {
+        let mut stmt = self.conn.prepare("SELECT id, store_id, status, created_by, created_at FROM stock_counts WHERE store_id=?1 ORDER BY created_at DESC")?;
+        let counts = stmt.query_map(params![store_id], |row| {
+            let mut c = StockCount {
+                id: row.get(0)?,
+                store_id: row.get(1)?,
+                status: row.get(2)?,
+                created_by: row.get(3)?,
+                created_at: row.get(4)?,
+                items: vec![],
+            };
+            let mut item_stmt = self.conn.prepare("SELECT id, count_id, product_id, expected_qty, actual_qty FROM stock_count_items WHERE count_id=?1")?;
+            c.items = item_stmt.query_map(params![c.id], |ir| {
+                Ok(StockCountItem {
+                    id: ir.get(0)?,
+                    count_id: ir.get(1)?,
+                    product_id: ir.get(2)?,
+                    expected_qty: ir.get(3)?,
+                    actual_qty: ir.get(4)?,
+                })
+            })?.collect::<Result<Vec<_>>>()?;
+            Ok(c)
+        })?.collect::<Result<Vec<_>>>()?;
+        Ok(counts)
+    }
+
+    pub fn save_stock_count(&self, c: &StockCount) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "INSERT INTO stock_counts (id, store_id, status, created_by) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(id) DO UPDATE SET status=excluded.status",
+            params![c.id, c.store_id, c.status, c.created_by],
+        )?;
+
+        tx.execute("DELETE FROM stock_count_items WHERE count_id=?1", params![c.id])?;
+        for item in &c.items {
+            tx.execute(
+                "INSERT INTO stock_count_items (id, count_id, product_id, expected_qty, actual_qty)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![item.id, c.id, item.product_id, item.expected_qty, item.actual_qty],
+            )?;
+
+            if c.status == "completed" {
+                let diff = item.actual_qty - item.expected_qty;
+                if diff != 0 {
+                    Self::adjust_inventory(&tx, &item.product_id, &c.store_id, diff, "adjustment", Some(&c.id), &c.created_by, None, None)?;
+                }
+            }
+        }
+        tx.commit()?;
         Ok(())
     }
 

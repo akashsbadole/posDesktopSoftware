@@ -29,6 +29,7 @@ import StaffScheduling from "@/components/StaffScheduling";
 import DayEndReconciliation from "@/components/DayEndReconciliation";
 import RefundRequestsScreen from "@/components/RefundRequestsScreen";
 import InventoryAlertsScreen from "@/components/InventoryAlertsScreen";
+import InventoryManagementScreen from "@/components/InventoryManagementScreen";
 import ContactTraining from "@/components/ContactTraining";
 import StoresScreen from "@/components/StoresScreen";
 import OnboardingModal from "@/components/OnboardingModal";
@@ -59,6 +60,7 @@ export type Screen =
   | "reconciliation"
   | "refund_requests"
   | "inventory_alerts"
+  | "inventory"
   | "contact_training"
   | "stores";
 
@@ -78,6 +80,7 @@ const adminScreens: Screen[] = [
   "reconciliation",
   "refund_requests",
   "inventory_alerts",
+  "inventory",
   "stores",
 ];
 
@@ -296,6 +299,7 @@ export default function Home() {
               {screen === "reconciliation" && <DayEndReconciliation />}
               {screen === "refund_requests" && <RefundRequestsScreen />}
               {screen === "inventory_alerts" && <InventoryAlertsScreen />}
+              {screen === "inventory" && <InventoryManagementScreen />}
               {screen === "contact_training" && <ContactTraining />}
               {screen === "stores" && <StoresScreen />}
             </ErrorBoundary>
