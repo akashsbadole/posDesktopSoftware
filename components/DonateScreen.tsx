@@ -1,5 +1,16 @@
 "use client";
-import { Heart, ExternalLink, Wrench, Monitor, Plug, BookOpen, Users, Zap, Award, Globe } from "lucide-react";
+import {
+  Heart,
+  ExternalLink,
+  Wrench,
+  Monitor,
+  Plug,
+  BookOpen,
+  Users,
+  Zap,
+  Award,
+  Globe,
+} from "lucide-react";
 
 export default function DonateScreen() {
   const openDonateLink = () => {
@@ -7,8 +18,8 @@ export default function DonateScreen() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-full p-8 bg-bg text-text">
-      <div className="max-w-2xl w-full">
+    <div className="flex flex-col items-center min-h-full p-8 bg-bg text-text overflow-y-auto">
+      <div className="max-w-2xl w-full py-8">
         <div className="text-center mb-8">
           <Heart className="w-16 h-16 mx-auto mb-6 text-red-500" />
           <h1 className="text-3xl font-bold mb-4">Support Our Work</h1>
@@ -115,7 +126,9 @@ export default function DonateScreen() {
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <Award className="w-8 h-8 text-pink-500 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold mb-2">White-label Solutions</h3>
+            <h3 className="text-lg font-semibold mb-2">
+              White-label Solutions
+            </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
               Custom branded versions for agencies and resellers:
             </p>
@@ -143,7 +156,9 @@ export default function DonateScreen() {
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <Heart className="w-8 h-8 text-red-500 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold mb-2">Patreon-Style Support</h3>
+            <h3 className="text-lg font-semibold mb-2">
+              Patreon-Style Support
+            </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
               Join our supporter community for exclusive benefits:
             </p>
@@ -158,7 +173,8 @@ export default function DonateScreen() {
 
         <div className="text-center mt-8">
           <p className="text-sm text-gray-500 mb-2">
-            Interested in any of these services? Contact us for details and pricing.
+            Interested in any of these services? Contact us for details and
+            pricing.
           </p>
           <p className="text-sm text-gray-500">
             Email:{" "}
