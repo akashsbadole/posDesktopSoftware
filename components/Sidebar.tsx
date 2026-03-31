@@ -25,7 +25,8 @@ import {
   GraduationCap,
   Lock,
   ChevronDown,
-  LayoutGrid
+  LayoutGrid,
+  Heart
 } from "lucide-react";
 import { Screen } from "@/app/page";
 import { User } from "@/lib/db";
@@ -140,6 +141,12 @@ const allNavItems = [
     id: "contact_training" as Screen,
     label: "Training",
     icon: GraduationCap,
+    adminOnly: false,
+  },
+  {
+    id: "donate" as Screen,
+    label: "Support Us",
+    icon: Heart,
     adminOnly: false,
   },
 ];

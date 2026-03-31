@@ -1,10 +1,12 @@
-# POS Billing — Tauri + Next.js + SQLite + Neon
+# POS Billing — Free & Open Source
 
-A production-ready desktop POS billing application with:
+A completely free, production-ready desktop POS billing application with:
 - **SQLite** for offline-first local storage (via Tauri/Rust)
 - **Neon PostgreSQL** for cloud sync and multi-device access
 - **Tauri** as the desktop shell (cross-platform: Windows, macOS, Linux)
 - **Next.js 14** as the frontend framework
+
+**No fees, no subscriptions, no limitations.** All features included for unlimited stores.
 
 ---
 
@@ -30,6 +32,30 @@ A production-ready desktop POS billing application with:
 - **In Tauri (production)**: All DB calls go through `tauri::invoke()` → Rust → SQLite file on disk
 - **In browser (dev)**: Falls back to `localStorage` automatically (no Tauri needed for UI dev)
 - **Neon sync**: On demand from Settings screen — pushes unsynced orders up, pulls remote orders down
+
+---
+
+## Support the Project
+
+This POS application is **completely free** and open source. If you find it valuable, here are ways to support us:
+
+### Direct Support
+- **Donate**: Support ongoing development via [Buy Me a Coffee](https://www.buymeacoffee.com/akashbadole)
+- **Patreon-Style Support**: Join our community for exclusive benefits
+
+### Premium Services
+- **Custom Development**: Tailored integrations and features
+- **Training Programs**: Online courses, webinars, and certification
+- **Consulting Services**: Business optimization and menu engineering
+- **Priority Support**: Fast response and dedicated assistance
+- **White-label Solutions**: Custom branded versions for agencies
+
+### Hardware & Partnerships
+- **Hardware Bundles**: Recommended POS computers, printers, and accessories
+- **Affiliate Marketing**: Earn commissions promoting complementary products
+- **SaaS Add-ons**: Cloud-based premium features and analytics
+
+Contact us at info@appixen.com for premium services and partnerships.
 
 ---
 
