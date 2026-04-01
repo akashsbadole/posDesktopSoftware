@@ -38,7 +38,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
   const [newCustomer, setNewCustomer] = useState<Partial<Customer>>({
     name: "", phone: "", email: "", group_name: "retail",
     notes: "", birthday: "", anniversary: "", credit_limit: 0,
-    price_tier: "standard", loyalty_tier: "bronze"
+    price_tier: "standard", loyalty_tier: "bronze", tax_id: ""
   });
 
   const [newAddress, setNewAddress] = useState<Partial<CustomerAddress>>({
@@ -108,6 +108,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
         credit_limit: newCustomer.credit_limit,
         price_tier: newCustomer.price_tier,
         loyalty_tier: newCustomer.loyalty_tier,
+        tax_id: newCustomer.tax_id,
         created_at: newCustomer.created_at || new Date().toISOString(),
       };
       await dbSaveCustomer(customer, activeStoreId);
@@ -116,7 +117,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
       setNewCustomer({
         name: "", phone: "", email: "", group_name: "retail",
         notes: "", birthday: "", anniversary: "", credit_limit: 0,
-        price_tier: "standard", loyalty_tier: "bronze"
+        price_tier: "standard", loyalty_tier: "bronze", tax_id: ""
       });
       if (selectedCustomer?.id === customer.id) setSelectedCustomer(customer);
     } catch (err) {
@@ -627,6 +628,14 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                     type="number"
                     value={newCustomer.credit_limit || 0}
                     onChange={(e) => setNewCustomer({ ...newCustomer, credit_limit: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Tax ID / GSTIN</label>
+                  <input
+                    value={newCustomer.tax_id || ""}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, tax_id: e.target.value })}
+                    placeholder="e.g., 29AAAAA0000A1Z5"
                   />
                 </div>
 

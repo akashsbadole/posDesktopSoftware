@@ -230,6 +230,7 @@ export interface Customer {
   credit_limit?: number;
   price_tier?: string;
   loyalty_tier?: string;
+  tax_id?: string;
   created_at: string;
 }
 
@@ -1785,7 +1786,26 @@ async function browserFallback<T>(
       return null as T;
     }
     case "get_daily_summary": {
-      return { revenue: 0, transactions: 0, avg_order: 0, items_sold: 0 } as T;
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const today = new Date().toISOString().split("T")[0];
+      const filtered = orders.filter(
+        (o) =>
+          o.store_id === storeId &&
+          o.status === "completed" &&
+          o.created_at.split("T")[0] === today,
+      );
+      const revenue = filtered.reduce((s, o) => s + o.total, 0);
+      const transactions = filtered.length;
+      const items_sold = filtered.reduce(
+        (s, o) => s + o.items.reduce((si, i) => si + i.quantity, 0),
+        0,
+      );
+      return {
+        revenue,
+        transactions,
+        avg_order: transactions > 0 ? revenue / transactions : 0,
+        items_sold,
+      } as T;
     }
     case "get_weekly_revenue":
       return [] as T;
@@ -1793,6 +1813,104 @@ async function browserFallback<T>(
       return [] as T;
     case "get_low_stock":
       return [] as T;
+    case "get_ingredients": {
+      const items = lsGet<Ingredient[]>("pos_ingredients") || [];
+      return items.filter((x) => x.store_id === storeId) as T;
+    }
+    case "get_recipes": {
+      const items = lsGet<Recipe[]>("pos_recipes") || [];
+      return items.filter((x) => x.store_id === storeId) as T;
+    }
+    case "get_tables": {
+      const tables = lsGet<Table[]>("pos_tables") || [];
+      return tables.filter((t) => t.store_id === storeId) as T;
+    }
+    case "get_customers": {
+      const c = lsGet<Customer[]>("pos_customers") || [];
+      return c.filter((x) => x.store_id === storeId) as T;
+    }
+    case "get_expenses": {
+      const items = lsGet<Expense[]>("pos_expenses") || [];
+      return items.filter(
+        (x) => x.store_id === storeId && x.date === (args as any).date,
+      ) as T;
+    }
+    case "get_expenses_by_range": {
+      const items = lsGet<Expense[]>("pos_expenses") || [];
+      const { start_date, end_date } = args as any;
+      return items.filter(
+        (x) =>
+          x.store_id === storeId && x.date >= start_date && x.date <= end_date,
+      ) as T;
+    }
+    case "get_coupons": {
+      const items = lsGet<Coupon[]>("pos_coupons") || [];
+      return items.filter((x) => x.store_id === storeId) as T;
+    }
+    case "get_today_attendance": {
+      const items = lsGet<StaffAttendance[]>("pos_attendance") || [];
+      return items.filter((x) => x.store_id === storeId) as T;
+    }
+    case "get_kds_orders": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const today = new Date().toISOString().split("T")[0];
+      return orders
+        .filter(
+          (o) =>
+            o.store_id === storeId &&
+            o.created_at.split("T")[0] === today &&
+            ["completed", "pending", "processing"].includes(o.status),
+        )
+        .map((o) => ({
+          id: o.id,
+          order_type: o.order_type,
+          customer_name: o.customer_name,
+          created_at: o.created_at,
+          items: o.items.map((i) => ({
+            product_name: i.product_name,
+            quantity: i.quantity,
+            done: i.done || false,
+          })),
+        })) as T;
+    }
+    case "get_pending_orders_count": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      return orders.filter((o) => o.store_id === storeId && o.status === "pending")
+        .length as T;
+    }
+    case "get_lan_server_status":
+      return { running: false, port: 0, connected_clients: 0 } as T;
+    case "get_sales_by_payment_method": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const { date } = args as any;
+      const filtered = orders.filter(
+        (o) =>
+          o.store_id === storeId &&
+          o.status === "completed" &&
+          o.created_at.split("T")[0] === date,
+      );
+      const get = (m: string) =>
+        filtered.filter((o) => o.payment_method === m).reduce((s, o) => s + o.total, 0);
+      return [get("cash"), get("upi"), get("card")] as T;
+    }
+    case "get_day_end_reconciliation": {
+      const recs = lsGet<DayEndReconciliation[]>("pos_reconciliations") || [];
+      const { date } = args as any;
+      return (recs.find((r) => r.store_id === storeId && r.date === date) ||
+        null) as T;
+    }
+    case "save_day_end_reconciliation": {
+      const recs = lsGet<DayEndReconciliation[]>("pos_reconciliations") || [];
+      const rec = (args as any).reconciliation as DayEndReconciliation;
+      rec.store_id = storeId;
+      const idx = recs.findIndex(
+        (r) => r.store_id === storeId && r.date === rec.date,
+      );
+      if (idx >= 0) recs[idx] = rec;
+      else recs.push(rec);
+      lsSet("pos_reconciliations", recs);
+      return undefined as T;
+    }
     case "get_expense_categories": {
       const items = lsGet<ExpenseCategory[]>("pos_expense_categories") || [];
       return items.filter((x) => x.store_id === storeId) as T;
@@ -1948,6 +2066,7 @@ async function browserFallback<T>(
           credit_limit: parseFloat(parts[11]),
           price_tier: parts[12],
           loyalty_tier: parts[13],
+          tax_id: parts[14] || "",
           created_at: new Date().toISOString(),
         };
         const idx = customers.findIndex((x) => x.id === c.id);
@@ -1970,7 +2089,7 @@ async function browserFallback<T>(
     }
     case "get_customer_by_phone": {
       const customers = lsGet<Customer[]>("pos_customers") || [];
-      const phone = (args as any).phone;
+      const { phone } = args as any;
       const c = customers.find(
         (x) => x.phone === phone && x.store_id === storeId,
       );
@@ -2145,6 +2264,119 @@ async function browserFallback<T>(
       return items.some(
         (x) => x.user_id === user_id && !x.clock_out && x.store_id === storeId,
       ) as T;
+    }
+    case "get_gstr1_report": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const customers = lsGet<Customer[]>("pos_customers") || [];
+      const { startDate, endDate } = args as any;
+      return orders
+        .filter(
+          (o) =>
+            o.store_id === storeId &&
+            o.status === "completed" &&
+            o.created_at.split("T")[0] >= startDate &&
+            o.created_at.split("T")[0] <= endDate,
+        )
+        .map((o) => {
+          const c = customers.find((x) => x.name === o.customer_name && x.store_id === storeId);
+          return {
+            invoice_no: o.id,
+            date: o.created_at.split("T")[0],
+            customer_name: o.customer_name,
+            customer_gstin: c?.tax_id || "",
+            taxable_value: o.subtotal,
+            cgst: o.tax_amount / 2,
+            sgst: o.tax_amount / 2,
+            igst: 0,
+            total: o.total,
+            place_of_supply: "Local",
+          };
+        }) as T;
+    }
+    case "get_gstr3b_report": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const { startDate, endDate } = args as any;
+      const filtered = orders.filter(
+        (o) =>
+          o.store_id === storeId &&
+          o.status === "completed" &&
+          o.created_at.split("T")[0] >= startDate &&
+          o.created_at.split("T")[0] <= endDate,
+      );
+      const taxable = filtered.reduce((s, o) => s + o.subtotal, 0);
+      const tax = filtered.reduce((s, o) => s + o.tax_amount, 0);
+      return [taxable, tax / 2, tax / 2, 0, tax, 0] as T;
+    }
+    case "export_backup": {
+      const p = lsGet<Product[]>(LS.products) || [];
+      const o = lsGet<Order[]>(LS.orders) || [];
+      const s =
+        (lsGet<Record<string, Settings>>(LS.settings) || {})[storeId] ||
+        defaultSettings();
+      const data = {
+        products: p.filter((x) => x.store_id === storeId),
+        orders: o.filter((x) => x.store_id === storeId),
+        settings: s,
+        exported_at: new Date().toISOString(),
+      };
+      return btoa(JSON.stringify(data)) as T;
+    }
+    case "import_backup": {
+      const data = JSON.parse((args as any).backup_json);
+      const products = lsGet<Product[]>(LS.products) || [];
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const settings = lsGet<Record<string, Settings>>(LS.settings) || {};
+
+      data.products.forEach((p: Product) => {
+        const idx = products.findIndex(
+          (x) => x.id === p.id && x.store_id === storeId,
+        );
+        if (idx >= 0) products[idx] = p;
+        else products.push(p);
+      });
+      data.orders.forEach((o: Order) => {
+        const idx = orders.findIndex(
+          (x) => x.id === o.id && x.store_id === storeId,
+        );
+        if (idx >= 0) orders[idx] = o;
+        else orders.push(o);
+      });
+      settings[storeId] = data.settings;
+
+      lsSet(LS.products, products);
+      lsSet(LS.orders, orders);
+      lsSet(LS.settings, settings);
+
+      return {
+        products_imported: data.products.length,
+        orders_imported: data.orders.length,
+      } as T;
+    }
+    case "export_orders_csv": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const filtered = orders.filter((o) => o.store_id === storeId);
+      const header = [
+        "id",
+        "total",
+        "payment_method",
+        "customer",
+        "status",
+        "order_type",
+        "created_at",
+      ];
+      const rows = filtered.map((o) => [
+        o.id,
+        o.total.toString(),
+        o.payment_method,
+        o.customer_name,
+        o.status,
+        o.order_type,
+        o.created_at,
+      ]);
+      const csv = [header, ...rows]
+        .map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(","))
+        .join("\n");
+      return csv as T;
     }
     case "export_products_csv": {
       const p = lsGet<Product[]>(LS.products) || [];
@@ -2424,7 +2656,7 @@ async function browserFallback<T>(
       console.warn(
         `Browser fallback: Command ${cmd} not fully implemented for store ${storeId}`,
       );
-      return [] as any as T;
+      return null as any as T;
   }
 }
 

@@ -114,9 +114,9 @@ export default function POSScreen() {
     overrideItemPrice,
     setSplitPayments,
     setTipAmount,
+    priceTier,
+    setPriceTier,
   } = useCartStore();
-
-  const [priceTier, setPriceTier] = useState<"retail" | "wholesale">("retail");
 
   const {
     products,

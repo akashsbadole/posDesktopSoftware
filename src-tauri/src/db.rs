@@ -374,6 +374,7 @@ pub struct Customer {
     pub credit_limit: Option<f64>,
     pub price_tier: Option<String>,
     pub loyalty_tier: Option<String>,
+    pub tax_id: Option<String>,
     pub created_at: String,
 }
 
@@ -918,6 +919,7 @@ impl Database {
                 credit_limit REAL,
                 price_tier TEXT,
                 loyalty_tier TEXT,
+                tax_id TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -1307,6 +1309,9 @@ impl Database {
         let _ = self
             .conn
             .execute("ALTER TABLE customers ADD COLUMN loyalty_tier TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE customers ADD COLUMN tax_id TEXT", []);
 
         let store_name = "Main Store";
         let sql = format!(
@@ -2836,7 +2841,7 @@ impl Database {
     // ─── Others (Simplified) ──────────────────────────────────────────────────
 
     pub fn get_customers(&self, store_id: &str) -> Result<Vec<Customer>> {
-        let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier, created_at FROM customers WHERE store_id=?1")?;
+        let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier, tax_id, created_at FROM customers WHERE store_id=?1")?;
         let items = stmt
             .query_map(params![store_id], |row| {
                 Ok(Customer {
@@ -2855,7 +2860,8 @@ impl Database {
                     credit_limit: row.get(12)?,
                     price_tier: row.get(13)?,
                     loyalty_tier: row.get(14)?,
-                    created_at: row.get(15)?,
+                    tax_id: row.get(15)?,
+                    created_at: row.get(16)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -2864,15 +2870,15 @@ impl Database {
 
     pub fn save_customer(&self, c: &Customer, store_id: &str) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO customers (id, store_id, name, phone, email, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            "INSERT INTO customers (id, store_id, name, phone, email, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier, tax_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name, phone=excluded.phone, email=excluded.email,
                 group_name=excluded.group_name, notes=excluded.notes,
                 birthday=excluded.birthday, anniversary=excluded.anniversary,
                 credit_limit=excluded.credit_limit, price_tier=excluded.price_tier,
-                loyalty_tier=excluded.loyalty_tier",
-            params![c.id, store_id, c.name, c.phone, c.email, c.group_name, c.notes, c.birthday, c.anniversary, c.credit_limit, c.price_tier, c.loyalty_tier],
+                loyalty_tier=excluded.loyalty_tier, tax_id=excluded.tax_id",
+            params![c.id, store_id, c.name, c.phone, c.email, c.group_name, c.notes, c.birthday, c.anniversary, c.credit_limit, c.price_tier, c.loyalty_tier, c.tax_id],
         )?;
         Ok(())
     }
@@ -2886,7 +2892,7 @@ impl Database {
     }
 
     pub fn get_customer_by_phone(&self, phone: &str, store_id: &str) -> Result<Option<Customer>> {
-        let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier, created_at FROM customers WHERE phone=?1 AND store_id=?2")?;
+        let mut stmt = self.conn.prepare("SELECT id, store_id, name, phone, email, loyalty_points, total_spent, visits, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier, tax_id, created_at FROM customers WHERE phone=?1 AND store_id=?2")?;
         let res = stmt.query_row(params![phone, store_id], |row| {
             Ok(Customer {
                 id: row.get(0)?,
@@ -2904,7 +2910,8 @@ impl Database {
                 credit_limit: row.get(12)?,
                 price_tier: row.get(13)?,
                 loyalty_tier: row.get(14)?,
-                created_at: row.get(15)?,
+                tax_id: row.get(15)?,
+                created_at: row.get(16)?,
             })
         });
         match res {
@@ -2985,6 +2992,7 @@ impl Database {
             "credit_limit",
             "price_tier",
             "loyalty_tier",
+            "tax_id",
         ])
         .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
@@ -3004,6 +3012,7 @@ impl Database {
                 &c.credit_limit.unwrap_or(0.0).to_string(),
                 c.price_tier.as_deref().unwrap_or(""),
                 c.loyalty_tier.as_deref().unwrap_or(""),
+                c.tax_id.as_deref().unwrap_or(""),
             ])
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         }
@@ -3068,6 +3077,10 @@ impl Database {
                     .map(|s| s.to_string()),
                 loyalty_tier: record
                     .get(13)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
+                tax_id: record
+                    .get(14)
                     .filter(|s| !s.is_empty())
                     .map(|s| s.to_string()),
                 created_at: chrono::Local::now().to_rfc3339(),
@@ -3260,6 +3273,9 @@ impl Database {
                 orders_imported += 1;
             }
         }
+
+        let _ = self.save_settings(&data.settings, store_id);
+
         Ok(ImportResult {
             products_imported,
             orders_imported,
@@ -3818,23 +3834,29 @@ impl Database {
         store_id: &str,
     ) -> Result<Vec<GstReport>> {
         let mut stmt = self.conn.prepare(
-            "SELECT o.id, o.created_at, o.customer_name, c.email, o.subtotal, 0, 0, 0, o.total, 'Local'
-             FROM orders o LEFT JOIN customers c ON o.customer_name = c.name
-             WHERE o.store_id=?1 AND o.status='completed' AND DATE(o.created_at) BETWEEN ?2 AND ?3"
+            "SELECT o.id, o.created_at, o.customer_name, c.tax_id, o.subtotal, o.tax_amount, o.total, 'Local'
+             FROM orders o LEFT JOIN customers c ON o.customer_name = c.name AND o.store_id = c.store_id
+             WHERE o.store_id=?1 AND o.status='completed' AND DATE(o.created_at, 'localtime') BETWEEN ?2 AND ?3"
         )?;
         let items = stmt
             .query_map(params![store_id, start, end], |row| {
+                let total_tax: f64 = row.get(5)?;
+                // Standard Indian GST split for intra-state: 50% CGST, 50% SGST
+                let cgst = total_tax / 2.0;
+                let sgst = total_tax / 2.0;
+                let igst = 0.0;
+
                 Ok(GstReport {
                     invoice_no: row.get(0)?,
                     date: row.get(1)?,
                     customer_name: row.get(2)?,
-                    customer_gstin: None,
+                    customer_gstin: row.get(3)?,
                     taxable_value: row.get(4)?,
-                    cgst: row.get(5)?,
-                    sgst: row.get(6)?,
-                    igst: row.get(7)?,
-                    total: row.get(8)?,
-                    place_of_supply: row.get(9)?,
+                    cgst,
+                    sgst,
+                    igst,
+                    total: row.get(6)?,
+                    place_of_supply: row.get(7)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -3848,9 +3870,19 @@ impl Database {
         store_id: &str,
     ) -> Result<(f64, f64, f64, f64, f64, f64)> {
         self.conn.query_row(
-            "SELECT COALESCE(SUM(subtotal), 0), COALESCE(SUM(tax_amount), 0), 0, 0, 0, 0 FROM orders WHERE store_id=?1 AND status='completed' AND DATE(created_at) BETWEEN ?2 AND ?3",
+            "SELECT COALESCE(SUM(subtotal), 0), COALESCE(SUM(tax_amount), 0)
+             FROM orders WHERE store_id=?1 AND status='completed' AND DATE(created_at, 'localtime') BETWEEN ?2 AND ?3",
             params![store_id, start, end],
-            |r| Ok((r.get(0)?, r.get(1)?, 0.0, 0.0, 0.0, 0.0))
+            |r| {
+                let taxable: f64 = r.get(0)?;
+                let total_tax: f64 = r.get(1)?;
+                let cgst = total_tax / 2.0;
+                let sgst = total_tax / 2.0;
+                let igst = 0.0;
+                let liability = total_tax;
+                let itc = 0.0;
+                Ok((taxable, cgst, sgst, igst, liability, itc))
+            }
         )
     }
 

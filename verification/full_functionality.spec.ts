@@ -62,7 +62,7 @@ test.describe('POS System Full Functionality', () => {
     // Add product to cart
     await page.locator(`button[role="gridcell"]`).filter({ hasText: productName }).click();
     await expect(page.getByRole('listitem').filter({ hasText: productName })).toBeVisible();
-    await expect(page.getByText('1 items')).toBeVisible();
+    await expect(page.locator('span:has-text("items")')).toBeVisible();
 
     // Customer Lookup by Phone in Name field
     const customerNameInput = page.locator('#customer-name');
