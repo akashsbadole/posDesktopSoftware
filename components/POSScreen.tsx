@@ -308,6 +308,7 @@ export default function POSScreen() {
       return;
     }
 
+    // 2. Check serial tracking first (user must provide serial before adding)
     if (product.metadata?.track_serial) {
       setMetadataPrompt({
         productId: product.id,
@@ -315,46 +316,27 @@ export default function POSScreen() {
         field: "Serial Number",
       });
       setMetadataValue("");
-    } else {
-      addItem(product);
-      // 2. Check for batches
-      if (product.metadata?.track_batch) {
-        try {
-          const batches = await dbGetBatches(product.id, activeStoreId);
-          const availableBatches = batches.filter((b) => b.quantity > 0);
-          if (availableBatches.length > 0) {
-            setBatchSelection({ product, batches: availableBatches });
-            return;
-          } else if (!product.is_digital) {
-            alert("No available batches for this product.");
-            return;
-          }
-        } catch (err) {
-          console.error("Failed to fetch batches:", err);
-        }
-      }
-
-      // 3. Check for serial numbers
-      if (product.metadata?.track_serial) {
-        try {
-          const serials = await dbGetSerialNumbers(product.id, activeStoreId);
-          const availableSerials = serials.filter(
-            (s) => s.status === "available",
-          );
-          if (availableSerials.length > 0) {
-            setSerialSelection({ product, serials: availableSerials });
-            return;
-          } else if (!product.is_digital) {
-            alert("No available serial numbers for this product.");
-            return;
-          }
-        } catch (err) {
-          console.error("Failed to fetch serials:", err);
-        }
-      }
-
-      addItem(product);
+      return;
     }
+
+    // 3. Check for batches (choose batch before adding)
+    if (product.metadata?.track_batch) {
+      try {
+        const batches = await dbGetBatches(product.id, activeStoreId);
+        const availableBatches = batches.filter((b) => b.quantity > 0);
+        if (availableBatches.length > 0) {
+          setBatchSelection({ product, batches: availableBatches });
+          return;
+        } else if (!product.is_digital) {
+          alert("No available batches for this product.");
+          return;
+        }
+      } catch (err) {
+        console.error("Failed to fetch batches:", err);
+      }
+    }
+
+    addItem(product);
   };
 
   const handleSelectVariant = (variant: ProductVariant) => {

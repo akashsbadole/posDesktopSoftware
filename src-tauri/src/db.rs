@@ -1308,6 +1308,14 @@ impl Database {
             .conn
             .execute("ALTER TABLE customers ADD COLUMN loyalty_tier TEXT", []);
 
+        // Add base_unit and conversion_factor columns for ingredients/recipes support
+        let _ = self
+            .conn
+            .execute("ALTER TABLE products ADD COLUMN base_unit TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE products ADD COLUMN conversion_factor REAL", []);
+
         let store_name = "Main Store";
         let sql = format!(
             "INSERT OR IGNORE INTO stores (id, name, industry, is_active) VALUES ('default', '{}', 'food', 1)",
@@ -1385,13 +1393,2444 @@ impl Database {
         Ok(())
     }
 
+    pub fn reset_all(&self) -> Result<()> {
+        // List of all tables to drop
+        let tables = vec![
+            "stores",
+            "products",
+            "batches",
+            "serial_numbers",
+            "inventory_transactions",
+            "stock_counts",
+            "stock_count_items",
+            "product_variants",
+            "orders",
+            "order_items",
+            "settings_multi",
+            "users",
+            "activity_logs",
+            "tables",
+            "staff_attendance",
+            "customers",
+            "customer_addresses",
+            "inventory_alerts",
+            "refund_requests",
+            "ingredients",
+            "recipes",
+            "suppliers",
+            "purchase_orders",
+            "purchase_order_items",
+            "reservations",
+            "shifts",
+            "expenses",
+            "expense_categories",
+            "tax_rates",
+            "wallet_transactions",
+            "coupons",
+            "day_end_reconciliations",
+            "combos",
+        ];
+
+        for table in tables {
+            self.conn
+                .execute(&format!("DROP TABLE IF EXISTS {}", table), [])?;
+        }
+
+        // Recreate schema
+        self.init_schema()?;
+        self.migrate_schema()?;
+        self.create_indexes()?;
+        self.init_users()?;
+
+        Ok(())
+    }
+
     fn seed_if_empty(&self) -> Result<()> {
         let count: i64 = self
             .conn
             .query_row("SELECT COUNT(*) FROM products", [], |r| r.get(0))?;
         if count == 0 {
-            // No seeding for now to keep it clean
+            self.seed_sample_data()?;
         }
+        Ok(())
+    }
+
+    fn seed_sample_data(&self) -> Result<()> {
+        // Seed stores
+        self.conn.execute(
+            "INSERT INTO stores (id, name, industry) VALUES (?, ?, ?)",
+            params!["default", "Main Store", "food"],
+        )?;
+        self.conn.execute(
+            "INSERT INTO stores (id, name, industry) VALUES (?, ?, ?)",
+            params!["store2", "Downtown Branch", "retail"],
+        )?;
+
+        // Seed tax rates for both stores
+        let tax_rates = vec![
+            ("tax1", "default", "GST 5%", 5.0, 1),
+            ("tax2", "default", "GST 12%", 12.0, 0),
+            ("tax3", "default", "GST 18%", 18.0, 0),
+            ("tax4", "default", "GST 28%", 28.0, 0),
+            ("tax5", "store2", "VAT 8%", 8.0, 1),
+            ("tax6", "store2", "VAT 15%", 15.0, 0),
+        ];
+
+        for (id, store_id, name, rate, is_default) in tax_rates {
+            self.conn.execute(
+                "INSERT INTO tax_rates (id, store_id, name, rate, is_default) VALUES (?, ?, ?, ?, ?)",
+                params![id, store_id, name, rate, is_default],
+            )?;
+        }
+
+        // Seed products for both stores - expanded with realistic Indian restaurant items
+        let products = vec![
+            (
+                "prod1",
+                "Margherita Pizza",
+                250.0,
+                150.0,
+                200.0,
+                "Pizza",
+                "Vegetarian",
+                50,
+                "BAR001",
+                "SKU001",
+                "Classic cheese pizza with fresh mozzarella",
+                5.0,
+            ),
+            (
+                "prod2",
+                "Chicken Burger",
+                180.0,
+                100.0,
+                150.0,
+                "Burgers",
+                "Non-Veg",
+                30,
+                "BAR002",
+                "SKU002",
+                "Grilled chicken burger with lettuce and mayo",
+                12.0,
+            ),
+            (
+                "prod3",
+                "Coca Cola",
+                40.0,
+                25.0,
+                35.0,
+                "Beverages",
+                "Cold Drinks",
+                100,
+                "BAR003",
+                "SKU003",
+                "Refreshing cola drink 330ml",
+                18.0,
+            ),
+            (
+                "prod4",
+                "French Fries",
+                80.0,
+                40.0,
+                65.0,
+                "Sides",
+                "Crispy",
+                40,
+                "BAR004",
+                "SKU004",
+                "Golden crispy potato fries",
+                12.0,
+            ),
+            (
+                "prod5",
+                "Chocolate Cake",
+                120.0,
+                70.0,
+                100.0,
+                "Desserts",
+                "Cakes",
+                20,
+                "BAR005",
+                "SKU005",
+                "Rich Belgian chocolate cake slice",
+                18.0,
+            ),
+            (
+                "prod6",
+                "Chicken Biryani",
+                200.0,
+                120.0,
+                170.0,
+                "Main Course",
+                "Rice Dishes",
+                25,
+                "BAR006",
+                "SKU006",
+                "Authentic Hyderabadi chicken biryani",
+                12.0,
+            ),
+            (
+                "prod7",
+                "Garlic Bread",
+                90.0,
+                50.0,
+                75.0,
+                "Starters",
+                "Bread",
+                35,
+                "BAR007",
+                "SKU007",
+                "Fresh garlic bread with herbs",
+                5.0,
+            ),
+            (
+                "prod8",
+                "Vanilla Ice Cream",
+                60.0,
+                35.0,
+                50.0,
+                "Desserts",
+                "Ice Cream",
+                50,
+                "BAR008",
+                "SKU008",
+                "Creamy vanilla ice cream scoop",
+                18.0,
+            ),
+            (
+                "prod9",
+                "Veg Sandwich",
+                70.0,
+                40.0,
+                60.0,
+                "Sandwiches",
+                "Vegetarian",
+                45,
+                "BAR009",
+                "SKU009",
+                "Fresh vegetable sandwich with chutney",
+                5.0,
+            ),
+            (
+                "prod10",
+                "Filter Coffee",
+                50.0,
+                25.0,
+                40.0,
+                "Beverages",
+                "Hot Drinks",
+                80,
+                "BAR010",
+                "SKU010",
+                "South Indian filter coffee",
+                0.0,
+            ),
+            (
+                "prod11",
+                "Paneer Tikka",
+                220.0,
+                130.0,
+                180.0,
+                "Starters",
+                "Vegetarian",
+                28,
+                "BAR011",
+                "SKU011",
+                "Marinated paneer cubes grilled to perfection",
+                5.0,
+            ),
+            (
+                "prod12",
+                "Butter Chicken",
+                280.0,
+                160.0,
+                220.0,
+                "Main Course",
+                "Curry",
+                22,
+                "BAR012",
+                "SKU012",
+                "Creamy butter chicken with naan",
+                18.0,
+            ),
+            (
+                "prod13",
+                "Masala Dosa",
+                120.0,
+                70.0,
+                100.0,
+                "Main Course",
+                "South Indian",
+                35,
+                "BAR013",
+                "SKU013",
+                "Crispy dosa with potato masala",
+                5.0,
+            ),
+            (
+                "prod14",
+                "Chili Chicken",
+                240.0,
+                140.0,
+                190.0,
+                "Starters",
+                "Non-Veg",
+                20,
+                "BAR014",
+                "SKU014",
+                "Spicy Indo-Chinese chili chicken",
+                12.0,
+            ),
+            (
+                "prod15",
+                "Ras Malai",
+                80.0,
+                45.0,
+                65.0,
+                "Desserts",
+                "Indian Sweets",
+                40,
+                "BAR015",
+                "SKU015",
+                "Soft cottage cheese dumplings in sweetened milk",
+                18.0,
+            ),
+        ];
+
+        for (
+            id,
+            name,
+            price,
+            cost_price,
+            wholesale_price,
+            category,
+            subcategory,
+            stock,
+            barcode,
+            sku,
+            description,
+            tax,
+        ) in products
+        {
+            // Seed for default store
+            self.conn.execute(
+                "INSERT INTO products (id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, store_id, tags, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                params![format!("{}_default", id), name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, "default", "popular", 1],
+            )?;
+            // Seed for store2 with different prices
+            self.conn.execute(
+                "INSERT INTO products (id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, store_id, tags, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                params![format!("{}_store2", id), name, price * 1.1, cost_price, wholesale_price, category, subcategory, stock / 2, format!("BAR{}_S2", id), format!("SKU{}_S2", id), description, tax, "store2", "featured", 0],
+            )?;
+        }
+
+        // Seed product variants for selected products
+        let variants = vec![
+            (
+                "var1",
+                "prod1_default",
+                "default",
+                "Small",
+                "S",
+                "SKU001-S",
+                180.0,
+                20,
+            ),
+            (
+                "var2",
+                "prod1_default",
+                "default",
+                "Medium",
+                "M",
+                "SKU001-M",
+                250.0,
+                15,
+            ),
+            (
+                "var3",
+                "prod1_default",
+                "default",
+                "Large",
+                "L",
+                "SKU001-L",
+                320.0,
+                10,
+            ),
+            (
+                "var4",
+                "prod3_default",
+                "default",
+                "Regular",
+                "330ml",
+                "SKU003-R",
+                40.0,
+                50,
+            ),
+            (
+                "var5",
+                "prod3_default",
+                "default",
+                "Large",
+                "500ml",
+                "SKU003-L",
+                60.0,
+                30,
+            ),
+            (
+                "var6",
+                "prod10_default",
+                "default",
+                "Small",
+                "Small",
+                "SKU010-S",
+                40.0,
+                40,
+            ),
+            (
+                "var7",
+                "prod10_default",
+                "default",
+                "Large",
+                "Large",
+                "SKU010-L",
+                60.0,
+                25,
+            ),
+        ];
+
+        for (id, product_id, store_id, name, value, sku, price, stock) in variants {
+            self.conn.execute(
+                "INSERT INTO product_variants (id, product_id, store_id, name, value, sku, price, stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                params![id, product_id, store_id, name, value, sku, price, stock],
+            )?;
+        }
+
+        // Seed combos
+        let combos = vec![
+            (
+                "combo1",
+                "default",
+                "Family Meal Deal",
+                "Pizza + Burger + 2 Drinks",
+                r#"[{"product_id":"prod1_default","product_name":"Margherita Pizza","quantity":1,"price":250.0},{"product_id":"prod2_default","product_name":"Chicken Burger","quantity":1,"price":180.0},{"product_id":"prod3_default","product_name":"Coca Cola","quantity":2,"price":40.0}]"#,
+                450.0,
+                60.0,
+                11.76,
+            ),
+            (
+                "combo2",
+                "default",
+                "Snack Combo",
+                "Fries + Cold Drink",
+                r#"[{"product_id":"prod4_default","product_name":"French Fries","quantity":1,"price":80.0},{"product_id":"prod3_default","product_name":"Coca Cola","quantity":1,"price":40.0}]"#,
+                100.0,
+                20.0,
+                16.67,
+            ),
+            (
+                "combo3",
+                "store2",
+                "Office Lunch Pack",
+                "Biryani + Dessert",
+                r#"[{"product_id":"prod6_store2","product_name":"Chicken Biryani","quantity":1,"price":220.0},{"product_id":"prod5_store2","product_name":"Chocolate Cake","quantity":1,"price":132.0}]"#,
+                300.0,
+                52.0,
+                14.77,
+            ),
+        ];
+
+        for (
+            id,
+            store_id,
+            name,
+            description,
+            items,
+            combo_price,
+            discount_amount,
+            discount_percent,
+        ) in combos
+        {
+            self.conn.execute(
+                "INSERT INTO combos (id, store_id, name, description, items, combo_price, discount_amount, discount_percent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                params![id, store_id, name, description, items, combo_price, discount_amount, discount_percent],
+            )?;
+        }
+
+        // Seed tables with store_id
+        for i in 1..=10 {
+            self.conn.execute(
+                "INSERT INTO tables (id, store_id, name, capacity, status, position_x, position_y) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                params![format!("table{}", i), "default", format!("Table {}", i), 4, "available", (i % 3) * 100 + 50, (i / 3) * 100 + 50],
+            )?;
+        }
+
+        // Seed customers with store_id - expanded with realistic Indian customer data
+        let customers = vec![
+            (
+                "cust1",
+                "Rajesh Kumar",
+                "+919876543210",
+                "rajesh.kumar@email.com",
+                150,
+                12500.0,
+                25,
+                "VIP",
+                "Regular family customer, prefers window seating",
+                "1985-03-15",
+                "2015-06-20",
+                50000.0,
+                "gold",
+                "platinum",
+            ),
+            (
+                "cust2",
+                "Priya Sharma",
+                "+919876543211",
+                "priya.sharma@email.com",
+                75,
+                6800.0,
+                15,
+                "Regular",
+                "Office worker, comes for lunch",
+                "1990-07-22",
+                "",
+                20000.0,
+                "silver",
+                "gold",
+            ),
+            (
+                "cust3",
+                "Amit Patel",
+                "+919876543212",
+                "amit.patel@email.com",
+                30,
+                3200.0,
+                8,
+                "Corporate",
+                "Business meetings and client lunches",
+                "1988-12-10",
+                "",
+                15000.0,
+                "standard",
+                "silver",
+            ),
+            (
+                "cust4",
+                "Sunita Reddy",
+                "+919876543213",
+                "sunita.reddy@email.com",
+                200,
+                18500.0,
+                40,
+                "VIP",
+                "Celebration dinners, prefers vegetarian dishes",
+                "1988-11-05",
+                "2018-09-10",
+                100000.0,
+                "platinum",
+                "platinum",
+            ),
+            (
+                "cust5",
+                "Vikram Singh",
+                "+919876543214",
+                "vikram.singh@email.com",
+                10,
+                850.0,
+                3,
+                "New",
+                "First-time customer",
+                "1995-08-20",
+                "",
+                5000.0,
+                "basic",
+                "bronze",
+            ),
+            (
+                "cust6",
+                "Meera Joshi",
+                "+919876543215",
+                "meera.joshi@email.com",
+                50,
+                4500.0,
+                12,
+                "Regular",
+                "Vegetarian, allergic to peanuts",
+                "1992-04-18",
+                "",
+                10000.0,
+                "bronze",
+                "silver",
+            ),
+            (
+                "cust7",
+                "Arjun Nair",
+                "+919876543216",
+                "arjun.nair@email.com",
+                120,
+                9800.0,
+                22,
+                "VIP",
+                "Weekend family dinners",
+                "1983-01-25",
+                "2016-12-15",
+                75000.0,
+                "gold",
+                "platinum",
+            ),
+            (
+                "cust8",
+                "Kavita Gupta",
+                "+919876543217",
+                "kavita.gupta@email.com",
+                85,
+                7200.0,
+                18,
+                "Regular",
+                "Birthday celebrations",
+                "1987-09-12",
+                "2019-03-08",
+                25000.0,
+                "silver",
+                "gold",
+            ),
+            (
+                "cust9",
+                "Rohit Verma",
+                "+919876543218",
+                "rohit.verma@email.com",
+                45,
+                3800.0,
+                10,
+                "Regular",
+                "Quick business lunches",
+                "1989-06-30",
+                "",
+                15000.0,
+                "standard",
+                "silver",
+            ),
+            (
+                "cust10",
+                "Anjali Desai",
+                "+919876543219",
+                "anjali.desai@email.com",
+                180,
+                15200.0,
+                35,
+                "VIP",
+                "Large family gatherings and events",
+                "1984-11-28",
+                "2017-08-22",
+                80000.0,
+                "platinum",
+                "platinum",
+            ),
+        ];
+
+        for (
+            id,
+            name,
+            phone,
+            email,
+            loyalty_points,
+            total_spent,
+            visits,
+            group_name,
+            notes,
+            birthday,
+            anniversary,
+            credit_limit,
+            price_tier,
+            loyalty_tier,
+        ) in customers
+        {
+            self.conn.execute(
+                "INSERT INTO customers (id, store_id, name, phone, email, loyalty_points, total_spent, visits, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                params![id, "default", name, phone, email, loyalty_points, total_spent, visits, group_name, notes, birthday, anniversary, credit_limit, price_tier, loyalty_tier],
+            )?;
+        }
+
+        // Seed customer addresses
+        let addresses = vec![
+            (
+                "addr1",
+                "cust1",
+                "Home",
+                "123 Main Street, Block A",
+                "Mumbai",
+                "Maharashtra",
+                "400001",
+                "+919876543210",
+            ),
+            (
+                "addr2",
+                "cust1",
+                "Office",
+                "456 Business Park, Tower B",
+                "Mumbai",
+                "Maharashtra",
+                "400051",
+                "+919876543210",
+            ),
+            (
+                "addr3",
+                "cust2",
+                "Home",
+                "789 Garden Road",
+                "Delhi",
+                "Delhi",
+                "110001",
+                "+919876543211",
+            ),
+            (
+                "addr4",
+                "cust4",
+                "Home",
+                "321 Lake View",
+                "Bangalore",
+                "Karnataka",
+                "560001",
+                "+919876543213",
+            ),
+        ];
+
+        for (id, customer_id, label, address, city, state, zip, phone) in addresses {
+            self.conn.execute(
+                "INSERT INTO customer_addresses (id, customer_id, label, address, city, state, zip, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                params![id, customer_id, label, address, city, state, zip, phone],
+            )?;
+        }
+
+        // Seed batches for products
+        let batches = vec![
+            (
+                "batch1",
+                "prod1_default",
+                "default",
+                "BATCH-2026-001",
+                "2026-06-15",
+                150.0,
+                30,
+            ),
+            (
+                "batch2",
+                "prod1_default",
+                "default",
+                "BATCH-2026-002",
+                "2026-07-01",
+                155.0,
+                20,
+            ),
+            (
+                "batch3",
+                "prod2_default",
+                "default",
+                "BATCH-2026-003",
+                "2026-05-20",
+                100.0,
+                15,
+            ),
+            (
+                "batch4",
+                "prod3_default",
+                "default",
+                "BATCH-2026-004",
+                "2026-12-31",
+                25.0,
+                60,
+            ),
+            (
+                "batch5",
+                "prod5_default",
+                "default",
+                "BATCH-2026-005",
+                "2026-04-10",
+                70.0,
+                12,
+            ),
+            (
+                "batch6",
+                "prod8_default",
+                "default",
+                "BATCH-2026-006",
+                "2026-04-15",
+                35.0,
+                30,
+            ),
+        ];
+
+        for (id, product_id, store_id, batch_number, expiry_date, cost_price, quantity) in batches {
+            self.conn.execute(
+                "INSERT INTO batches (id, product_id, store_id, batch_number, expiry_date, cost_price, quantity) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                params![id, product_id, store_id, batch_number, expiry_date, cost_price, quantity],
+            )?;
+        }
+
+        // Seed serial numbers for select products
+        let serial_numbers = vec![
+            (
+                "sn1",
+                "prod3_default",
+                "default",
+                "SN-COLA-001",
+                "available",
+            ),
+            ("sn2", "prod3_default", "default", "SN-COLA-002", "sold"),
+            (
+                "sn3",
+                "prod3_default",
+                "default",
+                "SN-COLA-003",
+                "available",
+            ),
+            (
+                "sn4",
+                "prod10_default",
+                "default",
+                "SN-COFFEE-001",
+                "available",
+            ),
+            (
+                "sn5",
+                "prod10_default",
+                "default",
+                "SN-COFFEE-002",
+                "available",
+            ),
+        ];
+
+        for (id, product_id, store_id, serial_number, status) in serial_numbers {
+            self.conn.execute(
+                "INSERT INTO serial_numbers (id, product_id, store_id, serial_number, status) VALUES (?, ?, ?, ?, ?)",
+                params![id, product_id, store_id, serial_number, status],
+            )?;
+        }
+
+        // Seed staff attendance records - expanded with more staff and dates
+        let staff_attendance = vec![
+            (
+                "att1",
+                "default",
+                "admin",
+                "Administrator",
+                "2026-04-01 09:00:00",
+                Some("2026-04-01 17:00:00"),
+                "2026-04-01",
+            ),
+            (
+                "att2",
+                "default",
+                "cashier",
+                "Cashier",
+                "2026-04-01 08:30:00",
+                Some("2026-04-01 16:30:00"),
+                "2026-04-01",
+            ),
+            (
+                "att3",
+                "default",
+                "admin",
+                "Administrator",
+                "2026-04-02 09:15:00",
+                Some("2026-04-02 17:45:00"),
+                "2026-04-02",
+            ),
+            (
+                "att4",
+                "default",
+                "cashier",
+                "Cashier",
+                "2026-04-02 08:45:00",
+                Some("2026-04-02 17:15:00"),
+                "2026-04-02",
+            ),
+            (
+                "att5",
+                "default",
+                "admin",
+                "Administrator",
+                "2026-03-31 09:00:00",
+                Some("2026-03-31 18:00:00"),
+                "2026-03-31",
+            ),
+            (
+                "att6",
+                "default",
+                "waiter1",
+                "Waiter Raju",
+                "2026-04-01 10:00:00",
+                Some("2026-04-01 22:00:00"),
+                "2026-04-01",
+            ),
+            (
+                "att7",
+                "default",
+                "chef1",
+                "Chef Kumar",
+                "2026-04-01 08:00:00",
+                Some("2026-04-01 20:00:00"),
+                "2026-04-01",
+            ),
+            (
+                "att8",
+                "default",
+                "waiter2",
+                "Waiter Priya",
+                "2026-04-02 09:30:00",
+                Some("2026-04-02 21:30:00"),
+                "2026-04-02",
+            ),
+            (
+                "att9",
+                "default",
+                "chef1",
+                "Chef Kumar",
+                "2026-04-02 08:15:00",
+                Some("2026-04-02 19:45:00"),
+                "2026-04-02",
+            ),
+            (
+                "att10",
+                "default",
+                "waiter1",
+                "Waiter Raju",
+                "2026-04-02 10:30:00",
+                None::<String>.as_deref(),
+                "2026-04-02",
+            ),
+        ];
+
+        for (id, store_id, user_id, user_name, clock_in, clock_out, date) in staff_attendance {
+            if let Some(out_time) = clock_out {
+                self.conn.execute(
+                    "INSERT INTO staff_attendance (id, store_id, user_id, user_name, clock_in, clock_out, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    params![id, store_id, user_id, user_name, clock_in, out_time, date],
+                )?;
+            } else {
+                self.conn.execute(
+                    "INSERT INTO staff_attendance (id, store_id, user_id, user_name, clock_in, date) VALUES (?, ?, ?, ?, ?, ?)",
+                    params![id, store_id, user_id, user_name, clock_in, date],
+                )?;
+            }
+        }
+
+        // Seed ingredients - expanded with comprehensive ingredient list
+        let ingredients = vec![
+            ("Chicken Breast", 50.0, "kg"),
+            ("Maida Flour", 100.0, "kg"),
+            ("Mozzarella Cheese", 25.0, "kg"),
+            ("Fresh Tomatoes", 20.0, "kg"),
+            ("Red Onions", 15.0, "kg"),
+            ("Basmati Rice", 30.0, "kg"),
+            ("Coffee Beans", 10.0, "kg"),
+            ("Fresh Milk", 40.0, "liters"),
+            ("White Sugar", 20.0, "kg"),
+            ("Cooking Oil", 15.0, "liters"),
+            ("Paneer", 35.0, "kg"),
+            ("Chicken Masala", 12.0, "kg"),
+            ("Dosa Batter", 25.0, "kg"),
+            ("Potato", 45.0, "kg"),
+            ("Green Chilies", 8.0, "kg"),
+            ("Ginger Garlic Paste", 6.0, "kg"),
+            ("Fresh Coriander", 5.0, "kg"),
+            ("Curd", 30.0, "liters"),
+            ("Butter", 18.0, "kg"),
+            ("Bread Slices", 40.0, "packets"),
+        ];
+
+        for (i, (name, stock, unit)) in ingredients.iter().enumerate() {
+            self.conn.execute(
+                "INSERT INTO ingredients (id, name, stock, unit, reorder_level) VALUES (?, ?, ?, ?, ?)",
+                params![format!("ing{}", i + 1), name, stock, unit, stock * 0.2],
+            )?;
+        }
+
+        // Seed recipes (linking products to ingredients) - expanded for more products
+        let recipes = vec![
+            ("prod1", "ing2", 0.5),    // Margherita Pizza needs maida flour
+            ("prod1", "ing3", 0.2),    // Pizza needs mozzarella cheese
+            ("prod1", "ing4", 0.3),    // Pizza needs tomatoes
+            ("prod1", "ing5", 0.1),    // Pizza needs onions
+            ("prod2", "ing1", 0.3),    // Chicken Burger needs chicken
+            ("prod2", "ing5", 0.05),   // Burger needs onions
+            ("prod3", "ing19", 0.001), // Coca Cola (no ingredients needed, just placeholder)
+            ("prod4", "ing14", 0.8),   // French Fries needs potatoes
+            ("prod4", "ing9", 0.02),   // Fries needs oil
+            ("prod5", "ing2", 0.3),    // Chocolate Cake needs flour
+            ("prod5", "ing9", 0.2),    // Cake needs sugar
+            ("prod5", "ing8", 0.1),    // Cake needs milk
+            ("prod6", "ing1", 0.4),    // Chicken Biryani needs chicken
+            ("prod6", "ing6", 0.5),    // Biryani needs basmati rice
+            ("prod6", "ing5", 0.1),    // Biryani needs onions
+            ("prod6", "ing12", 0.05),  // Biryani needs chicken masala
+            ("prod7", "ing2", 0.3),    // Garlic Bread needs flour
+            ("prod7", "ing10", 0.05),  // Garlic bread needs butter
+            ("prod8", "ing8", 0.2),    // Ice Cream needs milk
+            ("prod8", "ing9", 0.1),    // Ice cream needs sugar
+            ("prod9", "ing20", 2.0),   // Veg Sandwich needs bread
+            ("prod9", "ing4", 0.2),    // Sandwich needs tomatoes
+            ("prod9", "ing5", 0.1),    // Sandwich needs onions
+            ("prod10", "ing7", 0.1),   // Filter Coffee needs coffee beans
+            ("prod10", "ing8", 0.2),   // Coffee needs milk
+            ("prod11", "ing11", 0.4),  // Paneer Tikka needs paneer
+            ("prod11", "ing5", 0.05),  // Paneer tikka needs onions
+            ("prod12", "ing1", 0.5),   // Butter Chicken needs chicken
+            ("prod12", "ing10", 0.1),  // Butter chicken needs butter
+            ("prod12", "ing18", 0.2),  // Butter chicken needs curd
+            ("prod13", "ing13", 0.6),  // Masala Dosa needs dosa batter
+            ("prod13", "ing14", 0.3),  // Dosa needs potatoes
+            ("prod14", "ing1", 0.3),   // Chili Chicken needs chicken
+            ("prod14", "ing15", 0.05), // Chili chicken needs green chilies
+            ("prod15", "ing18", 0.3),  // Ras Malai needs curd
+            ("prod15", "ing9", 0.15),  // Ras malai needs sugar
+        ];
+
+        for (product_id, ingredient_id, quantity) in recipes {
+            self.conn.execute(
+                "INSERT INTO recipes (product_id, ingredient_id, quantity) VALUES (?, ?, ?)",
+                params![product_id, ingredient_id, quantity],
+            )?;
+        }
+
+        // Seed suppliers - expanded with realistic supplier data
+        let suppliers = vec![
+            (
+                "Fresh Farms Pvt Ltd",
+                "+919876543215",
+                "fresh@farms.com",
+                "Delhi - NCR Region",
+            ),
+            (
+                "Dairy Best Corporation",
+                "+919876543216",
+                "info@dairy.com",
+                "Mumbai, Maharashtra",
+            ),
+            (
+                "Spice World Traders",
+                "+919876543217",
+                "sales@spice.com",
+                "Chennai, Tamil Nadu",
+            ),
+            (
+                "Meat Masters",
+                "+919876543218",
+                "orders@meatmasters.in",
+                "Gurgaon, Haryana",
+            ),
+            (
+                "Beverage Distributors",
+                "+919876543219",
+                "contact@bevdist.com",
+                "Pune, Maharashtra",
+            ),
+            (
+                "Bakery Supplies Co",
+                "+919876543220",
+                "bakery@supplies.in",
+                "Ahmedabad, Gujarat",
+            ),
+            (
+                "Rice & Grains Ltd",
+                "+919876543221",
+                "rice@grainsltd.com",
+                "Hyderabad, Telangana",
+            ),
+            (
+                "Frozen Foods Hub",
+                "+919876543222",
+                "frozen@foodshub.in",
+                "Bangalore, Karnataka",
+            ),
+            (
+                "Packaging Solutions",
+                "+919876543223",
+                "pack@solutions.in",
+                "Mumbai, Maharashtra",
+            ),
+            (
+                "Cleaning Supplies Pro",
+                "+919876543224",
+                "clean@suppliespro.com",
+                "Delhi - NCR Region",
+            ),
+        ];
+
+        for (i, (name, phone, email, address)) in suppliers.iter().enumerate() {
+            self.conn.execute(
+                "INSERT INTO suppliers (id, name, phone, email, address) VALUES (?, ?, ?, ?, ?)",
+                params![format!("sup{}", i + 1), name, phone, email, address],
+            )?;
+        }
+
+        // Seed purchase orders - expanded with multiple POs in different statuses
+        let purchase_orders = vec![
+            (
+                "po1",
+                "sup1",
+                "pending",
+                5000.0,
+                "Weekly vegetable supplies",
+                "2026-04-01",
+            ),
+            (
+                "po2",
+                "sup2",
+                "received",
+                3000.0,
+                "Dairy products order",
+                "2026-03-28",
+            ),
+            (
+                "po3",
+                "sup4",
+                "approved",
+                7500.0,
+                "Chicken and meat supplies",
+                "2026-04-02",
+            ),
+            (
+                "po4",
+                "sup3",
+                "pending",
+                4200.0,
+                "Spices and condiments",
+                "2026-04-01",
+            ),
+            (
+                "po5",
+                "sup5",
+                "received",
+                2800.0,
+                "Beverage stock replenishment",
+                "2026-03-30",
+            ),
+            (
+                "po6",
+                "sup6",
+                "draft",
+                3500.0,
+                "Bakery ingredients",
+                "2026-04-03",
+            ),
+            (
+                "po7",
+                "sup7",
+                "received",
+                6100.0,
+                "Rice and grains bulk order",
+                "2026-03-25",
+            ),
+            (
+                "po8",
+                "sup8",
+                "approved",
+                4800.0,
+                "Frozen food supplies",
+                "2026-04-02",
+            ),
+            (
+                "po9",
+                "sup9",
+                "pending",
+                2200.0,
+                "Packaging materials",
+                "2026-04-01",
+            ),
+            (
+                "po10",
+                "sup10",
+                "received",
+                1800.0,
+                "Cleaning supplies",
+                "2026-03-29",
+            ),
+        ];
+
+        for (id, supplier_id, status, total, notes, created_at) in purchase_orders {
+            self.conn.execute(
+                "INSERT INTO purchase_orders (id, supplier_id, status, total, notes, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                params![id, supplier_id, status, total, notes, created_at],
+            )?;
+        }
+
+        // Seed PO items - expanded with realistic items for each PO
+        let po_items = vec![
+            ("poi1", "po1", "default", "ing4", 50.0, 25.0), // Tomatoes
+            ("poi2", "po1", "default", "ing5", 30.0, 15.0), // Onions
+            ("poi3", "po2", "default", "ing3", 20.0, 120.0), // Cheese
+            ("poi4", "po2", "default", "ing8", 40.0, 45.0), // Milk
+            ("poi5", "po3", "default", "ing1", 25.0, 200.0), // Chicken
+            ("poi6", "po4", "default", "ing12", 10.0, 350.0), // Chicken Masala
+            ("poi7", "po4", "default", "ing15", 5.0, 180.0), // Green Chilies
+            ("poi8", "po5", "default", "ing19", 1.0, 2400.0), // Coca Cola (placeholder)
+            ("poi9", "po6", "default", "ing2", 30.0, 35.0), // Flour
+            ("poi10", "po6", "default", "ing9", 15.0, 65.0), // Sugar
+            ("poi11", "po7", "default", "ing6", 100.0, 28.0), // Rice
+            ("poi12", "po8", "default", "ing11", 15.0, 180.0), // Paneer
+            ("poi13", "po9", "default", "ing20", 20.0, 45.0), // Bread
+            ("poi14", "po10", "default", "ing10", 10.0, 120.0), // Oil
+        ];
+
+        for (id, po_id, store_id, ingredient_id, quantity, unit_cost) in po_items {
+            self.conn.execute(
+                "INSERT INTO purchase_order_items (id, po_id, store_id, ingredient_id, quantity, unit_cost) VALUES (?, ?, ?, ?, ?, ?)",
+                params![id, po_id, store_id, ingredient_id, quantity, unit_cost],
+            )?;
+        }
+
+        // Seed reservations - expanded across multiple dates and times
+        let reservations = vec![
+            (
+                "res1",
+                "table1",
+                "Rajesh Kumar",
+                "+919876543210",
+                "2026-04-05",
+                "19:00",
+                4,
+                "confirmed",
+                "Birthday celebration",
+            ),
+            (
+                "res2",
+                "table2",
+                "Priya Sharma",
+                "+919876543211",
+                "2026-04-06",
+                "20:00",
+                2,
+                "confirmed",
+                "",
+            ),
+            (
+                "res3",
+                "table3",
+                "Amit Patel",
+                "+919876543212",
+                "2026-04-07",
+                "18:30",
+                6,
+                "confirmed",
+                "Business dinner",
+            ),
+            (
+                "res4",
+                "table4",
+                "Sunita Reddy",
+                "+919876543213",
+                "2026-04-08",
+                "19:30",
+                8,
+                "pending",
+                "Family gathering",
+            ),
+            (
+                "res5",
+                "table5",
+                "Arjun Nair",
+                "+919876543216",
+                "2026-04-09",
+                "20:30",
+                4,
+                "confirmed",
+                "",
+            ),
+            (
+                "res6",
+                "table6",
+                "Kavita Gupta",
+                "+919876543217",
+                "2026-04-10",
+                "18:00",
+                3,
+                "confirmed",
+                "Date night",
+            ),
+            (
+                "res7",
+                "table7",
+                "Anjali Desai",
+                "+919876543219",
+                "2026-04-11",
+                "19:15",
+                10,
+                "pending",
+                "Anniversary dinner",
+            ),
+            (
+                "res8",
+                "table8",
+                "Rohit Verma",
+                "+919876543218",
+                "2026-04-12",
+                "21:00",
+                2,
+                "confirmed",
+                "",
+            ),
+            (
+                "res9",
+                "table1",
+                "Vikram Singh",
+                "+919876543214",
+                "2026-04-13",
+                "18:45",
+                5,
+                "confirmed",
+                "Weekend dinner",
+            ),
+            (
+                "res10",
+                "table2",
+                "Meera Joshi",
+                "+919876543215",
+                "2026-04-14",
+                "20:15",
+                4,
+                "pending",
+                "",
+            ),
+        ];
+
+        for (id, table_id, customer_name, phone, date, time, party_size, status, notes) in
+            reservations
+        {
+            self.conn.execute(
+                "INSERT INTO reservations (id, table_id, customer_name, phone, date, time, party_size, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                params![id, table_id, customer_name, phone, date, time, party_size, status, notes],
+            )?;
+        }
+
+        // Seed shifts - expanded with more staff roles and schedules
+        let shifts = vec![
+            (
+                "shift1",
+                "cashier",
+                "Cashier",
+                "2026-04-01",
+                "09:00",
+                "17:00",
+                "cashier",
+                "",
+            ),
+            (
+                "shift2",
+                "cashier",
+                "Cashier",
+                "2026-04-02",
+                "10:00",
+                "18:00",
+                "cashier",
+                "",
+            ),
+            (
+                "shift3",
+                "waiter1",
+                "Waiter Raju",
+                "2026-04-01",
+                "10:00",
+                "22:00",
+                "waiter",
+                "Evening shift",
+            ),
+            (
+                "shift4",
+                "chef1",
+                "Chef Kumar",
+                "2026-04-01",
+                "08:00",
+                "20:00",
+                "chef",
+                "Main kitchen",
+            ),
+            (
+                "shift5",
+                "waiter2",
+                "Waiter Priya",
+                "2026-04-02",
+                "09:30",
+                "21:30",
+                "waiter",
+                "Full shift",
+            ),
+            (
+                "shift6",
+                "chef1",
+                "Chef Kumar",
+                "2026-04-02",
+                "08:15",
+                "19:45",
+                "chef",
+                "Main kitchen",
+            ),
+            (
+                "shift7",
+                "cashier",
+                "Cashier",
+                "2026-04-03",
+                "08:30",
+                "16:30",
+                "cashier",
+                "Morning shift",
+            ),
+            (
+                "shift8",
+                "waiter1",
+                "Waiter Raju",
+                "2026-04-03",
+                "11:00",
+                "23:00",
+                "waiter",
+                "Night shift",
+            ),
+            (
+                "shift9",
+                "admin",
+                "Administrator",
+                "2026-04-01",
+                "09:00",
+                "17:00",
+                "manager",
+                "Management",
+            ),
+            (
+                "shift10",
+                "admin",
+                "Administrator",
+                "2026-04-02",
+                "09:15",
+                "17:45",
+                "manager",
+                "Management",
+            ),
+        ];
+
+        for (id, staff_id, staff_name, date, start_time, end_time, role, notes) in shifts {
+            self.conn.execute(
+                "INSERT INTO shifts (id, staff_id, staff_name, date, start_time, end_time, role, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                params![id, staff_id, staff_name, date, start_time, end_time, role, notes],
+            )?;
+        }
+
+        // Seed expense categories and expenses - expanded with comprehensive categories and entries
+        let categories = vec![
+            ("cat1", "default", "Food Supplies", "🍔"),
+            ("cat2", "default", "Utilities", "💡"),
+            ("cat3", "default", "Marketing", "📢"),
+            ("cat4", "default", "Maintenance", "🔧"),
+            ("cat5", "default", "Staff Salaries", "💰"),
+            ("cat6", "default", "Rent", "🏢"),
+            ("cat7", "default", "Equipment", "⚙️"),
+            ("cat8", "default", "Transportation", "🚗"),
+            ("cat9", "default", "Insurance", "🛡️"),
+            ("cat10", "default", "Miscellaneous", "📦"),
+        ];
+        for (id, store_id, name, icon) in categories {
+            self.conn.execute(
+                "INSERT INTO expense_categories (id, store_id, name, icon) VALUES (?, ?, ?, ?)",
+                params![id, store_id, name, icon],
+            )?;
+        }
+
+        let expenses = vec![
+            (
+                "exp1",
+                "default",
+                "Food Supplies",
+                2500.0,
+                "Weekly vegetable and meat supplies",
+                "2026-04-01",
+                "cash",
+            ),
+            (
+                "exp2",
+                "default",
+                "Utilities",
+                800.0,
+                "Electricity bill - March",
+                "2026-04-01",
+                "bank",
+            ),
+            (
+                "exp3",
+                "default",
+                "Marketing",
+                1500.0,
+                "Social media advertising campaign",
+                "2026-03-28",
+                "upi",
+            ),
+            (
+                "exp4",
+                "default",
+                "Maintenance",
+                1200.0,
+                "Kitchen equipment servicing",
+                "2026-03-25",
+                "cash",
+            ),
+            (
+                "exp5",
+                "default",
+                "Staff Salaries",
+                15000.0,
+                "Monthly staff salaries",
+                "2026-04-01",
+                "bank",
+            ),
+            (
+                "exp6",
+                "default",
+                "Rent",
+                25000.0,
+                "Monthly restaurant rent",
+                "2026-04-01",
+                "bank",
+            ),
+            (
+                "exp7",
+                "default",
+                "Equipment",
+                3500.0,
+                "New coffee machine",
+                "2026-03-20",
+                "card",
+            ),
+            (
+                "exp8",
+                "default",
+                "Transportation",
+                800.0,
+                "Fuel and vehicle maintenance",
+                "2026-04-02",
+                "cash",
+            ),
+            (
+                "exp9",
+                "default",
+                "Insurance",
+                2200.0,
+                "Annual insurance premium",
+                "2026-03-15",
+                "bank",
+            ),
+            (
+                "exp10",
+                "default",
+                "Miscellaneous",
+                450.0,
+                "Cleaning supplies and disposables",
+                "2026-04-03",
+                "cash",
+            ),
+        ];
+
+        for (id, store_id, category, amount, description, date, payment_method) in expenses {
+            self.conn.execute(
+                "INSERT INTO expenses (id, store_id, category, amount, description, date, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                params![id, store_id, category, amount, description, date, payment_method],
+            )?;
+        }
+
+        // Seed coupons - expanded with various discount types and scenarios
+        let coupons = vec![
+            (
+                "coupon1",
+                "default",
+                "WELCOME10",
+                "percentage",
+                10.0,
+                500.0,
+                100,
+                5,
+                "2026-01-01",
+                "2026-12-31",
+                1,
+            ),
+            (
+                "coupon2",
+                "default",
+                "FLAT50",
+                "fixed",
+                50.0,
+                200.0,
+                50,
+                10,
+                "2026-01-01",
+                "2026-12-31",
+                1,
+            ),
+            (
+                "coupon3",
+                "default",
+                "SUMMER20",
+                "percentage",
+                20.0,
+                1000.0,
+                30,
+                0,
+                "2026-06-01",
+                "2026-08-31",
+                1,
+            ),
+            (
+                "coupon4",
+                "default",
+                "LOYALTY15",
+                "percentage",
+                15.0,
+                300.0,
+                200,
+                25,
+                "2026-01-01",
+                "2026-12-31",
+                1,
+            ),
+            (
+                "coupon5",
+                "default",
+                "FIRSTORDER",
+                "fixed",
+                100.0,
+                250.0,
+                500,
+                45,
+                "2026-01-01",
+                "2026-12-31",
+                1,
+            ),
+            (
+                "coupon6",
+                "default",
+                "BIRTHDAY",
+                "percentage",
+                25.0,
+                500.0,
+                1000,
+                12,
+                "2026-01-01",
+                "2026-12-31",
+                1,
+            ),
+            (
+                "coupon7",
+                "default",
+                "WEEKEND30",
+                "percentage",
+                30.0,
+                800.0,
+                20,
+                3,
+                "2026-04-01",
+                "2026-04-30",
+                1,
+            ),
+            (
+                "coupon8",
+                "default",
+                "HAPPYHOUR",
+                "fixed",
+                75.0,
+                400.0,
+                50,
+                8,
+                "2026-01-01",
+                "2026-12-31",
+                1,
+            ),
+            (
+                "coupon9",
+                "default",
+                "ANNIVERSARY",
+                "percentage",
+                20.0,
+                600.0,
+                100,
+                5,
+                "2026-01-01",
+                "2026-12-31",
+                1,
+            ),
+            (
+                "coupon10",
+                "default",
+                "STUDENT",
+                "percentage",
+                12.0,
+                200.0,
+                300,
+                67,
+                "2026-01-01",
+                "2026-12-31",
+                1,
+            ),
+        ];
+
+        for (
+            id,
+            store_id,
+            code,
+            discount_type,
+            discount_value,
+            min_order_amount,
+            max_uses,
+            used_count,
+            valid_from,
+            valid_until,
+            active,
+        ) in coupons
+        {
+            self.conn.execute(
+                "INSERT INTO coupons (id, store_id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                params![id, store_id, code, discount_type, discount_value, min_order_amount, max_uses, used_count, valid_from, valid_until, active],
+            )?;
+        }
+
+        // Seed settings for both stores
+        let stores = vec!["default", "store2"];
+        for store in &stores {
+            self.conn.execute(
+                "INSERT INTO settings_multi (key, value, store_id) VALUES (?, ?, ?)",
+                params![
+                    "tax_rate",
+                    if *store == "default" { "18" } else { "8" },
+                    *store
+                ],
+            )?;
+            self.conn.execute(
+                "INSERT INTO settings_multi (key, value, store_id) VALUES (?, ?, ?)",
+                params![
+                    "store_name",
+                    if *store == "default" {
+                        "Sample Restaurant"
+                    } else {
+                        "Downtown Branch"
+                    },
+                    *store
+                ],
+            )?;
+            self.conn.execute(
+                "INSERT INTO settings_multi (key, value, store_id) VALUES (?, ?, ?)",
+                params![
+                    "gst_number",
+                    if *store == "default" {
+                        "22AAAAA0000A1Z5"
+                    } else {
+                        "22BBBBB0000B2Y6"
+                    },
+                    *store
+                ],
+            )?;
+        }
+
+        // Seed orders for both stores - expanded with varied order types and payment methods
+        let orders = vec![
+            (
+                "order1",
+                "Rajesh Kumar",
+                "+919876543210",
+                "dine_in",
+                "table1",
+                "completed",
+                430.0,
+                77.4,
+                0.0,
+                507.4,
+                "cash",
+                "default",
+                "2026-04-01T12:00:00Z",
+                None::<String>,
+            ),
+            (
+                "order2",
+                "Priya Sharma",
+                "+919876543211",
+                "takeaway",
+                "",
+                "completed",
+                220.0,
+                39.6,
+                0.0,
+                259.6,
+                "card",
+                "default",
+                "2026-04-01T13:30:00Z",
+                None::<String>,
+            ),
+            (
+                "order3",
+                "Amit Patel",
+                "+919876543212",
+                "delivery",
+                "",
+                "pending",
+                180.0,
+                32.4,
+                0.0,
+                212.4,
+                "upi",
+                "store2",
+                "2026-04-01T14:00:00Z",
+                Some("456 Business Park, Mumbai".to_string()),
+            ),
+            (
+                "order4",
+                "Sunita Reddy",
+                "+919876543213",
+                "dine_in",
+                "table2",
+                "completed",
+                300.0,
+                54.0,
+                0.0,
+                354.0,
+                "cash",
+                "store2",
+                "2026-04-01T15:00:00Z",
+                None::<String>,
+            ),
+            (
+                "order5",
+                "Vikram Singh",
+                "+919876543214",
+                "dine_in",
+                "table3",
+                "completed",
+                150.0,
+                27.0,
+                0.0,
+                177.0,
+                "wallet",
+                "default",
+                "2026-04-01T16:00:00Z",
+                None::<String>,
+            ),
+            (
+                "order6",
+                "Meera Joshi",
+                "+919876543215",
+                "takeaway",
+                "",
+                "completed",
+                280.0,
+                50.4,
+                0.0,
+                330.4,
+                "upi",
+                "default",
+                "2026-04-01T17:30:00Z",
+                None::<String>,
+            ),
+            (
+                "order7",
+                "Arjun Nair",
+                "+919876543216",
+                "dine_in",
+                "table4",
+                "completed",
+                520.0,
+                93.6,
+                0.0,
+                613.6,
+                "card",
+                "default",
+                "2026-04-01T19:00:00Z",
+                None::<String>,
+            ),
+            (
+                "order8",
+                "Kavita Gupta",
+                "+919876543217",
+                "delivery",
+                "",
+                "completed",
+                240.0,
+                43.2,
+                0.0,
+                283.2,
+                "cash",
+                "store2",
+                "2026-04-01T20:15:00Z",
+                Some("789 Lake View, Bangalore".to_string()),
+            ),
+            (
+                "order9",
+                "Rohit Verma",
+                "+919876543218",
+                "dine_in",
+                "table5",
+                "pending",
+                190.0,
+                34.2,
+                0.0,
+                224.2,
+                "upi",
+                "default",
+                "2026-04-02T12:30:00Z",
+                None::<String>,
+            ),
+            (
+                "order10",
+                "Anjali Desai",
+                "+919876543219",
+                "takeaway",
+                "",
+                "completed",
+                350.0,
+                63.0,
+                0.0,
+                413.0,
+                "wallet",
+                "default",
+                "2026-04-02T13:45:00Z",
+                None::<String>,
+            ),
+        ];
+
+        for (
+            id,
+            customer_name,
+            customer_phone,
+            order_type,
+            table_id,
+            status,
+            subtotal,
+            tax_amount,
+            discount_amount,
+            total,
+            payment_method,
+            store_id,
+            created_at,
+            delivery_address,
+        ) in orders
+        {
+            if let Some(address) = delivery_address {
+                self.conn.execute(
+                    "INSERT INTO orders (id, customer_name, customer_phone, order_type, table_id, status, subtotal, tax_amount, discount_amount, total, payment_method, store_id, delivery_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    params![id, customer_name, customer_phone, order_type, table_id, status, subtotal, tax_amount, discount_amount, total, payment_method, store_id, address, created_at],
+                )?;
+            } else {
+                self.conn.execute(
+                    "INSERT INTO orders (id, customer_name, customer_phone, order_type, table_id, status, subtotal, tax_amount, discount_amount, total, payment_method, store_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    params![id, customer_name, customer_phone, order_type, table_id, status, subtotal, tax_amount, discount_amount, total, payment_method, store_id, created_at],
+                )?;
+            }
+        }
+
+        // Seed order items - expanded to match all orders
+        let order_items = vec![
+            (
+                "order1",
+                "default",
+                "prod1_default",
+                "Margherita Pizza",
+                250.0,
+                1,
+                5.0,
+                45.0,
+            ),
+            (
+                "order1",
+                "default",
+                "prod3_default",
+                "Coca Cola",
+                40.0,
+                2,
+                18.0,
+                72.0,
+            ),
+            (
+                "order2",
+                "default",
+                "prod2_default",
+                "Chicken Burger",
+                180.0,
+                1,
+                12.0,
+                32.4,
+            ),
+            (
+                "order2",
+                "default",
+                "prod4_default",
+                "French Fries",
+                80.0,
+                1,
+                12.0,
+                21.6,
+            ),
+            (
+                "order3",
+                "store2",
+                "prod2_store2",
+                "Chicken Burger",
+                198.0,
+                1,
+                12.0,
+                32.4,
+            ),
+            (
+                "order4",
+                "store2",
+                "prod1_store2",
+                "Margherita Pizza",
+                275.0,
+                1,
+                5.0,
+                49.5,
+            ),
+            (
+                "order5",
+                "default",
+                "prod9_default",
+                "Veg Sandwich",
+                70.0,
+                1,
+                5.0,
+                12.6,
+            ),
+            (
+                "order5",
+                "default",
+                "prod10_default",
+                "Filter Coffee",
+                50.0,
+                1,
+                0.0,
+                0.0,
+            ),
+            (
+                "order6",
+                "default",
+                "prod6_default",
+                "Chicken Biryani",
+                200.0,
+                1,
+                12.0,
+                36.0,
+            ),
+            (
+                "order6",
+                "default",
+                "prod15_default",
+                "Ras Malai",
+                80.0,
+                1,
+                18.0,
+                14.4,
+            ),
+            (
+                "order7",
+                "default",
+                "prod12_default",
+                "Butter Chicken",
+                280.0,
+                1,
+                18.0,
+                50.4,
+            ),
+            (
+                "order7",
+                "default",
+                "prod7_default",
+                "Garlic Bread",
+                90.0,
+                1,
+                5.0,
+                16.2,
+            ),
+            (
+                "order7",
+                "default",
+                "prod3_default",
+                "Coca Cola",
+                40.0,
+                2,
+                18.0,
+                72.0,
+            ),
+            (
+                "order8",
+                "store2",
+                "prod11_store2",
+                "Paneer Tikka",
+                242.0,
+                1,
+                5.0,
+                43.56,
+            ),
+            (
+                "order9",
+                "default",
+                "prod13_default",
+                "Masala Dosa",
+                120.0,
+                1,
+                5.0,
+                21.6,
+            ),
+            (
+                "order9",
+                "default",
+                "prod10_default",
+                "Filter Coffee",
+                50.0,
+                1,
+                0.0,
+                0.0,
+            ),
+            (
+                "order10",
+                "default",
+                "prod14_default",
+                "Chili Chicken",
+                240.0,
+                1,
+                12.0,
+                43.2,
+            ),
+            (
+                "order10",
+                "default",
+                "prod8_default",
+                "Vanilla Ice Cream",
+                60.0,
+                1,
+                18.0,
+                10.8,
+            ),
+        ];
+
+        for (
+            order_id,
+            store_id,
+            product_id,
+            product_name,
+            price,
+            quantity,
+            _tax_rate,
+            tax_amount,
+        ) in order_items
+        {
+            self.conn.execute(
+                "INSERT INTO order_items (order_id, store_id, product_id, product_name, price, quantity, tax, discount, discount_type, metadata, done) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                params![order_id, store_id, product_id, product_name, price, quantity, tax_amount, 0.0, None::<String>, None::<String>, 0],
+            )?;
+        }
+
+        // Seed activity logs - expanded with comprehensive audit trail
+        let activity_logs = vec![
+            (
+                "log1",
+                "create",
+                "order",
+                "order1",
+                None::<String>,
+                "New dine-in order created",
+                "cashier",
+                "cashier",
+                "2026-04-01T12:00:00Z",
+            ),
+            (
+                "log2",
+                "create",
+                "product",
+                "prod1",
+                None::<String>,
+                "Added Margherita Pizza product",
+                "admin",
+                "Administrator",
+                "2026-04-01T10:00:00Z",
+            ),
+            (
+                "log3",
+                "update",
+                "customer",
+                "cust1",
+                None::<String>,
+                "Updated customer contact information",
+                "cashier",
+                "Cashier",
+                "2026-04-01T11:00:00Z",
+            ),
+            (
+                "log4",
+                "create",
+                "order",
+                "order2",
+                None::<String>,
+                "Takeaway order placed",
+                "cashier",
+                "Cashier",
+                "2026-04-01T13:30:00Z",
+            ),
+            (
+                "log5",
+                "update",
+                "product",
+                "prod3",
+                None::<String>,
+                "Updated Coca Cola stock levels",
+                "admin",
+                "Administrator",
+                "2026-04-01T09:00:00Z",
+            ),
+            (
+                "log6",
+                "create",
+                "customer",
+                "cust5",
+                None::<String>,
+                "New customer registration",
+                "cashier",
+                "Cashier",
+                "2026-04-01T14:00:00Z",
+            ),
+            (
+                "log7",
+                "update",
+                "order",
+                "order3",
+                None::<String>,
+                "Order status changed to completed",
+                "cashier",
+                "Cashier",
+                "2026-04-01T15:30:00Z",
+            ),
+            (
+                "log8",
+                "create",
+                "coupon",
+                "coupon4",
+                None::<String>,
+                "Created new loyalty discount coupon",
+                "admin",
+                "Administrator",
+                "2026-03-28T10:00:00Z",
+            ),
+            (
+                "log9",
+                "delete",
+                "order",
+                "order_draft",
+                None::<String>,
+                "Cancelled draft order",
+                "cashier",
+                "Cashier",
+                "2026-04-02T11:00:00Z",
+            ),
+            (
+                "log10",
+                "update",
+                "settings",
+                "tax_rate",
+                None::<String>,
+                "Updated GST tax rate to 18%",
+                "admin",
+                "Administrator",
+                "2026-03-15T14:00:00Z",
+            ),
+        ];
+
+        for (
+            id,
+            action,
+            entity_type,
+            entity_id,
+            previous_value,
+            new_value,
+            user_id,
+            user_name,
+            created_at,
+        ) in activity_logs
+        {
+            if let Some(prev) = previous_value {
+                self.conn.execute(
+                    "INSERT INTO activity_logs (id, action, entity_type, entity_id, previous_data, new_data, reason, user_id, user_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    params![id, action, entity_type, entity_id, prev, new_value, new_value, user_id, user_name, created_at],
+                )?;
+            } else {
+                self.conn.execute(
+                    "INSERT INTO activity_logs (id, action, entity_type, entity_id, new_data, reason, user_id, user_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    params![id, action, entity_type, entity_id, new_value, new_value, user_id, user_name, created_at],
+                )?;
+            }
+        }
+
+        // Seed wallet transactions - expanded with various transaction types
+        let wallet_transactions = vec![
+            (
+                "wt1",
+                "default",
+                "cust1",
+                100.0,
+                "credit",
+                None::<String>,
+                "Loyalty bonus for order completion",
+                "2026-04-01T12:00:00Z",
+            ),
+            (
+                "wt2",
+                "default",
+                "cust2",
+                50.0,
+                "debit",
+                Some("order2".to_string()),
+                "Order payment using wallet",
+                "2026-04-01T13:30:00Z",
+            ),
+            (
+                "wt3",
+                "default",
+                "cust1",
+                200.0,
+                "load",
+                None::<String>,
+                "Wallet top-up via UPI",
+                "2026-04-02T10:00:00Z",
+            ),
+            (
+                "wt4",
+                "default",
+                "cust4",
+                150.0,
+                "credit",
+                None::<String>,
+                "VIP customer loyalty reward",
+                "2026-04-01T15:00:00Z",
+            ),
+            (
+                "wt5",
+                "default",
+                "cust5",
+                50.0,
+                "debit",
+                Some("order5".to_string()),
+                "Partial wallet payment",
+                "2026-04-01T16:00:00Z",
+            ),
+            (
+                "wt6",
+                "default",
+                "cust7",
+                300.0,
+                "load",
+                None::<String>,
+                "Bulk wallet recharge",
+                "2026-04-02T11:30:00Z",
+            ),
+            (
+                "wt7",
+                "default",
+                "cust8",
+                75.0,
+                "credit",
+                None::<String>,
+                "Birthday bonus reward",
+                "2026-04-02T14:00:00Z",
+            ),
+            (
+                "wt8",
+                "default",
+                "cust10",
+                100.0,
+                "debit",
+                Some("order10".to_string()),
+                "Wallet payment for takeaway",
+                "2026-04-02T13:45:00Z",
+            ),
+            (
+                "wt9",
+                "default",
+                "cust3",
+                250.0,
+                "load",
+                None::<String>,
+                "Corporate wallet top-up",
+                "2026-04-03T09:00:00Z",
+            ),
+            (
+                "wt10",
+                "default",
+                "cust6",
+                125.0,
+                "credit",
+                None::<String>,
+                "Referral bonus reward",
+                "2026-04-03T12:00:00Z",
+            ),
+        ];
+
+        for (id, store_id, customer_id, amount, transaction_type, order_id, notes, created_at) in
+            wallet_transactions
+        {
+            if let Some(order) = order_id {
+                self.conn.execute(
+                    "INSERT INTO wallet_transactions (id, store_id, customer_id, amount, transaction_type, order_id, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    params![id, store_id, customer_id, amount, transaction_type, order, notes, created_at],
+                )?;
+            } else {
+                self.conn.execute(
+                    "INSERT INTO wallet_transactions (id, store_id, customer_id, amount, transaction_type, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    params![id, store_id, customer_id, amount, transaction_type, notes, created_at],
+                )?;
+            }
+        }
+
+        // Seed refund requests
+        self.conn.execute(
+            "INSERT INTO refund_requests (id, store_id, order_id, amount, reason, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            params!["ref1", "default", "order1", 50.0, "Wrong order", "pending", "2026-04-01T15:00:00Z"],
+        )?;
+        self.conn.execute(
+            "INSERT INTO refund_requests (id, store_id, order_id, amount, reason, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            params!["ref2", "default", "order2", 25.0, "Damaged item", "approved", "2026-04-01T16:00:00Z"],
+        )?;
+
+        // Seed inventory alerts
+        self.conn.execute(
+            "INSERT INTO inventory_alerts (id, store_id, product_id, product_name, current_stock, threshold, alert_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            params!["alert1", "default", "prod8_default", "Ice Cream", 5, 10, "low_stock", "2026-04-01T10:00:00Z"],
+        )?;
+        self.conn.execute(
+            "INSERT INTO inventory_alerts (id, store_id, product_id, product_name, current_stock, threshold, alert_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            params!["alert2", "default", "prod5_default", "Chocolate Cake", 0, 5, "out_of_stock", "2026-04-01T11:00:00Z"],
+        )?;
+
+        // Seed stock counts
+        self.conn.execute(
+            "INSERT INTO stock_counts (id, store_id, status, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+            params!["sc1", "default", "completed", "cashier", "2026-04-01T17:00:00Z"],
+        )?;
+
+        // Seed stock count items
+        self.conn.execute(
+            "INSERT INTO stock_count_items (id, count_id, product_id, expected_qty, actual_qty) VALUES (?, ?, ?, ?, ?)",
+            params!["sci1", "sc1", "prod1_default", 50, 48],
+        )?;
+        self.conn.execute(
+            "INSERT INTO stock_count_items (id, count_id, product_id, expected_qty, actual_qty) VALUES (?, ?, ?, ?, ?)",
+            params!["sci2", "sc1", "prod2_default", 30, 32],
+        )?;
+
+        // Seed inventory transactions
+        self.conn.execute(
+            "INSERT INTO inventory_transactions (id, product_id, store_id, transaction_type, qty_delta, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            params!["it1", "prod1_default", "default", "sale", -1, "cashier", "2026-04-01T12:00:00Z"],
+        )?;
+        self.conn.execute(
+            "INSERT INTO inventory_transactions (id, product_id, store_id, transaction_type, qty_delta, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            params!["it2", "prod3_default", "default", "adjustment", 10, "admin", "2026-04-01T14:00:00Z"],
+        )?;
+
+        // Seed day end reconciliation
+        self.conn.execute(
+            "INSERT INTO day_end_reconciliations (id, date, cash_sales, card_sales, upi_sales, total_sales, cash_in_hand, difference, reconciled_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params!["rec1", "2026-04-01", 507.4, 0.0, 0.0, 507.4, 510.0, 2.6, "cashier", "2026-04-01T18:00:00Z"],
+        )?;
+
         Ok(())
     }
 

@@ -118,16 +118,18 @@ export default function Home() {
 
   useEffect(() => {
     if (mounted) {
-        checkPendingOrders();
+      checkPendingOrders();
     }
   }, [mounted, activeStoreId]);
 
   useEffect(() => {
-    if (isLocked && user) {
+    if (isLocked) {
+      // `handleLock` only flips the lock flag; this effect performs the single sign-out
+      // and resets the lock state. This prevents double-logout during a fast unlock.
       logout();
       setIsLocked(false);
     }
-  }, [isLocked, user, logout]);
+  }, [isLocked, logout]);
 
   const checkPendingOrders = async () => {
     try {
@@ -192,7 +194,6 @@ export default function Home() {
 
   const handleLock = () => {
     setIsLocked(true);
-    logout();
   };
 
   if (!mounted) return null;
@@ -302,9 +303,9 @@ export default function Home() {
               {screen === "refund_requests" && <RefundRequestsScreen />}
               {screen === "inventory_alerts" && <InventoryAlertsScreen />}
               {screen === "inventory" && <InventoryManagementScreen />}
-               {screen === "contact_training" && <ContactTraining />}
-               {screen === "stores" && <StoresScreen />}
-               {screen === "donate" && <DonateScreen />}
+              {screen === "contact_training" && <ContactTraining />}
+              {screen === "stores" && <StoresScreen />}
+              {screen === "donate" && <DonateScreen />}
             </ErrorBoundary>
           </main>
         </div>

@@ -12,6 +12,15 @@ export async function seedDatabase(): Promise<void> {
   return sql("seed_database");
 }
 
+export async function resetDatabase(): Promise<void> {
+  return sql("reset_database");
+}
+
+export async function resetAndSeedDatabase(): Promise<void> {
+  await resetDatabase();
+  return sql("seed_database");
+}
+
 // ─── Multi-Store Types ────────────────────────────────────────────────────────
 export interface Store {
   id: string;

@@ -39,6 +39,19 @@ fn seed_database() -> Result<(), String> {
     db.seed_all().map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn reset_database() -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.reset_all().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn reset_and_seed_database() -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.reset_all().map_err(|e| e.to_string())?;
+    db.seed_all().map_err(|e| e.to_string())
+}
+
 // ─── Product Commands ────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1237,6 +1250,8 @@ fn main() {
             create_compressed_backup,
             send_whatsapp_message,
             seed_database,
+            reset_database,
+            reset_and_seed_database,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
