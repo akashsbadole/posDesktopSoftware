@@ -292,10 +292,10 @@ export default function Home() {
               {screen === "customers" && <CustomerCRM />}
               {screen === "tables" && <TableManager />}
               {screen === "coupons" && <CouponsScreen />}
-              {/* {screen === "wallet" && <WalletScreen />} */}
+              {screen === "wallet" && <WalletScreen />}
               {screen === "gst" && <GstReportsScreen />}
               {screen === "suppliers" && <SuppliersScreen />}
-              {/* {screen === "purchase_orders" && <PurchaseOrdersScreen />} */}
+              {screen === "purchase_orders" && <PurchaseOrdersScreen />}
               {screen === "reservations" && <ReservationsScreen />}
               {screen === "ingredients" && <IngredientsScreen />}
               {screen === "scheduling" && <StaffScheduling />}
