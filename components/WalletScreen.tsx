@@ -63,7 +63,7 @@ export default function WalletScreen() {
   );
 
   return (
-    <div className="p-6">
+    <div className="h-full overflow-y-auto p-6">
       <h1 className="text-lg font-bold font-display flex items-center gap-2 mb-6">
         <Wallet className="w-6 h-6 text-yellow-400" /> Customer Wallet
       </h1>

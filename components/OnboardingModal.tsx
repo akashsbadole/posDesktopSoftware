@@ -145,7 +145,7 @@ export default function OnboardingModal() {
           ))}
         </div>
 
-        <div className="p-8 md:p-12">
+        <div className="p-8 md:p-12 max-h-[80vh] overflow-y-auto">
           {step === 1 && (
             <div className="space-y-8 animate-in slide-in-from-right duration-300">
               <div className="text-center">

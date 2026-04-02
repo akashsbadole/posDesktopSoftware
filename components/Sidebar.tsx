@@ -236,20 +236,22 @@ export default function Sidebar({
         {showStoreSwitcher && (
           <div className="absolute left-14 top-0 w-48 bg-[#141418] border border-[#1E1E26] rounded-xl shadow-2xl z-50 p-2 fade-in">
              <div className="text-[10px] font-bold text-[#4A4A5A] px-2 mb-1 uppercase tracking-wider">Switch Store</div>
-             {stores.length > 0 ? (
-                stores.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => { setActiveStore(s.id); setShowStoreSwitcher(false); }}
-                    className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-[#1E1E26]"
-                    style={{ color: s.id === activeStoreId ? "#F5C842" : "#9090A8" }}
-                  >
-                    {s.name}
-                  </button>
-                ))
-             ) : (
-                <div className="px-3 py-2 text-xs text-[#4A4A5A]">No stores found</div>
-             )}
+             <div className="max-h-64 overflow-y-auto">
+               {stores.length > 0 ? (
+                  stores.map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => { setActiveStore(s.id); setShowStoreSwitcher(false); }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-[#1E1E26]"
+                      style={{ color: s.id === activeStoreId ? "#F5C842" : "#9090A8" }}
+                    >
+                      {s.name}
+                    </button>
+                  ))
+               ) : (
+                  <div className="px-3 py-2 text-xs text-[#4A4A5A]">No stores found</div>
+               )}
+             </div>
              {isAdmin && (
                 <button
                   onClick={() => { setScreen("stores"); setShowStoreSwitcher(false); }}

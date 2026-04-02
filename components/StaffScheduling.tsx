@@ -84,7 +84,7 @@ export default function StaffScheduling() {
   };
 
   return (
-    <div className="p-6">
+    <div className="h-full overflow-y-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-bold font-display flex items-center gap-2">
           <Calendar className="w-6 h-6" /> Staff Scheduling
