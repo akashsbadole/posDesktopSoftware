@@ -18,7 +18,7 @@ export default function DonateScreen() {
   };
 
   return (
-    <div className="flex flex-col items-center min-h-full p-8 bg-bg text-text overflow-y-auto">
+    <div className="flex flex-col items-center h-full p-8 bg-bg text-text overflow-y-auto">
       <div className="max-w-2xl w-full py-8">
         <div className="text-center mb-8">
           <Heart className="w-16 h-16 mx-auto mb-6 text-red-500" />
@@ -41,7 +41,9 @@ export default function DonateScreen() {
         <div className="grid md:grid-cols-3 gap-6 mt-8">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <Wrench className="w-8 h-8 text-blue-500 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold mb-2">Premium Services</h3>
+            <h3 className="text-lg text-black font-semibold mb-2">
+              Premium Services
+            </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
               Need custom development or support? We offer premium services
               including:
@@ -56,7 +58,9 @@ export default function DonateScreen() {
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <Monitor className="w-8 h-8 text-green-500 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold mb-2">Hardware Bundles</h3>
+            <h3 className="text-lg text-black font-semibold mb-2">
+              Hardware Bundles
+            </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
               Get the best performance with our recommended hardware bundles:
             </p>
@@ -70,7 +74,9 @@ export default function DonateScreen() {
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <Plug className="w-8 h-8 text-purple-500 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold mb-2">Custom Integrations</h3>
+            <h3 className="text-lg text-black font-semibold mb-2">
+              Custom Integrations
+            </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
               Connect your POS with other systems through custom integrations:
             </p>
@@ -84,7 +90,9 @@ export default function DonateScreen() {
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <BookOpen className="w-8 h-8 text-indigo-500 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold mb-2">Training Programs</h3>
+            <h3 className="text-lg text-black font-semibold mb-2">
+              Training Programs
+            </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
               Master your POS with our comprehensive training programs:
             </p>
@@ -98,7 +106,9 @@ export default function DonateScreen() {
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <Users className="w-8 h-8 text-teal-500 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold mb-2">Consulting Services</h3>
+            <h3 className="text-lg text-black font-semibold mb-2">
+              Consulting Services
+            </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
               Optimize your restaurant operations with expert consulting:
             </p>
@@ -112,7 +122,9 @@ export default function DonateScreen() {
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <Zap className="w-8 h-8 text-yellow-500 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold mb-2">SaaS Add-ons</h3>
+            <h3 className="text-lg text-black font-semibold mb-2">
+              SaaS Add-ons
+            </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
               Enhance your POS with cloud-based premium features:
             </p>
@@ -126,7 +138,7 @@ export default function DonateScreen() {
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <Award className="w-8 h-8 text-pink-500 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold mb-2">
+            <h3 className="text-lg text-black font-semibold mb-2">
               White-label Solutions
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
@@ -142,7 +154,9 @@ export default function DonateScreen() {
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <Globe className="w-8 h-8 text-cyan-500 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold mb-2">Affiliate Marketing</h3>
+            <h3 className="text-lg text-black font-semibold mb-2">
+              Affiliate Marketing
+            </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
               Earn commissions by promoting complementary products:
             </p>
@@ -156,7 +170,7 @@ export default function DonateScreen() {
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <Heart className="w-8 h-8 text-red-500 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold mb-2">
+            <h3 className="text-lg text-black font-semibold mb-2">
               Patreon-Style Support
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">

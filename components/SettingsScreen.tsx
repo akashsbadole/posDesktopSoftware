@@ -32,6 +32,9 @@ import {
   Settings,
   exportBackup,
   importBackup,
+  seedDatabase,
+  resetDatabase,
+  resetAndSeedDatabase,
 } from "@/lib/db";
 import { useSettingsStore, useAuthStore } from "@/lib/stores";
 import pako from "pako";
@@ -402,6 +405,10 @@ export default function SettingsScreen() {
   } | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [seedMsg, setSeedMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetAndSeeding, setResetAndSeeding] = useState(false);
   const [sendingSms, setSendingSms] = useState(false);
   const [smsMsg, setSmsMsg] = useState<{ text: string; ok: boolean } | null>(
     null,
@@ -689,6 +696,62 @@ export default function SettingsScreen() {
       setWhatsappMsg({ text: `Error: ${err}`, ok: false });
     }
     setSendingWhatsapp(false);
+  };
+
+  const handleSeedData = async () => {
+    const confirmed = window.confirm(
+      "This will populate your database with sample data. Are you sure you want to proceed?"
+    );
+    if (!confirmed) return;
+
+    setSeeding(true);
+    setSeedMsg(null);
+    try {
+      await seedDatabase();
+      setSeedMsg({ text: "✓ Sample data seeded successfully!", ok: true });
+    } catch (err) {
+      setSeedMsg({ text: `Error: ${err}`, ok: false });
+    }
+    setSeeding(false);
+  };
+
+  const handleResetDatabase = async () => {
+    const confirmed = window.confirm(
+      "WARNING: This will permanently delete ALL data and reset the database to empty state. This action cannot be undone. Are you absolutely sure?"
+    );
+    if (!confirmed) return;
+
+    const doubleConfirm = window.confirm(
+      "FINAL WARNING: All products, orders, customers, and settings will be lost forever. Confirm to proceed."
+    );
+    if (!doubleConfirm) return;
+
+    setResetting(true);
+    setSeedMsg(null);
+    try {
+      await resetDatabase();
+      setSeedMsg({ text: "✓ Database reset successfully! All data has been cleared.", ok: true });
+    } catch (err) {
+      setSeedMsg({ text: `Error: ${err}`, ok: false });
+    }
+    setResetting(false);
+  };
+
+  const handleResetAndSeed = async () => {
+    const confirmed = window.confirm(
+      "This will reset the database and populate it with sample data. All existing data will be lost. Continue?"
+    );
+    if (!confirmed) return;
+
+    setResetAndSeeding(true);
+    setSeedMsg(null);
+    try {
+      await resetAndSeedDatabase();
+      setSeedMsg({ text: "✓ Database reset and seeded successfully! Sample data is now available.", ok: true });
+    } catch (err) {
+      setSeedMsg({ text: `Error: ${err}`, ok: false });
+    }
+    setResetAndSeeding(false);
   };
 
   const fetchLanStatus = async () => {
@@ -1266,6 +1329,73 @@ export default function SettingsScreen() {
               }}
             >
               {restoreMsg.text}
+            </div>
+          )}
+        </div>
+
+        {/* Seed Data */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Database size={16} style={{ color: "#9B59B6" }} />
+            <h2 className="font-semibold">Seed Data & Reset</h2>
+          </div>
+          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
+            Populate the database with sample data for testing, or reset everything to start fresh.
+          </p>
+
+          <div className="space-y-2 mb-4">
+            <button
+              onClick={handleResetAndSeed}
+              disabled={resetAndSeeding}
+              className="btn-success flex items-center gap-2 text-sm w-full justify-center"
+            >
+              {resetAndSeeding ? (
+                <RefreshCw size={14} className="spin" />
+              ) : (
+                <Database size={14} />
+              )}
+              Reset & Seed Database
+            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSeedData}
+                disabled={seeding}
+                className="btn-warning flex items-center gap-2 text-sm flex-1 justify-center"
+              >
+                {seeding ? (
+                  <RefreshCw size={14} className="spin" />
+                ) : (
+                  <Database size={14} />
+                )}
+                Apply Seed Data
+              </button>
+              <button
+                onClick={handleResetDatabase}
+                disabled={resetting}
+                className="btn-danger flex items-center gap-2 text-sm flex-1 justify-center"
+              >
+                {resetting ? (
+                  <RefreshCw size={14} className="spin" />
+                ) : (
+                  <AlertCircle size={14} />
+                )}
+                Reset Database
+              </button>
+            </div>
+          </div>
+
+          {seedMsg && (
+            <div
+              className="rounded-lg p-3 text-sm fade-in"
+              style={{
+                background: seedMsg.ok
+                  ? "rgba(46,204,113,0.08)"
+                  : "rgba(231,76,60,0.08)",
+                border: `1px solid ${seedMsg.ok ? "rgba(46,204,113,0.2)" : "rgba(231,76,60,0.2)"}`,
+                color: seedMsg.ok ? "#2ECC71" : "#E74C3C",
+              }}
+            >
+              {seedMsg.text}
             </div>
           )}
         </div>
