@@ -40,17 +40,19 @@ export default function KDSScreen() {
   const fetchOrders = async () => {
     try {
       const data = await getKdsOrders(activeStoreId);
+      const dataArray = Array.isArray(data) ? data : [];
       if (hasLoadedInitially.current) {
-        const newOrders = data.filter(order => !previousOrders.some(prev => prev.id === order.id));
+        const newOrders = dataArray.filter(order => !previousOrders.some(prev => prev.id === order.id));
         if (newOrders.length > 0 && soundEnabled) {
           playNotificationSound();
         }
       }
-      setOrders(data);
-      setPreviousOrders(data);
+      setOrders(dataArray);
+      setPreviousOrders(dataArray);
       hasLoadedInitially.current = true;
     } catch (err) {
       console.error("Failed to fetch KDS orders:", err);
+      setOrders([]);
     } finally {
       setLoading(false);
     }

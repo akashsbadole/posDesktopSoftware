@@ -41,10 +41,12 @@ export default function GstReportsScreen() {
         getGstr1Report(dateRange.start, dateRange.end, activeStoreId),
         getGstr3bReport(dateRange.start, dateRange.end, activeStoreId),
       ]);
-      setGstr1Data(gstr1);
-      setGstr3bData(gstr3b);
+      setGstr1Data(Array.isArray(gstr1) ? gstr1 : []);
+      setGstr3bData(Array.isArray(gstr3b) ? gstr3b : [0, 0, 0, 0, 0, 0]);
     } catch (e) {
-      console.error(e);
+      console.error("Failed to load GST reports:", e);
+      setGstr1Data([]);
+      setGstr3bData([0, 0, 0, 0, 0, 0]);
     }
     setLoading(false);
   };

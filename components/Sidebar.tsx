@@ -84,13 +84,25 @@ const allNavItems = [
     icon: Wheat,
     adminOnly: true,
   },
-  // { id: "wallet" as Screen, label: "Wallet", icon: Wallet, adminOnly: false },
-  { id: "coupons" as Screen, label: "Coupons", icon: Tag, adminOnly: false },
+  {
+    id: "suppliers" as Screen,
+    label: "Suppliers",
+    icon: Truck,
+    adminOnly: true,
+  },
+  {
+    id: "purchase_orders" as Screen,
+    label: "PO",
+    icon: ClipboardList,
+    adminOnly: true,
+  },
+  { id: "wallet" as Screen, label: "Wallet", icon: Wallet, adminOnly: true },
+  { id: "coupons" as Screen, label: "Coupons", icon: Tag, adminOnly: true },
   {
     id: "inventory_alerts" as Screen,
     label: "Alerts",
     icon: Bell,
-    adminOnly: false,
+    adminOnly: true,
   },
   {
     id: "inventory" as Screen,
