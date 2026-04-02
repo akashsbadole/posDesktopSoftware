@@ -184,23 +184,23 @@ export default function DayEndReconciliationScreen() {
           <div className="space-y-3">
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">Opening Cash</span>
-              <span>{curr}{formData.opening_cash.toFixed(2)}</span>
+              <span>{curr}{(formData.opening_cash || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">+ Cash Sales</span>
-              <span className="text-green-400">{curr}{paymentBreakdown.cash.toFixed(2)}</span>
+              <span className="text-green-400">{curr}{(paymentBreakdown?.cash || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">+ UPI Sales</span>
-              <span className="text-blue-400">{curr}{paymentBreakdown.upi.toFixed(2)}</span>
+              <span className="text-blue-400">{curr}{(paymentBreakdown?.upi || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">+ Card Sales</span>
-              <span className="text-purple-400">{curr}{paymentBreakdown.card.toFixed(2)}</span>
+              <span className="text-purple-400">{curr}{(paymentBreakdown?.card || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">- Total Expenses</span>
-              <span className="text-red-400">-{curr}{expenses.reduce((s: number, e: any) => s + e.amount, 0).toFixed(2)}</span>
+              <span className="text-red-400">-{curr}{(expenses || []).reduce((s: number, e: any) => s + (e.amount || 0), 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">Expected Cash</span>
@@ -208,7 +208,7 @@ export default function DayEndReconciliationScreen() {
             </div>
             <div className="flex justify-between py-2 border-b border-[#1E1E26]">
               <span className="text-gray-400">Actual Cash</span>
-              <span>{curr}{formData.actual_cash.toFixed(2)}</span>
+              <span>{curr}{(formData.actual_cash || 0).toFixed(2)}</span>
             </div>
             <div className={`flex justify-between py-3 text-base font-semibold ${isBalanced ? "text-green-400" : "text-red-400"}`}>
               <span className="flex items-center gap-2">
