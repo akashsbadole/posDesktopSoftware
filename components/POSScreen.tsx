@@ -1393,15 +1393,17 @@ export default function POSScreen() {
             <span className="text-[10px] uppercase font-bold text-[#4A4A5A]">
               Price Tier
             </span>
-            <div className="flex bg-[#141418] rounded-lg p-0.5 border border-[#1E1E26]">
+              <div className="flex bg-[#141418] rounded-lg p-0.5 border border-[#1E1E26]" role="group" aria-label="Price Tier">
               <button
                 onClick={() => setPriceTier("retail")}
+                aria-pressed={priceTier === "retail"}
                 className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${priceTier === "retail" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
               >
                 RETAIL
               </button>
               <button
                 onClick={() => setPriceTier("wholesale")}
+                aria-pressed={priceTier === "wholesale"}
                 className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${priceTier === "wholesale" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
               >
                 WHOLESALE
@@ -1611,6 +1613,7 @@ export default function POSScreen() {
                       }
                       className="hover:text-[#F5C842] transition-colors"
                       title="Override price"
+                      aria-label={`Override price for ${item.product.name}`}
                     >
                       {curr}
                       {item.override_price !== undefined
@@ -1687,7 +1690,7 @@ export default function POSScreen() {
                     style={{ color: "#9090A8" }}
                     aria-label={`Increase quantity of ${item.product.name}`}
                   >
-                    <X size={14} aria-hidden="true" />
+                    <Plus size={16} aria-hidden="true" />
                   </button>
                 </div>
                 <div className="flex items-center gap-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
@@ -1704,7 +1707,7 @@ export default function POSScreen() {
                       )
                     }
                     className="w-16 bg-transparent border-none text-xs px-2"
-                    aria-label={`Discount for ${item.product.name}`}
+                    aria-label={`Discount amount for ${item.product.name}`}
                   />
                   <button
                     onClick={() =>
@@ -1717,6 +1720,7 @@ export default function POSScreen() {
                       )
                     }
                     className="px-2 py-1 text-[10px] font-bold bg-[#1E1E26] text-[#9090A8] hover:text-[#F5C842]"
+                    aria-label={item.discount_type === "percentage" ? "Switch to fixed discount" : "Switch to percentage discount"}
                   >
                     {item.discount_type === "percentage" ? "%" : curr}
                   </button>
@@ -1761,6 +1765,7 @@ export default function POSScreen() {
                     )
                   }
                   className="px-3 py-1.5 text-xs font-bold bg-[#1E1E26] text-[#9090A8] hover:text-[#F5C842]"
+                  aria-label={globalDiscountType === "percentage" ? "Switch to fixed order discount" : "Switch to percentage order discount"}
                 >
                   {globalDiscountType === "percentage" ? "%" : curr}
                 </button>
@@ -1809,6 +1814,7 @@ export default function POSScreen() {
                   onClick={handleRemoveCoupon}
                   className="btn-ghost py-1 px-2 text-xs"
                   style={{ color: "#E74C3C" }}
+                  aria-label={`Remove coupon ${appliedCoupon.code}`}
                 >
                   Remove
                 </button>
@@ -1817,6 +1823,7 @@ export default function POSScreen() {
                   onClick={handleApplyCoupon}
                   className="btn-ghost py-1 px-2 text-xs"
                   disabled={!couponCode.trim()}
+                  aria-label="Apply coupon code"
                 >
                   Apply
                 </button>
@@ -1849,6 +1856,8 @@ export default function POSScreen() {
                 </div>
                 <button
                   onClick={() => setUseWallet(!useWallet)}
+                  aria-pressed={useWallet}
+                  aria-label="Use wallet balance"
                   style={{
                     width: 44,
                     height: 24,
@@ -1939,6 +1948,7 @@ export default function POSScreen() {
                 <span
                   style={{ color: "#F5C842" }}
                   aria-label={`Total amount: ${curr}${finalTotal.toFixed(2)}`}
+                  aria-live="polite"
                 >
                   {curr}
                   {finalTotal.toFixed(2)}
@@ -2027,9 +2037,9 @@ export default function POSScreen() {
                     aria-describedby="change-display"
                   />
                   <button
-                    onClick={() => setAmountPaid(totals.total)}
-                    className="btn-ghost py-2 px-3"
-                    aria-label="Copy total to amount tendered"
+                    onClick={() => setAmountPaid(finalTotal)}
+                    className="btn-ghost py-2 px-3 text-xs"
+                    aria-label={`Copy total amount ${curr}${finalTotal.toFixed(2)} to amount tendered`}
                   >
                     Copy Total
                   </button>

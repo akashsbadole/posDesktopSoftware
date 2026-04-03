@@ -485,20 +485,20 @@ export default function ProductsScreen() {
                 <table className="w-full text-sm">
                   <thead className="sticky top-0" style={{ background: "#0D0D0F" }}>
                     <tr style={{ color: "#4A4A5A", fontSize: 11 }}>
-                      <th className="text-left pb-3 pl-3 cursor-pointer" onClick={() => setSorting('name', sortBy === 'name' && sortOrder === 'asc' ? 'desc' : 'asc')}>
+                      <th scope="col" className="text-left pb-3 pl-3 cursor-pointer" onClick={() => setSorting('name', sortBy === 'name' && sortOrder === 'asc' ? 'desc' : 'asc')}>
                         PRODUCT {sortBy === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
                       </th>
-                      <th className="text-left pb-3 cursor-pointer" onClick={() => setSorting('category', sortBy === 'category' && sortOrder === 'asc' ? 'desc' : 'asc')}>
+                      <th scope="col" className="text-left pb-3 cursor-pointer" onClick={() => setSorting('category', sortBy === 'category' && sortOrder === 'asc' ? 'desc' : 'asc')}>
                         CATEGORY {sortBy === 'category' && (sortOrder === 'asc' ? '↑' : '↓')}
                       </th>
-                      <th className="text-right pb-3 cursor-pointer" onClick={() => setSorting('price', sortBy === 'price' && sortOrder === 'asc' ? 'desc' : 'asc')}>
+                      <th scope="col" className="text-right pb-3 cursor-pointer" onClick={() => setSorting('price', sortBy === 'price' && sortOrder === 'asc' ? 'desc' : 'asc')}>
                         PRICE {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}
                       </th>
-                      <th className="text-right pb-3">TAX</th>
-                      <th className="text-right pb-3 cursor-pointer" onClick={() => setSorting('stock', sortBy === 'stock' && sortOrder === 'asc' ? 'desc' : 'asc')}>
+                      <th scope="col" className="text-right pb-3">TAX</th>
+                      <th scope="col" className="text-right pb-3 cursor-pointer" onClick={() => setSorting('stock', sortBy === 'stock' && sortOrder === 'asc' ? 'desc' : 'asc')}>
                         STOCK {sortBy === 'stock' && (sortOrder === 'asc' ? '↑' : '↓')}
                       </th>
-                      <th className="text-right pb-3 pr-3">ACTIONS</th>
+                      <th scope="col" className="text-right pb-3 pr-3">ACTIONS</th>
                     </tr>
                   </thead>
                   <tbody>

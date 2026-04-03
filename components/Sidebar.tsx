@@ -204,13 +204,14 @@ export default function Sidebar({
     });
 
   const nav = allNavItems.filter((item) => !item.adminOnly || isAdmin).map(item => {
-    if (item.id === 'tables') return { ...item, label: labels.tables };
-    if (item.id === 'kds') return { ...item, label: (labels.kitchen || "Kitchen").split('/')[0] };
+    let label = item.label;
+    if (item.id === 'tables') label = labels.tables;
+    if (item.id === 'kds') label = (labels.kitchen || "Kitchen").split('/')[0];
     if (item.id === 'gst') {
       const taxName = settings?.tax_name || "GST";
-      return { ...item, label: taxName.toUpperCase() };
+      label = taxName.toUpperCase();
     }
-    return item;
+    return { ...item, label };
   });
 
   const handleLogout = () => {
@@ -285,7 +286,7 @@ export default function Sidebar({
       </div>
       <nav
         className="flex flex-col gap-1 flex-1 w-full px-2 overflow-y-auto"
-        role="menubar"
+        role="menu"
         aria-label="Navigation menu"
       >
         {nav.map(({ id, label, icon: Icon }) => {

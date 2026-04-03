@@ -62,12 +62,12 @@ export default function DashboardScreen() {
           return (
             <div key={s.label} className="card p-4 fade-in">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs uppercase tracking-wide" style={{ color: "#4A4A5A" }}>{s.label}</span>
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${s.color}18` }}>
+                <h3 className="text-xs uppercase tracking-wide" style={{ color: "#4A4A5A" }}>{s.label}</h3>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${s.color}18` }} aria-hidden="true">
                   <Icon size={16} style={{ color: s.color }} />
                 </div>
               </div>
-              <div className="text-xl font-display font-bold" style={{ color: s.color }}>{s.value}</div>
+              <div className="text-xl font-display font-bold" style={{ color: s.color }} aria-live="polite">{s.value}</div>
             </div>
           );
         })}
