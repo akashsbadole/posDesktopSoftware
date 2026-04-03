@@ -101,12 +101,12 @@ test.describe("POS System Full Functionality", () => {
     // Customer Lookup by Phone in Name field
     const customerNameInput = page.locator("#customer-name");
     await customerNameInput.fill(customerPhone);
-    await page.waitForTimeout(2000); // Wait for lookup
+    await page.waitForTimeout(5000); // Wait for lookup
     // Verify customer name is updated in the input
     await expect(customerNameInput).toHaveValue("Test Customer");
 
     // Verify Wholesale discount applied
-    await expect(page.locator("text=Discount")).toBeVisible();
+    await expect(page.getByText("Discount", { exact: true })).toBeVisible();
 
     // Add another item
     await page

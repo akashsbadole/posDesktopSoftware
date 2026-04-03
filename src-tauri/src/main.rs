@@ -12,15 +12,17 @@ use std::sync::Mutex;
 use tauri::Manager;
 
 static DB: Lazy<Mutex<Database>> = Lazy::new(|| {
-    let app_dir = dirs::data_dir()
-        .map(|p| p.join("pos-tauri"))
-        .expect("Failed to get app data dir");
+    let db_path = std::env::var("DATABASE_PATH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            let app_dir = dirs::data_dir()
+                .map(|p| p.join("pos-tauri"))
+                .expect("Failed to get app data dir");
 
-    // Ensure directory exists
-    std::fs::create_dir_all(&app_dir).expect("Failed to create app dir");
+            let _ = std::fs::create_dir_all(&app_dir);
+            app_dir.join("pos.db")
+        });
 
-    // Log the database path for debugging
-    let db_path = app_dir.join("pos.db");
     eprintln!("[POS] Database path: {:?}", db_path);
 
     let database = Database::new(&db_path).expect("Failed to initialize database");
@@ -50,6 +52,13 @@ fn reset_and_seed_database() -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.reset_all().map_err(|e| e.to_string())?;
     db.seed_all().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn is_premium_enabled() -> bool {
+    std::env::var("ENABLE_PREMIUM_FEATURES")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
 }
 
 // ─── Product Commands ────────────────────────────────────────────────────────
@@ -1047,6 +1056,14 @@ async fn send_whatsapp_message(phone: String, message: String, store_id: String)
 
 #[tauri::command]
 async fn sync_to_neon(store_id: String) -> Result<neon::SyncResult, String> {
+    if !is_premium_enabled() {
+        return Ok(neon::SyncResult {
+            synced: 0,
+            error: Some("Neon Cloud Sync is a premium feature. Please upgrade to enable.".to_string()),
+            orders: None,
+        });
+    }
+
     let neon_url = {
         let db = get_db().lock().map_err(|e| e.to_string())?;
         let settings = db.get_settings(&store_id).map_err(|e| e.to_string())?;
@@ -1078,6 +1095,14 @@ async fn sync_to_neon(store_id: String) -> Result<neon::SyncResult, String> {
 
 #[tauri::command]
 async fn sync_from_neon(store_id: String) -> Result<neon::SyncResult, String> {
+    if !is_premium_enabled() {
+        return Ok(neon::SyncResult {
+            synced: 0,
+            error: Some("Neon Cloud Sync is a premium feature. Please upgrade to enable.".to_string()),
+            orders: None,
+        });
+    }
+
     let neon_url = {
         let db = get_db().lock().map_err(|e| e.to_string())?;
         let settings = db.get_settings(&store_id).map_err(|e| e.to_string())?;
@@ -1252,6 +1277,7 @@ fn main() {
             seed_database,
             reset_database,
             reset_and_seed_database,
+            is_premium_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
