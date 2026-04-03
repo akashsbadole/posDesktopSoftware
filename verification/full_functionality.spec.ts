@@ -108,6 +108,11 @@ test.describe("POS System Full Functionality", () => {
     // Verify Wholesale discount applied
     await expect(page.getByText("Discount", { exact: true })).toBeVisible();
 
+    // Select Table (Mandatory for Dine-In)
+    await page.getByTestId("select-table-btn").click();
+    await page.getByTestId("table-option-Table 1").click();
+    await expect(page.getByTestId("select-table-btn")).toContainText("Table 1");
+
     // Add another item
     await page
       .locator('button[role="gridcell"]')

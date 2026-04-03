@@ -1,12 +1,12 @@
 # POS Billing System - Test Report
 
-**Date**: March 17, 2026
-**Status**: All core tests PASSED
+**Date**: April 3, 2026
+**Status**: 15/15 tests PASSED
 
 ---
 
 ## Summary
-A comprehensive test suite was executed covering authentication, POS operations, CRM, inventory, and sidebar navigation. All 12 automated Playwright tests passed successfully. Visual verification of all 27 sidebar menu items confirmed that the UI renders correctly for each section.
+A comprehensive test suite was executed covering authentication, POS operations, CRM, inventory, sidebar navigation, and specialized restaurant features. All 15 automated Playwright tests passed successfully, including the newly implemented restaurant lifecycle and backup/restore verification.
 
 ## Test Results
 
@@ -22,7 +22,10 @@ A comprehensive test suite was executed covering authentication, POS operations,
 | Coupon Creation | ✅ PASS | Percentage discount coupons created successfully. |
 | Staff Attendance | ✅ PASS | Clock in/out functionality verified. |
 | Settings Persistence | ✅ PASS | Store name update persists after reload. |
-| Sidebar Navigation | ✅ PASS | All menu items correctly route to their headings. |
+| Sidebar Navigation | ✅ PASS | All 27 menu items correctly route to their headings. |
+| Restaurant Flow (KDS/Tables) | ✅ PASS | Verified Table -> POS -> KDS lifecycle with item statuses. |
+| Backup & Restore | ✅ PASS | Verified GZIP backup/import cycle for data recovery. |
+| CRM/POS Integration | ✅ PASS | Phone lookup automatically populates customer data. |
 
 ### 2. Manual Visual Verification (Screenshots)
 | Sidebar Menu | Status | Verification Note |
