@@ -13,7 +13,7 @@ interface SalesReport {
 }
 
 export default function ReportsScreen() {
-  const { activeStoreId } = useSettingsStore();
+  const { activeStoreId, settings } = useSettingsStore();
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -155,7 +155,7 @@ export default function ReportsScreen() {
               </div>
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 12, color: "#666" }}>Total Revenue</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: "#2e7d32" }}>₹{report.total_revenue.toFixed(2)}</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: "#2e7d32" }}>{settings?.currency_symbol || '₹'}{report.total_revenue.toFixed(2)}</div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
@@ -164,7 +164,7 @@ export default function ReportsScreen() {
                 </div>
                 <div>
                   <div style={{ fontSize: 12, color: "#666" }}>Avg Order Value</div>
-                  <div style={{ fontSize: 18, fontWeight: 600 }}>₹{report.avg_order.toFixed(2)}</div>
+                  <div style={{ fontSize: 18, fontWeight: 600 }}>{settings?.currency_symbol || '₹'}{report.avg_order.toFixed(2)}</div>
                 </div>
               </div>
             </div>
