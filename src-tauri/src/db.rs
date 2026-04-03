@@ -749,11 +749,11 @@ impl Database {
             self.set_version(1)?;
         }
 
-        // Future migrations:
-        // if current < 2 {
-        //     self.migration_v2()?;
-        //     self.set_version(2)?;
-        // }
+        // Migration to fix foreign key mismatches due to multi-store primary keys
+        if current < 2 {
+            self.migration_v2()?;
+            self.set_version(2)?;
+        }
 
         Ok(())
     }
@@ -844,9 +844,11 @@ impl Database {
                 id          TEXT PRIMARY KEY,
                 count_id    TEXT NOT NULL,
                 product_id  TEXT NOT NULL,
+                store_id    TEXT NOT NULL DEFAULT 'default',
                 expected_qty INTEGER NOT NULL,
                 actual_qty  INTEGER NOT NULL,
-                FOREIGN KEY (count_id) REFERENCES stock_counts(id) ON DELETE CASCADE
+                FOREIGN KEY (count_id) REFERENCES stock_counts(id) ON DELETE CASCADE,
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS product_variants (
@@ -1015,9 +1017,9 @@ impl Database {
                 product_id TEXT NOT NULL,
                 ingredient_id TEXT NOT NULL,
                 quantity REAL NOT NULL DEFAULT 1,
-                FOREIGN KEY (product_id) REFERENCES products(id),
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id),
                 FOREIGN KEY (ingredient_id) REFERENCES ingredients(id),
-                UNIQUE(product_id, ingredient_id)
+                UNIQUE(product_id, ingredient_id, store_id)
             );
 
             CREATE TABLE IF NOT EXISTS suppliers (
@@ -1327,6 +1329,50 @@ impl Database {
                 params![ing_delta, ing_id, store_id],
             )?;
         }
+        Ok(())
+    }
+
+    fn migration_v2(&self) -> Result<()> {
+        // Fix stock_count_items and recipes to use composite FKs
+        self.conn.execute_batch(
+            "
+            PRAGMA foreign_keys = OFF;
+
+            -- 1. Recreate stock_count_items
+            CREATE TABLE stock_count_items_new (
+                id          TEXT PRIMARY KEY,
+                count_id    TEXT NOT NULL,
+                product_id  TEXT NOT NULL,
+                store_id    TEXT NOT NULL DEFAULT 'default',
+                expected_qty INTEGER NOT NULL,
+                actual_qty  INTEGER NOT NULL,
+                FOREIGN KEY (count_id) REFERENCES stock_counts(id) ON DELETE CASCADE,
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id) ON DELETE CASCADE
+            );
+            INSERT INTO stock_count_items_new (id, count_id, product_id, expected_qty, actual_qty)
+            SELECT id, count_id, product_id, expected_qty, actual_qty FROM stock_count_items;
+            DROP TABLE stock_count_items;
+            ALTER TABLE stock_count_items_new RENAME TO stock_count_items;
+
+            -- 2. Recreate recipes
+            CREATE TABLE recipes_new (
+                id TEXT PRIMARY KEY,
+                store_id TEXT NOT NULL DEFAULT 'default',
+                product_id TEXT NOT NULL,
+                ingredient_id TEXT NOT NULL,
+                quantity REAL NOT NULL DEFAULT 1,
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id),
+                FOREIGN KEY (ingredient_id) REFERENCES ingredients(id),
+                UNIQUE(product_id, ingredient_id, store_id)
+            );
+            INSERT INTO recipes_new (id, store_id, product_id, ingredient_id, quantity)
+            SELECT id, store_id, product_id, ingredient_id, quantity FROM recipes;
+            DROP TABLE recipes;
+            ALTER TABLE recipes_new RENAME TO recipes;
+
+            PRAGMA foreign_keys = ON;
+            "
+        )?;
         Ok(())
     }
 

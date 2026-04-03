@@ -1509,6 +1509,21 @@ export default function POSScreen() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[9px] font-bold truncate leading-tight uppercase text-gray-200">{item.product.name}</div>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={item.discount || ""}
+                      onChange={(e) => updateItemDiscount(item.cartItemId, parseFloat(e.target.value) || 0, item.discount_type)}
+                      className="w-5 bg-transparent border-none text-[8px] p-0 h-3 text-[#4A4A5A] hover:text-[#F5C842] focus:text-[#F5C842] transition-colors"
+                      placeholder="0"
+                    />
+                    <button
+                      onClick={() => updateItemDiscount(item.cartItemId, item.discount, item.discount_type === "percentage" ? "fixed" : "percentage")}
+                      className="text-[7px] font-bold text-[#4A4A5A] hover:text-[#F5C842]"
+                    >
+                      {item.discount_type === "percentage" ? "%" : curr}
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
@@ -1564,6 +1579,22 @@ export default function POSScreen() {
                 </button>
               </div>
             </div>
+
+            {/* Wallet Toggle */}
+            {walletCustomerId && walletBalance > 0 && (
+              <div className="flex items-center justify-between bg-blue-500/5 border border-blue-500/10 rounded-sm p-1">
+                <div className="flex items-center gap-1">
+                  <Wallet size={10} className="text-[#3498DB]" />
+                  <span className="text-[9px] text-[#9090A8]">WALLET: {curr}{walletBalance.toFixed(2)}</span>
+                </div>
+                <button
+                  onClick={() => setUseWallet(!useWallet)}
+                  className={`w-7 h-3.5 rounded-full transition-colors relative ${useWallet ? 'bg-[#3498DB]' : 'bg-[#1E1E26]'}`}
+                >
+                  <div className="absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full transition-all" style={{ left: useWallet ? '16px' : '2px' }} />
+                </button>
+              </div>
+            )}
 
             <div className="flex items-center justify-between py-1.5 border-y border-white/5 text-[10px] font-bold tracking-tight">
               <div className="flex gap-2">
