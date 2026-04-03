@@ -84,24 +84,33 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
           <button
             onClick={() => { fetchStores(); setShowStoreDropdown(!showStoreDropdown); }}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border hover:border-[#F5C842] transition-colors"
+            aria-haspopup="listbox"
+            aria-expanded={showStoreDropdown}
+            aria-label={`Current store: ${activeStore?.name || 'Select Store'}. Click to switch store.`}
           >
-            <Building2 size={14} className="text-[#F5C842]" />
+            <Building2 size={14} className="text-[#F5C842]" aria-hidden="true" />
             <span className="text-xs font-medium">{activeStore?.name || 'Select Store'}</span>
-            <ChevronDown size={12} />
+            <ChevronDown size={12} aria-hidden="true" />
           </button>
           
           {showStoreDropdown && (
-            <div className="absolute top-full right-0 mt-1 w-48 bg-surface border border-border rounded-lg shadow-lg z-50 py-1">
+            <div
+              className="absolute top-full right-0 mt-1 w-48 bg-surface border border-border rounded-lg shadow-lg z-50 py-1"
+              role="listbox"
+              aria-label="Stores"
+            >
               {stores.map((store) => (
                 <button
                   key={store.id}
                   onClick={() => handleStoreChange(store)}
+                  role="option"
+                  aria-selected={store.id === activeStoreId}
                   className={`w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center justify-between ${
                     store.id === activeStoreId ? 'bg-[#F5C842]/10 text-[#F5C842]' : ''
                   }`}
                 >
                   <span>{store.name}</span>
-                  {store.id === activeStoreId && <span className="text-xs">✓</span>}
+                  {store.id === activeStoreId && <span className="text-xs" aria-hidden="true">✓</span>}
                 </button>
               ))}
               {stores.length === 0 && (
@@ -186,6 +195,9 @@ function getScreenLabel(screen: string, taxName: string = "GST"): string {
     logs: "Activity Logs",
     settings: "Settings",
     contact_training: "Training Guide",
+    stores: "Stores",
+    donate: "Support Us",
+    inventory: "Inventory Management",
   };
   return labels[screen] || screen;
 }

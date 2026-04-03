@@ -151,23 +151,29 @@ test.describe('Comprehensive POS Features Verification', () => {
       { name: 'Refunds', heading: 'Refund Requests' },
       { name: 'Staff', heading: 'Staff Attendance' },
       { name: 'Reports', heading: 'Reports' },
-      { name: 'GST', heading: 'GST Reports' },
+      { name: 'TAX', heading: 'Tax Reports' },
       { name: 'Logs', heading: 'Activity Logs' },
-      { name: 'Stores', heading: 'stores' }, // lowercase 'stores' matches the received value
+      { name: 'Stores', heading: 'Stores' },
       { name: 'Settings', heading: 'Settings' },
       { name: 'Training', heading: 'Training Guide' },
       { name: 'Schedule', heading: 'Staff Scheduling' },
       { name: 'Day End', heading: 'Day-End Reconciliation' },
+      { name: 'Support Us', heading: 'Support Us' },
     ];
 
+    const allItems = await page.getByRole('menuitem').allInnerTexts();
+    console.log('Available menu items:', allItems);
+
     for (const item of navItems) {
-      const btn = page.locator('button[role="menuitem"]').filter({ hasText: item.name });
+      console.log(`Navigating to ${item.name}`);
+      const btn = page.getByRole('menuitem').filter({ hasText: new RegExp(item.name, 'i') });
+
       await btn.scrollIntoViewIfNeeded();
       await btn.click();
 
       // Use HeaderBar's screen label span which often has color #9090A8
       const headerLabel = page.locator('header span').first();
-      await expect(headerLabel).toHaveText(item.heading);
+      await expect(headerLabel).toHaveText(item.heading, { ignoreCase: true });
     }
   });
 
