@@ -21,7 +21,7 @@ interface Transaction {
 }
 
 export default function WalletScreen() {
-  const { activeStoreId } = useSettingsStore();
+  const { activeStoreId, settings } = useSettingsStore();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -29,6 +29,7 @@ export default function WalletScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showLoadForm, setShowLoadForm] = useState(false);
   const [amount, setAmount] = useState(0);
+  const curr = settings?.currency_symbol ?? "₹";
 
   useEffect(() => {
     loadCustomers();
@@ -122,15 +123,15 @@ export default function WalletScreen() {
                 <div className="grid grid-cols-3 gap-4">
                   <div className="p-4 bg-[#1E1E26] rounded-lg text-center">
                     <div className="text-gray-400 text-sm">Current Balance</div>
-                    <div className="text-lg font-bold font-display text-yellow-400">₹{wallet?.balance.toFixed(2) || "0.00"}</div>
+                    <div className="text-lg font-bold font-display text-yellow-400">{curr}{wallet?.balance.toFixed(2) || "0.00"}</div>
                   </div>
                   <div className="p-4 bg-[#1E1E26] rounded-lg text-center">
                     <div className="text-gray-400 text-sm">Total Loaded</div>
-                    <div className="text-lg font-bold font-display text-green-400">₹{wallet?.total_loaded.toFixed(2) || "0.00"}</div>
+                    <div className="text-lg font-bold font-display text-green-400">{curr}{wallet?.total_loaded.toFixed(2) || "0.00"}</div>
                   </div>
                   <div className="p-4 bg-[#1E1E26] rounded-lg text-center">
                     <div className="text-gray-400 text-sm">Total Spent</div>
-                    <div className="text-lg font-bold font-display text-red-400">₹{wallet?.total_spent.toFixed(2) || "0.00"}</div>
+                    <div className="text-lg font-bold font-display text-red-400">{curr}{wallet?.total_spent.toFixed(2) || "0.00"}</div>
                   </div>
                 </div>
               </div>
@@ -153,7 +154,7 @@ export default function WalletScreen() {
                           </div>
                         </div>
                         <div className={`font-bold ${tx.transaction_type === "credit" ? "text-green-400" : "text-red-400"}`}>
-                          {tx.transaction_type === "credit" ? "+" : "-"}₹{tx.amount.toFixed(2)}
+                          {tx.transaction_type === "credit" ? "+" : "-"}{curr}{tx.amount.toFixed(2)}
                         </div>
                       </div>
                     ))}
@@ -194,7 +195,7 @@ export default function WalletScreen() {
                    <button key={v} onClick={() => setAmount(v)} className="btn-ghost py-2">{v}</button>
                  ))}
                </div>
-               <button onClick={handleLoadMoney} className="btn-accent w-full">Load ₹{amount}</button>
+               <button onClick={handleLoadMoney} className="btn-accent w-full">Load {curr}{amount}</button>
                <button onClick={() => setShowLoadForm(false)} className="btn-ghost w-full">Cancel</button>
              </div>
            </div>
