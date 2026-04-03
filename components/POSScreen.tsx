@@ -66,6 +66,7 @@ import {
   useAuthStore,
   useCombosStore,
   useStoresStore,
+  useTablesStore,
 } from "@/lib/stores";
 import { useGridNavigation } from "@/lib/keyboard";
 import PinModal from "./PinModal";
@@ -116,7 +117,11 @@ export default function POSScreen() {
     setTipAmount,
     priceTier,
     setPriceTier,
+    tableId,
+    setTable,
   } = useCartStore();
+
+  const { tables, fetchTables } = useTablesStore();
 
   const {
     products,
@@ -171,6 +176,7 @@ export default function POSScreen() {
   const [overridePrice, setOverridePrice] = useState("");
   const [voidReason, setVoidReason] = useState("");
   const [showVoidReasonModal, setShowVoidReasonModal] = useState(false);
+  const [showTableModal, setShowTableModal] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const productGridRef = useRef<HTMLDivElement>(null);
   const [couponCode, setCouponCode] = useState("");
@@ -193,6 +199,7 @@ export default function POSScreen() {
     fetchSettings();
     loadHeldOrders();
     fetchCombos();
+    fetchTables();
   }, [activeStoreId]);
 
   const loadHeldOrders = async () => {
@@ -764,6 +771,10 @@ export default function POSScreen() {
         address: order.delivery_address,
       });
       setOrderType(order.order_type as "dine_in" | "takeaway" | "delivery");
+      if (order.table_id) {
+        const table = tables.find((t) => t.id === order.table_id);
+        setTable(order.table_id, table?.name || order.table_id);
+      }
       setShowHeldOrders(false);
     }
   };
@@ -1415,6 +1426,7 @@ export default function POSScreen() {
             <button
               onClick={() => setOrderType("dine_in")}
               aria-pressed={orderType === "dine_in"}
+              data-testid="order-type-dine-in"
               className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "dine_in" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
             >
               {labels.dine_in}
@@ -1434,6 +1446,22 @@ export default function POSScreen() {
               Delivery
             </button>
           </div>
+
+          {orderType === "dine_in" && (
+            <div className="mb-3">
+              <button
+                onClick={() => setShowTableModal(true)}
+                data-testid="select-table-btn"
+                className="w-full py-2 px-3 rounded-lg text-sm font-medium bg-[#1E1E26] text-gray-400 border border-[#2E2E3E] hover:border-[#F5C842] transition-all flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${tableName ? "bg-green-500" : "bg-red-500"}`} />
+                  <span>{tableName ? `Table: ${tableName}` : "Select Table"}</span>
+                </div>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
 
           {orderType === "delivery" && (
             <div className="space-y-2 mb-3">
@@ -2107,9 +2135,11 @@ export default function POSScreen() {
                 disabled={
                   processing ||
                   cart.length === 0 ||
+                  (orderType === "dine_in" && !tableId) ||
                   (paymentMethod === "cash" && (amountPaid || 0) < finalTotal)
                 }
                 data-checkout-button
+                data-testid="charge-button"
                 aria-label={
                   processing
                     ? "Processing order..."
@@ -2618,6 +2648,52 @@ export default function POSScreen() {
                 className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Table Selection Modal */}
+      {showTableModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-[#1E1E26] flex items-center justify-between">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <FolderOpen size={20} className="text-[#F5C842]" /> Select Table
+              </h3>
+              <button onClick={() => setShowTableModal(false)} className="text-gray-400 hover:text-white">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-[60vh] overflow-y-auto">
+              {tables.map((t) => (
+                <button
+                  key={t.id}
+                  data-testid={`table-option-${t.name}`}
+                  onClick={() => {
+                    setTable(t.id, t.name);
+                    setShowTableModal(false);
+                  }}
+                  className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all ${
+                    tableId === t.id
+                      ? "bg-[#F5C842]/10 border-[#F5C842] text-[#F5C842]"
+                      : t.status === "occupied"
+                      ? "bg-red-500/5 border-red-500/20 text-red-500 opacity-60"
+                      : "bg-[#141418] border-[#1E1E26] text-gray-400 hover:border-[#F5C842]"
+                  }`}
+                >
+                  <span className="text-lg font-bold">{t.name}</span>
+                  <span className="text-[10px] uppercase font-bold opacity-60 mt-1">{t.status}</span>
+                </button>
+              ))}
+            </div>
+            <div className="p-4 bg-[#141418] flex justify-end">
+              <button
+                onClick={() => setShowTableModal(false)}
+                className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl"
+              >
+                Close
               </button>
             </div>
           </div>

@@ -433,6 +433,7 @@ export interface KdsOrder {
   items: KdsItem[];
   order_type: string;
   customer_name: string;
+  table_name?: string;
   created_at: string;
 }
 
@@ -1681,6 +1682,13 @@ async function browserFallback<T>(
       });
       lsSet("pos_initialized", true);
     }
+    if (!lsGet("pos_tables") || (lsGet<any[]>("pos_tables")?.length === 0)) {
+      lsSet("pos_tables", [
+        { id: "t1", store_id: "default", name: "Table 1", capacity: 4, status: "available", position_x: 100, position_y: 100 },
+        { id: "t2", store_id: "default", name: "Table 2", capacity: 2, status: "available", position_x: 250, position_y: 100 },
+        { id: "t3", store_id: "default", name: "Table 3", capacity: 6, status: "available", position_x: 100, position_y: 250 },
+      ]);
+    }
   };
   initSeedData();
 
@@ -1690,6 +1698,22 @@ async function browserFallback<T>(
   switch (cmd) {
     case "seed_database":
       initSeedData();
+      return undefined as T;
+    case "reset_database":
+      lsSet(LS.products, []);
+      lsSet(LS.orders, []);
+      lsSet("pos_customers", []);
+      lsSet("pos_ingredients", []);
+      lsSet("pos_recipes", []);
+      lsSet("pos_tables", []);
+      lsSet("pos_attendance", []);
+      lsSet("pos_expenses", []);
+      lsSet("pos_coupons", []);
+      lsSet("pos_held_orders", []);
+      lsSet("pos_reconciliations", []);
+      lsSet("pos_reservations", []);
+      lsSet("pos_purchase_orders", []);
+      lsSet("pos_suppliers", []);
       return undefined as T;
     case "get_stores":
       return (lsGet<Store[]>(LS.stores) || []) as T;
@@ -1878,6 +1902,7 @@ async function browserFallback<T>(
     }
     case "get_kds_orders": {
       const orders = lsGet<Order[]>(LS.orders) || [];
+      const tables = lsGet<Table[]>("pos_tables") || [];
       const today = new Date().toISOString().split("T")[0];
       return orders
         .filter(
@@ -1886,17 +1911,22 @@ async function browserFallback<T>(
             o.created_at.split("T")[0] === today &&
             ["completed", "pending", "processing"].includes(o.status),
         )
-        .map((o) => ({
-          id: o.id,
-          order_type: o.order_type,
-          customer_name: o.customer_name,
-          created_at: o.created_at,
-          items: o.items.map((i) => ({
-            product_name: i.product_name,
-            quantity: i.quantity,
-            done: i.done || false,
-          })),
-        })) as T;
+        .map((o) => {
+          const table = tables.find(t => t.id === o.table_id);
+          return {
+            id: o.id,
+            order_type: o.order_type,
+            customer_name: o.customer_name,
+            table_name: table?.name,
+            created_at: o.created_at,
+            items: o.items.map((i) => ({
+              product_name: i.product_name,
+              quantity: i.quantity,
+              done: i.done || false,
+              status: i.status || (i.done ? "done" : "pending"),
+            })),
+          };
+        }) as T;
     }
     case "get_pending_orders_count": {
       const orders = lsGet<Order[]>(LS.orders) || [];
@@ -2153,12 +2183,88 @@ async function browserFallback<T>(
       lsSet("pos_recipes", items);
       return undefined as T;
     }
-    case "get_suppliers":
-      return [] as T;
-    case "get_purchase_orders":
-      return [] as T;
-    case "get_reservations":
-      return [] as T;
+    case "get_suppliers": {
+      const items = lsGet<Supplier[]>("pos_suppliers") || [];
+      return items.filter((x) => x.store_id === storeId) as T;
+    }
+    case "save_supplier": {
+      const items = lsGet<Supplier[]>("pos_suppliers") || [];
+      const s = (args as any).supplier as Supplier;
+      s.store_id = storeId;
+      const idx = items.findIndex((x) => x.id === s.id);
+      if (idx >= 0) items[idx] = s;
+      else items.push(s);
+      lsSet("pos_suppliers", items);
+      return undefined as T;
+    }
+    case "delete_supplier": {
+      const items = (lsGet<Supplier[]>("pos_suppliers") || []).filter(
+        (x) => x.id !== (args as any).id,
+      );
+      lsSet("pos_suppliers", items);
+      return undefined as T;
+    }
+    case "get_purchase_orders": {
+      const items = lsGet<PurchaseOrder[]>("pos_purchase_orders") || [];
+      return items.filter((x) => x.store_id === storeId) as T;
+    }
+    case "save_purchase_order": {
+      const items = lsGet<PurchaseOrder[]>("pos_purchase_orders") || [];
+      const po = (args as any).po as PurchaseOrder;
+      po.store_id = storeId;
+      const idx = items.findIndex((x) => x.id === po.id);
+      if (idx >= 0) items[idx] = po;
+      else items.push(po);
+      lsSet("pos_purchase_orders", items);
+      return undefined as T;
+    }
+    case "update_po_status": {
+      const items = lsGet<PurchaseOrder[]>("pos_purchase_orders") || [];
+      const { id, status } = args as any;
+      const idx = items.findIndex((x) => x.id === id);
+      if (idx >= 0) items[idx].status = status;
+      lsSet("pos_purchase_orders", items);
+      return undefined as T;
+    }
+    case "receive_purchase_order": {
+      const items = lsGet<PurchaseOrder[]>("pos_purchase_orders") || [];
+      const { id } = args as any;
+      const idx = items.findIndex((x) => x.id === id);
+      if (idx >= 0) {
+        items[idx].status = "received";
+        // Mock stock adjustment for ingredients
+        const ingredients = lsGet<Ingredient[]>("pos_ingredients") || [];
+        items[idx].items.forEach((item) => {
+          const ingIdx = ingredients.findIndex((i) => i.id === item.ingredient_id);
+          if (ingIdx >= 0) ingredients[ingIdx].stock += item.quantity;
+        });
+        lsSet("pos_ingredients", ingredients);
+      }
+      lsSet("pos_purchase_orders", items);
+      return undefined as T;
+    }
+    case "get_reservations": {
+      const items = lsGet<Reservation[]>("pos_reservations") || [];
+      const { date } = args as any;
+      return items.filter((x) => x.store_id === storeId && x.date === date) as T;
+    }
+    case "save_reservation": {
+      const items = lsGet<Reservation[]>("pos_reservations") || [];
+      const r = (args as any).reservation as Reservation;
+      r.store_id = storeId;
+      const idx = items.findIndex((x) => x.id === r.id);
+      if (idx >= 0) items[idx] = r;
+      else items.push(r);
+      lsSet("pos_reservations", items);
+      return undefined as T;
+    }
+    case "delete_reservation": {
+      const items = (lsGet<Reservation[]>("pos_reservations") || []).filter(
+        (x) => x.id !== (args as any).id,
+      );
+      lsSet("pos_reservations", items);
+      return undefined as T;
+    }
     case "get_shifts":
       return [] as T;
     case "get_expenses": {
@@ -2678,6 +2784,52 @@ async function browserFallback<T>(
       lsSet(LS.products, products);
       lsSet("pos_product_variants", variants);
       return { imported, errors } as T;
+    }
+    case "start_preparing_item": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const { order_id, item_index } = args as any;
+      const idx = orders.findIndex((o) => o.id === order_id);
+      if (idx >= 0 && orders[idx].items[item_index]) {
+        orders[idx].items[item_index].status = "preparing";
+        orders[idx].items[item_index].started_at = new Date().toISOString();
+        lsSet(LS.orders, orders);
+      }
+      return undefined as T;
+    }
+    case "mark_kds_item_done": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const { order_id, item_index } = args as any;
+      const idx = orders.findIndex((o) => o.id === order_id);
+      if (idx >= 0 && orders[idx].items[item_index]) {
+        orders[idx].items[item_index].status = "done";
+        orders[idx].items[item_index].done = true;
+        orders[idx].items[item_index].done_at = new Date().toISOString();
+        lsSet(LS.orders, orders);
+      }
+      return undefined as T;
+    }
+    case "cancel_kds_item": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const { order_id, item_index } = args as any;
+      const idx = orders.findIndex((o) => o.id === order_id);
+      if (idx >= 0 && orders[idx].items[item_index]) {
+        orders[idx].items[item_index].status = "cancelled";
+        lsSet(LS.orders, orders);
+      }
+      return undefined as T;
+    }
+    case "recall_kds_order": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const { order_id } = args as any;
+      const idx = orders.findIndex((o) => o.id === order_id);
+      if (idx >= 0) {
+        orders[idx].items.forEach((item) => {
+          item.status = "pending";
+          item.done = false;
+        });
+        lsSet(LS.orders, orders);
+      }
+      return undefined as T;
     }
     default:
       console.warn(

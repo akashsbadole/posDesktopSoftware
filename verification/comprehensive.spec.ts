@@ -27,7 +27,8 @@ test.describe('Comprehensive POS Features Verification', () => {
 
     // Change status
     await page.click('text=Mark Occupied');
-    await expect(page.getByRole('dialog').getByText('occupied')).toBeVisible();
+    // Look for the status badge text specifically. exact: true avoids matching "Mark Occupied" button.
+    await expect(page.getByRole('dialog').getByText('occupied', { exact: true }).first()).toBeVisible();
 
     // Close modal
     await page.click('div[role="dialog"] button:has(svg.lucide-x)');

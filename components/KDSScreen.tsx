@@ -258,6 +258,7 @@ export default function KDSScreen() {
               return (
                 <div 
                   key={order.id}
+                  data-testid={`kds-order-card-${order.id}`}
                   className={`card p-4 transition-all ${allDone ? "opacity-60" : ""}`}
                   style={{ 
                     borderLeft: allDone ? "4px solid #2ECC71" : preparingItems > 0 ? "4px solid #3498DB" : pendingItems > 2 ? "4px solid #E74C3C" : "4px solid #F5C842"
@@ -266,7 +267,7 @@ export default function KDSScreen() {
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <div className="font-bold text-base" style={{ color: getOrderTypeColor(order.order_type) }}>
-                        {order.order_type.toUpperCase()}
+                        {order.order_type.toUpperCase()} {order.table_name && `• ${order.table_name}`}
                       </div>
                       <div className="text-xs" style={{ color: "#4A4A5A" }}>
                         {order.customer_name || "Walk-in"} • {formatTime(order.created_at)}
@@ -294,6 +295,7 @@ export default function KDSScreen() {
                       return (
                         <div 
                           key={idx}
+                          data-testid={`kds-item-${item.product_name}`}
                           className={`flex items-center justify-between p-2 rounded-lg ${isDone || isCancelled ? "line-through opacity-60" : ""}`}
                           style={{ 
                             background: isDone ? "rgba(46,204,113,0.1)" : isCancelled ? "rgba(231,76,60,0.1)" : isPreparing ? "rgba(52,152,219,0.1)" : "rgba(245,200,66,0.05)",
@@ -319,6 +321,7 @@ export default function KDSScreen() {
                                 <button
                                   onClick={() => handleStartPreparing(order.id, idx)}
                                   disabled={processing === `${order.id}-${idx}-prepare`}
+                                  data-testid={`kds-start-prep-${item.product_name}`}
                                   className="p-1.5 rounded-lg"
                                   style={{ background: "rgba(52,152,219,0.15)", color: "#3498DB" }}
                                   title="Start preparing"
@@ -332,6 +335,7 @@ export default function KDSScreen() {
                                 <button
                                   onClick={() => handleItemDone(order.id, idx)}
                                   disabled={processing === `${order.id}-${idx}`}
+                                  data-testid={`kds-mark-done-${item.product_name}`}
                                   className="p-1.5 rounded-lg"
                                   style={{ background: "rgba(46,204,113,0.15)", color: "#2ECC71" }}
                                   title="Mark done"
@@ -362,6 +366,7 @@ export default function KDSScreen() {
                                 <button
                                   onClick={() => handleItemDone(order.id, idx)}
                                   disabled={processing === `${order.id}-${idx}`}
+                                  data-testid={`kds-mark-done-${item.product_name}`}
                                   className="p-1.5 rounded-lg"
                                   style={{ background: "rgba(46,204,113,0.15)", color: "#2ECC71" }}
                                   title="Mark done"

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Table } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 import { Plus, Trash2, Users, X, Check, GripVertical } from "lucide-react";
-import { useTablesStore, useSettingsStore, useStoresStore } from "@/lib/stores";
+import { useTablesStore, useSettingsStore, useStoresStore, useCartStore } from "@/lib/stores";
 
 interface TableManagerProps {
   onClose?: () => void;
@@ -16,6 +16,7 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
   const { activeStoreId } = useSettingsStore();
   const { stores } = useStoresStore();
   const { tables, isLoading, fetchTables, addTable, deleteTable, setTableStatus, updateTable } = useTablesStore();
+  const { clearCart, setTable, setOrderType } = useCartStore();
   const [editingTable, setEditingTable] = useState<Table | null>(null);
   const [showModal, setShowModal] = useState(isOpen);
 
@@ -52,6 +53,17 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
 
   const handleStatusChange = async (id: string, status: Table['status']) => {
     await setTableStatus(id, status);
+  };
+
+  const handleStartOrder = (table: Table) => {
+    console.log("Starting order for table:", table.name);
+    clearCart();
+    setTable(table.id, table.name);
+    setOrderType("dine_in");
+    handleClose();
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('navigate', { detail: 'pos' }));
+    }, 50);
   };
 
   const addNewTable = () => {
@@ -116,7 +128,7 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
           ) : (
             <div className="grid grid-cols-4 gap-3">
               {tables.map((table) => (
-                <div key={table.id} className="card p-3 text-center">
+                <div key={table.id} data-testid={`table-card-${table.name}`} className="card p-3 text-center">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-semibold">{table.name}</span>
                     <span className="w-2 h-2 rounded-full" style={{ background: getStatusText(table.status) }} />
@@ -130,7 +142,21 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
                     <button onClick={() => handleDelete(table.id)} className="btn-ghost text-xs py-1 px-2" title={`Delete ${labels.table}`} style={{ color: "#E74C3C" }}><Trash2 size={12} /></button>
                   </div>
                   {table.status === "available" && (
-                    <button onClick={() => handleStatusChange(table.id, "occupied")} className="mt-2 w-full btn-ghost text-xs py-1" style={{ color: "#E74C3C" }}>Mark Occupied</button>
+                    <div className="mt-2 space-y-1">
+                      <button
+                        onClick={() => handleStartOrder(table)}
+                        data-testid={`start-order-${table.name}`}
+                        className="w-full btn-accent text-xs py-2 font-bold"
+                      >
+                        Start Order
+                      </button>
+                      <button
+                        onClick={() => handleStatusChange(table.id, "occupied")}
+                        className="w-full btn-ghost text-[10px] py-1 opacity-70"
+                      >
+                        Mark Occupied
+                      </button>
+                    </div>
                   )}
                   {table.status === "occupied" && (
                     <button onClick={() => handleStatusChange(table.id, "available")} className="mt-2 w-full btn-ghost text-xs py-1" style={{ color: "#2ECC71" }}>Mark Available</button>
