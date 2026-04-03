@@ -38,6 +38,7 @@ import {
 } from "@/lib/db";
 import { useSettingsStore, useAuthStore } from "@/lib/stores";
 import pako from "pako";
+import { countryPresets, taxSystems } from "@/lib/countries";
 
 const validatePhone = (phone: string): string | null => {
   if (!phone) return null;
@@ -78,309 +79,6 @@ const validatePort = (port: number): string | null => {
     return "Port must be between 1 and 65535";
   }
   return null;
-};
-
-interface CountryPreset {
-  currency: string;
-  symbol: string;
-  timezones: string[];
-  taxSystem: string;
-  taxRate: number;
-  taxName: string;
-}
-
-const countryPresets: Record<string, CountryPreset> = {
-  US: {
-    currency: "USD",
-    symbol: "$",
-    timezones: [
-      "America/New_York",
-      "America/Chicago",
-      "America/Denver",
-      "America/Los_Angeles",
-      "America/Phoenix",
-      "America/Anchorage",
-      "Pacific/Honolulu",
-    ],
-    taxSystem: "sales",
-    taxRate: 8,
-    taxName: "Sales Tax",
-  },
-  CA: {
-    currency: "CAD",
-    symbol: "C$",
-    timezones: [
-      "America/Toronto",
-      "America/Vancouver",
-      "America/Montreal",
-      "America/Calgary",
-      "America/Winnipeg",
-    ],
-    taxSystem: "hst",
-    taxRate: 13,
-    taxName: "HST",
-  },
-  GB: {
-    currency: "GBP",
-    symbol: "£",
-    timezones: ["Europe/London"],
-    taxSystem: "vat",
-    taxRate: 20,
-    taxName: "VAT",
-  },
-  IN: {
-    currency: "INR",
-    symbol: "₹",
-    timezones: [
-      "Asia/Kolkata",
-      "Asia/Mumbai",
-      "Asia/Delhi",
-      "Asia/Chennai",
-      "Asia/Bangalore",
-      "Asia/Hyderabad",
-      "Asia/Kolkata",
-    ],
-    taxSystem: "gst",
-    taxRate: 18,
-    taxName: "GST",
-  },
-  AU: {
-    currency: "AUD",
-    symbol: "A$",
-    timezones: [
-      "Australia/Sydney",
-      "Australia/Melbourne",
-      "Australia/Brisbane",
-      "Australia/Perth",
-      "Australia/Adelaide",
-    ],
-    taxSystem: "gst",
-    taxRate: 10,
-    taxName: "GST",
-  },
-  DE: {
-    currency: "EUR",
-    symbol: "€",
-    timezones: [
-      "Europe/Berlin",
-      "Europe/Hamburg",
-      "Europe/Munich",
-      "Europe/Frankfurt",
-    ],
-    taxSystem: "vat",
-    taxRate: 19,
-    taxName: "VAT",
-  },
-  FR: {
-    currency: "EUR",
-    symbol: "€",
-    timezones: ["Europe/Paris", "Europe/Marseille", "Europe/Lyon"],
-    taxSystem: "vat",
-    taxRate: 20,
-    taxName: "TVA",
-  },
-  JP: {
-    currency: "JPY",
-    symbol: "¥",
-    timezones: ["Asia/Tokyo", "Asia/Osaka", "Asia/Sapporo", "Asia/Fukuoka"],
-    taxSystem: "none",
-    taxRate: 10,
-    taxName: "Consumption Tax",
-  },
-  SG: {
-    currency: "SGD",
-    symbol: "S$",
-    timezones: ["Asia/Singapore"],
-    taxSystem: "gst",
-    taxRate: 9,
-    taxName: "GST",
-  },
-  AE: {
-    currency: "AED",
-    symbol: "د.إ",
-    timezones: ["Asia/Dubai", "Asia/Abu_Dhabi"],
-    taxSystem: "vat",
-    taxRate: 5,
-    taxName: "VAT",
-  },
-  NZ: {
-    currency: "NZD",
-    symbol: "NZ$",
-    timezones: [
-      "Pacific/Auckland",
-      "Pacific/Wellington",
-      "Pacific/Christchurch",
-    ],
-    taxSystem: "gst",
-    taxRate: 15,
-    taxName: "GST",
-  },
-  MX: {
-    currency: "MXN",
-    symbol: "$",
-    timezones: [
-      "America/Mexico_City",
-      "America/Guadalajara",
-      "America/Monterrey",
-      "America/Cancun",
-    ],
-    taxSystem: "vat",
-    taxRate: 16,
-    taxName: "IVA",
-  },
-  BR: {
-    currency: "BRL",
-    symbol: "R$",
-    timezones: [
-      "America/Sao_Paulo",
-      "America/Rio_de_Janeiro",
-      "America/Brasilia",
-    ],
-    taxSystem: "icms",
-    taxRate: 18,
-    taxName: "ICMS",
-  },
-  ZA: {
-    currency: "ZAR",
-    symbol: "R",
-    timezones: ["Africa/Johannesburg", "Africa/Cape_Town", "Africa/Durban"],
-    taxSystem: "vat",
-    taxRate: 15,
-    taxName: "VAT",
-  },
-  IT: {
-    currency: "EUR",
-    symbol: "€",
-    timezones: ["Europe/Rome", "Europe/Milan", "Europe/Naples"],
-    taxSystem: "vat",
-    taxRate: 22,
-    taxName: "IVA",
-  },
-  ES: {
-    currency: "EUR",
-    symbol: "€",
-    timezones: ["Europe/Madrid", "Europe/Barcelona", "Europe/Seville"],
-    taxSystem: "vat",
-    taxRate: 21,
-    taxName: "IVA",
-  },
-  NL: {
-    currency: "EUR",
-    symbol: "€",
-    timezones: ["Europe/Amsterdam", "Europe/Rotterdam", "Europe/The_Hague"],
-    taxSystem: "vat",
-    taxRate: 21,
-    taxName: "BTW",
-  },
-  SE: {
-    currency: "SEK",
-    symbol: "kr",
-    timezones: ["Europe/Stockholm"],
-    taxSystem: "vat",
-    taxRate: 25,
-    taxName: "MOMS",
-  },
-  CH: {
-    currency: "CHF",
-    symbol: "Fr",
-    timezones: ["Europe/Zurich", "Europe/Geneva", "Europe/Bern"],
-    taxSystem: "vat",
-    taxRate: 7.7,
-    taxName: "MWST",
-  },
-  HK: {
-    currency: "HKD",
-    symbol: "HK$",
-    timezones: ["Asia/Hong_Kong"],
-    taxSystem: "none",
-    taxRate: 0,
-    taxName: "GST",
-  },
-  MY: {
-    currency: "MYR",
-    symbol: "RM",
-    timezones: ["Asia/Kuala_Lumpur"],
-    taxSystem: "sst",
-    taxRate: 6,
-    taxName: "SST",
-  },
-  TH: {
-    currency: "THB",
-    symbol: "฿",
-    timezones: ["Asia/Bangkok"],
-    taxSystem: "vat",
-    taxRate: 7,
-    taxName: "VAT",
-  },
-  PH: {
-    currency: "PHP",
-    symbol: "₱",
-    timezones: ["Asia/Manila"],
-    taxSystem: "vat",
-    taxRate: 12,
-    taxName: "VAT",
-  },
-  ID: {
-    currency: "IDR",
-    symbol: "Rp",
-    timezones: ["Asia/Jakarta", "Asia/Surabaya", "Asia/Bali"],
-    taxSystem: "vat",
-    taxRate: 11,
-    taxName: "PPN",
-  },
-  VN: {
-    currency: "VND",
-    symbol: "₫",
-    timezones: ["Asia/Ho_Chi_Minh", "Asia/Hanoi"],
-    taxSystem: "vat",
-    taxRate: 10,
-    taxName: "VAT",
-  },
-  KR: {
-    currency: "KRW",
-    symbol: "₩",
-    timezones: ["Asia/Seoul", "Asia/Busan"],
-    taxSystem: "vat",
-    taxRate: 10,
-    taxName: "VAT",
-  },
-  CN: {
-    currency: "CNY",
-    symbol: "¥",
-    timezones: [
-      "Asia/Shanghai",
-      "Asia/Beijing",
-      "Asia/Guangzhou",
-      "Asia/Shenzhen",
-    ],
-    taxSystem: "vat",
-    taxRate: 13,
-    taxName: "VAT",
-  },
-  RU: {
-    currency: "RUB",
-    symbol: "₽",
-    timezones: ["Europe/Moscow", "Europe/St_Petersburg"],
-    taxSystem: "vat",
-    taxRate: 20,
-    taxName: "VAT",
-  },
-  PL: {
-    currency: "PLN",
-    symbol: "zł",
-    timezones: ["Europe/Warsaw", "Europe/Krakow"],
-    taxSystem: "vat",
-    taxRate: 23,
-    taxName: "VAT",
-  },
-  TR: {
-    currency: "TRY",
-    symbol: "₺",
-    timezones: ["Europe/Istanbul", "Europe/Ankara"],
-    taxSystem: "kdv",
-    taxRate: 18,
-    taxName: "KDV",
-  },
 };
 
 export default function SettingsScreen() {
@@ -1000,15 +698,19 @@ export default function SettingsScreen() {
               </label>
               <select
                 value={localSettings.tax_system}
-                onChange={(e) => updateLocal("tax_system", e.target.value)}
+                onChange={(e) => {
+                  const system = e.target.value;
+                  updateLocal("tax_system", system);
+                  const systemLabel = taxSystems.find(s => s.id === system)?.label || "Tax";
+                  updateLocal("tax_name", systemLabel);
+                }}
                 style={{ padding: "10px" }}
               >
-                <option value="none">No Tax</option>
-                <option value="gst">GST (India)</option>
-                <option value="vat">VAT (Europe)</option>
-                <option value="sales">Sales Tax (US)</option>
-                <option value="hst">HST (Canada)</option>
-                <option value="pst">PST (Canada)</option>
+                {taxSystems.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -1016,12 +718,7 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                {localSettings.tax_system === "gst"
-                  ? "GST"
-                  : localSettings.tax_system === "vat"
-                    ? "VAT"
-                    : "Tax"}{" "}
-                Rate (%)
+                {taxSystems.find(s => s.id === localSettings.tax_system)?.label || "Tax"} Rate (%)
               </label>
               <input
                 type="number"

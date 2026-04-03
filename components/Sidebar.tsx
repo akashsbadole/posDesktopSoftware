@@ -175,7 +175,7 @@ export default function Sidebar({
   onLock?: () => void;
 }) {
   const { logout } = useAuthStore();
-  const { activeStoreId, setActiveStore } = useSettingsStore();
+  const { activeStoreId, setActiveStore, settings } = useSettingsStore();
   const { stores, fetchStores } = useStoresStore();
   const isAdmin = user?.role === "admin";
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
@@ -206,6 +206,10 @@ export default function Sidebar({
   const nav = allNavItems.filter((item) => !item.adminOnly || isAdmin).map(item => {
     if (item.id === 'tables') return { ...item, label: labels.tables };
     if (item.id === 'kds') return { ...item, label: (labels.kitchen || "Kitchen").split('/')[0] };
+    if (item.id === 'gst') {
+      const taxName = settings?.tax_name || "GST";
+      return { ...item, label: taxName.toUpperCase() };
+    }
     return item;
   });
 
