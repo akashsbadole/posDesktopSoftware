@@ -19,6 +19,9 @@ interface GstReport {
 
 export default function GstReportsScreen() {
   const { settings, activeStoreId } = useSettingsStore();
+  const taxName = settings?.tax_name || "GST";
+  const isGST = settings?.tax_system === "gst";
+
   const [gstr1Data, setGstr1Data] = useState<GstReport[]>([]);
   const [gstr3bData, setGstr3bData] = useState<[number, number, number, number, number, number]>([0, 0, 0, 0, 0, 0]);
   const [dateRange, setDateRange] = useState({
@@ -52,18 +55,31 @@ export default function GstReportsScreen() {
   };
 
   const exportGstr1CSV = () => {
-    const headers = ["Invoice No", "Date", "Customer", "GSTIN", "Taxable Value", "CGST", "SGST", "IGST", "Total", "Place of Supply"];
-    const rows = gstr1Data.map((r) => [
-      r.invoice_no, r.date, r.customer_name, r.customer_gstin || "",
-      r.taxable_value.toString(), r.cgst.toString(), r.sgst.toString(),
-      r.igst.toString(), r.total.toString(), r.place_of_supply
-    ]);
+    const headers = isGST
+      ? ["Invoice No", "Date", "Customer", "GSTIN", "Taxable Value", "CGST", "SGST", "IGST", "Total", "Place of Supply"]
+      : ["Invoice No", "Date", "Customer", "Tax ID", "Taxable Value", "Tax Amount", "Total"];
+
+    const rows = gstr1Data.map((r) => {
+      if (isGST) {
+        return [
+          r.invoice_no, r.date, r.customer_name, r.customer_gstin || "",
+          r.taxable_value.toString(), r.cgst.toString(), r.sgst.toString(),
+          r.igst.toString(), r.total.toString(), r.place_of_supply
+        ];
+      } else {
+        return [
+          r.invoice_no, r.date, r.customer_name, r.customer_gstin || "",
+          r.taxable_value.toString(), (r.cgst + r.sgst + r.igst).toString(), r.total.toString()
+        ];
+      }
+    });
+
     const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `GSTR1_${dateRange.start}_${dateRange.end}.csv`;
+    a.download = `${taxName}_Report_${dateRange.start}_${dateRange.end}.csv`;
     a.click();
   };
 
@@ -73,11 +89,11 @@ export default function GstReportsScreen() {
     <div className="h-full overflow-y-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-bold font-display flex items-center gap-2">
-          <FileText className="w-6 h-6" /> GST Reports
+          <FileText className="w-6 h-6" /> {taxName} Reports
         </h1>
         {activeTab === "gstr1" && (
           <button onClick={exportGstr1CSV} className="btn-ghost flex items-center gap-2">
-            <Download size={18} /> Export GSTR-1
+            <Download size={18} /> Export {isGST ? "GSTR-1" : "Report"}
           </button>
         )}
       </div>
@@ -92,10 +108,10 @@ export default function GstReportsScreen() {
 
       <div className="flex gap-2 mb-6">
         <button onClick={() => setActiveTab("gstr1")} className={`flex items-center gap-2 px-4 py-2 rounded-lg ${activeTab === "gstr1" ? "bg-yellow-400 text-black" : "bg-[#1E1E26]"}`}>
-          <Receipt size={18} /> GSTR-1 (Sales)
+          <Receipt size={18} /> {isGST ? "GSTR-1 (Sales)" : "Sales Report"}
         </button>
         <button onClick={() => setActiveTab("gstr3b")} className={`flex items-center gap-2 px-4 py-2 rounded-lg ${activeTab === "gstr3b" ? "bg-yellow-400 text-black" : "bg-[#1E1E26]"}`}>
-          <Calculator size={18} /> GSTR-3B (Summary)
+          <Calculator size={18} /> {isGST ? "GSTR-3B (Summary)" : "Tax Summary"}
         </button>
       </div>
 
@@ -111,9 +127,15 @@ export default function GstReportsScreen() {
                   <th className="p-3 text-left">Date</th>
                   <th className="p-3 text-left">Customer</th>
                   <th className="p-3 text-right">Taxable</th>
-                  <th className="p-3 text-right">CGST</th>
-                  <th className="p-3 text-right">SGST</th>
-                  <th className="p-3 text-right">IGST</th>
+                  {isGST ? (
+                    <>
+                      <th className="p-3 text-right">CGST</th>
+                      <th className="p-3 text-right">SGST</th>
+                      <th className="p-3 text-right">IGST</th>
+                    </>
+                  ) : (
+                    <th className="p-3 text-right">Tax</th>
+                  )}
                   <th className="p-3 text-right">Total</th>
                 </tr>
               </thead>
@@ -124,9 +146,15 @@ export default function GstReportsScreen() {
                     <td className="p-3 text-sm">{row.date}</td>
                     <td className="p-3">{row.customer_name || "-"}</td>
                     <td className="p-3 text-right">{curr}{row.taxable_value.toFixed(2)}</td>
-                    <td className="p-3 text-right">{curr}{row.cgst.toFixed(2)}</td>
-                    <td className="p-3 text-right">{curr}{row.sgst.toFixed(2)}</td>
-                    <td className="p-3 text-right">{curr}{row.igst.toFixed(2)}</td>
+                    {isGST ? (
+                      <>
+                        <td className="p-3 text-right">{curr}{row.cgst.toFixed(2)}</td>
+                        <td className="p-3 text-right">{curr}{row.sgst.toFixed(2)}</td>
+                        <td className="p-3 text-right">{curr}{row.igst.toFixed(2)}</td>
+                      </>
+                    ) : (
+                      <td className="p-3 text-right">{curr}{(row.cgst + row.sgst + row.igst).toFixed(2)}</td>
+                    )}
                     <td className="p-3 text-right font-bold">{curr}{row.total.toFixed(2)}</td>
                   </tr>
                 ))}
@@ -138,32 +166,38 @@ export default function GstReportsScreen() {
       ) : (
         <div>
           <div className="card p-6 mb-6">
-            <h3 className="text-base font-semibold mb-4 flex items-center gap-2"><Calculator size={20} /> GSTR-3B Summary</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <h3 className="text-base font-semibold mb-4 flex items-center gap-2"><Calculator size={20} /> {isGST ? "GSTR-3B Summary" : "Tax Summary"}</h3>
+            <div className={`grid grid-cols-2 ${isGST ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
               <div className="p-4 bg-[#1E1E26] rounded-lg">
                 <div className="text-gray-400 text-sm">Total Taxable Value</div>
                 <div className="text-lg font-bold font-display">{curr}{taxable.toFixed(2)}</div>
               </div>
+              {isGST && (
+                <>
+                  <div className="p-4 bg-[#1E1E26] rounded-lg">
+                    <div className="text-gray-400 text-sm">CGST</div>
+                    <div className="text-lg font-bold font-display text-blue-400">{curr}{cgst.toFixed(2)}</div>
+                  </div>
+                  <div className="p-4 bg-[#1E1E26] rounded-lg">
+                    <div className="text-gray-400 text-sm">SGST</div>
+                    <div className="text-lg font-bold font-display text-green-400">{curr}{sgst.toFixed(2)}</div>
+                  </div>
+                  <div className="p-4 bg-[#1E1E26] rounded-lg">
+                    <div className="text-gray-400 text-sm">IGST</div>
+                    <div className="text-lg font-bold font-display text-purple-400">{curr}{igst.toFixed(2)}</div>
+                  </div>
+                </>
+              )}
               <div className="p-4 bg-[#1E1E26] rounded-lg">
-                <div className="text-gray-400 text-sm">CGST</div>
-                <div className="text-lg font-bold font-display text-blue-400">{curr}{cgst.toFixed(2)}</div>
-              </div>
-              <div className="p-4 bg-[#1E1E26] rounded-lg">
-                <div className="text-gray-400 text-sm">SGST</div>
-                <div className="text-lg font-bold font-display text-green-400">{curr}{sgst.toFixed(2)}</div>
-              </div>
-              <div className="p-4 bg-[#1E1E26] rounded-lg">
-                <div className="text-gray-400 text-sm">IGST</div>
-                <div className="text-lg font-bold font-display text-purple-400">{curr}{igst.toFixed(2)}</div>
-              </div>
-              <div className="p-4 bg-[#1E1E26] rounded-lg">
-                <div className="text-gray-400 text-sm">Total Tax Liability</div>
+                <div className="text-gray-400 text-sm">Total {taxName} Liability</div>
                 <div className="text-lg font-bold font-display text-red-400">{curr}{liability.toFixed(2)}</div>
               </div>
-              <div className="p-4 bg-[#1E1E26] rounded-lg">
-                <div className="text-gray-400 text-sm">ITC Claimed</div>
-                <div className="text-lg font-bold font-display text-yellow-400">{curr}{itc.toFixed(2)}</div>
-              </div>
+              {isGST && (
+                <div className="p-4 bg-[#1E1E26] rounded-lg">
+                  <div className="text-gray-400 text-sm">ITC Claimed</div>
+                  <div className="text-lg font-bold font-display text-yellow-400">{curr}{itc.toFixed(2)}</div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -171,23 +205,27 @@ export default function GstReportsScreen() {
             <h3 className="text-base font-semibold mb-4">Tax Computation</h3>
             <div className="space-y-3">
               <div className="flex justify-between py-2 border-b border-[#1E1E26]">
-                <span className="text-gray-400">Total Output Tax (CGST + SGST + IGST)</span>
+                <span className="text-gray-400">Total Output Tax {isGST && "(CGST + SGST + IGST)"}</span>
                 <span className="font-bold">{curr}{liability.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between py-2 border-b border-[#1E1E26]">
-                <span className="text-gray-400">Less: ITC Available (CGST)</span>
-                <span className="text-green-400">-{curr}{cgst.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-[#1E1E26]">
-                <span className="text-gray-400">Less: ITC Available (SGST)</span>
-                <span className="text-green-400">-{curr}{sgst.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-[#1E1E26]">
-                <span className="text-gray-400">Less: ITC Available (IGST)</span>
-                <span className="text-green-400">-{curr}{igst.toFixed(2)}</span>
-              </div>
+              {isGST && (
+                <>
+                  <div className="flex justify-between py-2 border-b border-[#1E1E26]">
+                    <span className="text-gray-400">Less: ITC Available (CGST)</span>
+                    <span className="text-green-400">-{curr}{cgst.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-[#1E1E26]">
+                    <span className="text-gray-400">Less: ITC Available (SGST)</span>
+                    <span className="text-green-400">-{curr}{sgst.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-[#1E1E26]">
+                    <span className="text-gray-400">Less: ITC Available (IGST)</span>
+                    <span className="text-green-400">-{curr}{igst.toFixed(2)}</span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between py-2 text-base font-semibold">
-                <span>Net Tax Payable</span>
+                <span>Net {taxName} Payable</span>
                 <span className="text-red-400">{curr}{(liability - itc).toFixed(2)}</span>
               </div>
             </div>
@@ -197,9 +235,9 @@ export default function GstReportsScreen() {
             <h3 className="text-base font-semibold mb-4">Business Details</h3>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div><span className="text-gray-400">Business Name:</span> {settings?.business_name || "Not set"}</div>
-              <div><span className="text-gray-400">GSTIN:</span> {settings?.tax_id || "Not set"}</div>
+              <div><span className="text-gray-400">{isGST ? 'GSTIN' : 'Tax ID'}:</span> {settings?.tax_id || "Not set"}</div>
               <div><span className="text-gray-400">Period:</span> {dateRange.start} to {dateRange.end}</div>
-              <div><span className="text-gray-400">GST Type:</span> {settings?.tax_system === 'gst' ? 'Regular' : 'Non-GST'}</div>
+              <div><span className="text-gray-400">Tax Type:</span> {settings?.tax_system === 'none' ? 'None' : taxName}</div>
             </div>
           </div>
         </div>

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useSettingsStore, useStoresStore } from "@/lib/stores";
 import { Settings, Store as StoreType } from "@/lib/db";
+import { countryPresets, taxSystems } from "@/lib/countries";
 
 const industries = [
   { id: "food", label: "Food & Beverage", icon: ChefHat, description: "Restaurants, cafes, bakeries" },
@@ -31,18 +32,6 @@ const industries = [
   { id: "salon_spa", label: "Salon & Spa", icon: Scissors, description: "Hair salon, beauty spa" },
   { id: "repair_shop", label: "Repair Shop", icon: Wrench, description: "Auto repair, electronics repair" },
 ];
-
-const countryPresets: Record<string, any> = {
-  US: { currency: "USD", symbol: "$", timezone: "America/New_York", taxSystem: "sales", taxRate: 8, taxName: "Sales Tax" },
-  CA: { currency: "CAD", symbol: "C$", timezone: "America/Toronto", taxSystem: "hst", taxRate: 13, taxName: "HST" },
-  GB: { currency: "GBP", symbol: "£", timezone: "Europe/London", taxSystem: "vat", taxRate: 20, taxName: "VAT" },
-  IN: { currency: "INR", symbol: "₹", timezone: "Asia/Kolkata", taxSystem: "gst", taxRate: 18, taxName: "GST" },
-  AU: { currency: "AUD", symbol: "A$", timezone: "Australia/Sydney", taxSystem: "gst", taxRate: 10, taxName: "GST" },
-  DE: { currency: "EUR", symbol: "€", timezone: "Europe/Berlin", taxSystem: "vat", taxRate: 19, taxName: "VAT" },
-  FR: { currency: "EUR", symbol: "€", timezone: "Europe/Paris", taxSystem: "vat", taxRate: 20, taxName: "TVA" },
-  JP: { currency: "JPY", symbol: "¥", timezone: "Asia/Tokyo", taxSystem: "none", taxRate: 10, taxName: "Tax" },
-  SG: { currency: "SGD", symbol: "S$", timezone: "Asia/Singapore", taxSystem: "gst", taxRate: 9, taxName: "GST" },
-};
 
 export default function OnboardingModal() {
   const { settings, saveSettings, activeStoreId } = useSettingsStore();
@@ -78,7 +67,7 @@ export default function OnboardingModal() {
       country,
       currency: preset.currency,
       currencySymbol: preset.symbol,
-      timezone: preset.timezone,
+      timezone: preset.timezones[0],
       taxSystem: preset.taxSystem,
       taxRate: preset.taxRate,
       taxName: preset.taxName,
@@ -339,14 +328,16 @@ export default function OnboardingModal() {
                   <label className="text-xs font-bold text-muted-foreground">Tax System</label>
                   <select
                     value={formData.taxSystem}
-                    onChange={(e) => setFormData({ ...formData, taxSystem: e.target.value })}
+                    onChange={(e) => {
+                      const system = e.target.value;
+                      const systemLabel = taxSystems.find(s => s.id === system)?.label || "Tax";
+                      setFormData({ ...formData, taxSystem: system, taxName: systemLabel });
+                    }}
                     className="w-full p-4 bg-muted border border-border rounded-xl focus:ring-2 focus:ring-[#F5C842]/50 outline-none"
                   >
-                    <option value="none">No Tax</option>
-                    <option value="gst">GST (India)</option>
-                    <option value="vat">VAT (Europe)</option>
-                    <option value="sales">Sales Tax (US)</option>
-                    <option value="hst">HST (Canada)</option>
+                    {taxSystems.map((s) => (
+                      <option key={s.id} value={s.id}>{s.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">

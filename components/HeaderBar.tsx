@@ -13,7 +13,7 @@ interface HeaderBarProps {
 
 export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen }: HeaderBarProps) {
   const { logout } = useAuthStore();
-  const { activeStoreId, setActiveStore } = useSettingsStore();
+  const { activeStoreId, setActiveStore, settings } = useSettingsStore();
   const { stores, fetchStores } = useStoresStore();
   const [showStoreDropdown, setShowStoreDropdown] = useState(false);
 
@@ -47,7 +47,7 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
     >
       <div className="flex items-center gap-6">
         <span className="text-sm font-medium" style={{ color: "#9090A8" }}>
-          {getScreenLabel(currentScreen)}
+          {getScreenLabel(currentScreen, settings?.tax_name)}
         </span>
       </div>
       
@@ -160,7 +160,7 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
   );
 }
 
-function getScreenLabel(screen: string): string {
+function getScreenLabel(screen: string, taxName: string = "GST"): string {
   const labels: Record<string, string> = {
     pos: "Point of Sale",
     dashboard: "Dashboard",
@@ -182,7 +182,7 @@ function getScreenLabel(screen: string): string {
     expenses: "Expenses",
     staff: "Staff Attendance",
     reports: "Reports",
-    gst: "GST Reports",
+    gst: `${taxName} Reports`,
     logs: "Activity Logs",
     settings: "Settings",
     contact_training: "Training Guide",

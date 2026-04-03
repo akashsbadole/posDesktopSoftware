@@ -1834,6 +1834,18 @@ async function browserFallback<T>(
       const tables = lsGet<Table[]>("pos_tables") || [];
       return tables.filter((t) => t.store_id === storeId) as T;
     }
+    case "get_customer_wallet": {
+      const customerId = (args as any).customer_id;
+      // Mock wallet from customer lifetime spend
+      const customers = lsGet<Customer[]>("pos_customers") || [];
+      const c = customers.find(x => x.id === customerId);
+      return {
+        customer_id: customerId,
+        balance: (c?.total_spent || 0) * 0.05,
+        total_loaded: 0,
+        total_spent: 0
+      } as T;
+    }
     case "get_customers": {
       const c = lsGet<Customer[]>("pos_customers") || [];
       return c.filter((x) => x.store_id === storeId) as T;
