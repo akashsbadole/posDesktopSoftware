@@ -706,8 +706,8 @@ impl Database {
         )?;
 
         let db = Database { conn };
-        db.init_schema()?;
-        db.migrate_schema()?;
+        db.ensure_schema_version_table()?;
+        db.run_migrations()?;
         db.create_indexes()?;
         db.seed_if_empty()?;
         db.init_users()?;
@@ -715,7 +715,50 @@ impl Database {
         Ok(db)
     }
 
-    fn init_schema(&self) -> Result<()> {
+    fn ensure_schema_version_table(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)",
+            [],
+        )?;
+        Ok(())
+    }
+
+    fn get_current_version(&self) -> Result<i32> {
+        let version: Option<i32> = self.conn.query_row(
+            "SELECT version FROM schema_version",
+            [],
+            |row| row.get(0),
+        ).optional()?;
+        Ok(version.unwrap_or(0))
+    }
+
+    fn set_version(&self, version: i32) -> Result<()> {
+        self.conn.execute("DELETE FROM schema_version", [])?;
+        self.conn.execute(
+            "INSERT INTO schema_version (version) VALUES (?1)",
+            params![version],
+        )?;
+        Ok(())
+    }
+
+    fn run_migrations(&self) -> Result<()> {
+        let current = self.get_current_version()?;
+
+        if current < 1 {
+            self.migration_v1()?;
+            self.set_version(1)?;
+        }
+
+        // Future migrations:
+        // if current < 2 {
+        //     self.migration_v2()?;
+        //     self.set_version(2)?;
+        // }
+
+        Ok(())
+    }
+
+    fn migration_v1(&self) -> Result<()> {
         self.conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS stores (
@@ -1401,6 +1444,7 @@ impl Database {
     pub fn reset_all(&self) -> Result<()> {
         // List of all tables to drop
         let tables = vec![
+            "schema_version",
             "stores",
             "products",
             "batches",
@@ -1442,8 +1486,8 @@ impl Database {
         }
 
         // Recreate schema
-        self.init_schema()?;
-        self.migrate_schema()?;
+        self.ensure_schema_version_table()?;
+        self.run_migrations()?;
         self.create_indexes()?;
         self.init_users()?;
 

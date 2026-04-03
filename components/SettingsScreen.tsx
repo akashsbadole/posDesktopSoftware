@@ -35,6 +35,7 @@ import {
   seedDatabase,
   resetDatabase,
   resetAndSeedDatabase,
+  isPremiumEnabled,
 } from "@/lib/db";
 import { useSettingsStore, useAuthStore } from "@/lib/stores";
 import pako from "pako";
@@ -432,6 +433,7 @@ export default function SettingsScreen() {
   const [changingPin, setChangingPin] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
     const restoreFileInputRef = useRef<HTMLInputElement>(null);
+    const [premiumEnabled, setPremiumEnabled] = useState(false);
     const [localSettings, setLocalSettings] = useState<Settings>(
     settings || {
       store_name: "My POS Store",
@@ -481,7 +483,17 @@ export default function SettingsScreen() {
   useEffect(() => {
     fetchSettings();
     fetchLanStatus();
+    checkPremium();
   }, [activeStoreId]);
+
+  const checkPremium = async () => {
+    try {
+      const enabled = await isPremiumEnabled();
+      setPremiumEnabled(enabled);
+    } catch (err) {
+      console.error("Failed to check premium status:", err);
+    }
+  };
 
   useEffect(() => {
     if (settings) setLocalSettings(settings);
@@ -558,7 +570,7 @@ export default function SettingsScreen() {
     setSyncMsg(
       r.error
         ? { text: r.error, ok: false }
-        : { text: `✓ Imported ${r.imported} orders from Neon`, ok: true },
+        : { text: `✓ Synced ${r.synced} orders from Neon`, ok: true },
     );
     setSyncing(false);
   };
@@ -1202,6 +1214,108 @@ export default function SettingsScreen() {
                 placeholder="Thank you! Visit again"
               />
             </div>
+          </div>
+        </div>
+
+        {/* Cloud Sync Section */}
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <RefreshCw size={16} style={{ color: "#F5C842" }} />
+              <h2 className="font-semibold">Cloud Sync (Neon PostgreSQL)</h2>
+            </div>
+            {!premiumEnabled && (
+              <span className="badge-warning text-[10px] px-2 py-0.5 rounded-full uppercase font-bold">
+                Premium Feature
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                Neon Database URL
+              </label>
+              <input
+                value={localSettings.neon_url}
+                onChange={(e) => updateLocal("neon_url", e.target.value)}
+                placeholder="postgres://user:pass@host/db"
+                type="password"
+                disabled={!premiumEnabled}
+              />
+              <p className="text-[10px] mt-1" style={{ color: "#9090A8" }}>
+                Cloud sync allows you to access your data from multiple devices.
+              </p>
+            </div>
+
+            {premiumEnabled ? (
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSyncUp}
+                  disabled={syncing || !localSettings.neon_url}
+                  className="btn-success flex items-center gap-2 text-sm flex-1 justify-center"
+                >
+                  {syncing ? (
+                    <RefreshCw size={14} className="spin" />
+                  ) : (
+                    <CloudUpload size={14} />
+                  )}
+                  Push to Cloud
+                </button>
+                <button
+                  onClick={handleSyncDown}
+                  disabled={syncing || !localSettings.neon_url}
+                  className="btn-ghost flex items-center gap-2 text-sm flex-1 justify-center"
+                >
+                  {syncing ? (
+                    <RefreshCw size={14} className="spin" />
+                  ) : (
+                    <CloudDownload size={14} />
+                  )}
+                  Pull from Cloud
+                </button>
+              </div>
+            ) : (
+              <div
+                className="border rounded-lg p-4 text-center space-y-3"
+                style={{
+                  background: "rgba(245,200,66,0.05)",
+                  borderColor: "rgba(245,200,66,0.2)",
+                }}
+              >
+                <div className="text-sm font-medium" style={{ color: "#F5C842" }}>
+                  Neon Cloud Sync is a premium feature.
+                </div>
+                <p className="text-xs" style={{ color: "#4A4A5A" }}>
+                  Sync your data across all devices and branches in real-time.
+                </p>
+                <button
+                  onClick={() =>
+                    window.open(
+                      "mailto:info@appixen.com?subject=Premium Features Upgrade",
+                    )
+                  }
+                  className="btn-warning text-xs py-2 px-4"
+                >
+                  Upgrade Now
+                </button>
+              </div>
+            )}
+
+            {syncMsg && (
+              <div
+                className="rounded-lg p-3 text-sm fade-in"
+                style={{
+                  background: syncMsg.ok
+                    ? "rgba(46,204,113,0.08)"
+                    : "rgba(231,76,60,0.08)",
+                  border: `1px solid ${syncMsg.ok ? "rgba(46,204,113,0.2)" : "rgba(231,76,60,0.2)"}`,
+                  color: syncMsg.ok ? "#2ECC71" : "#E74C3C",
+                }}
+              >
+                {syncMsg.text}
+              </div>
+            )}
           </div>
         </div>
 

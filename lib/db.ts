@@ -1302,17 +1302,21 @@ export async function syncToNeon(
 
 export async function syncFromNeon(
   storeId: string,
-): Promise<{ imported: number; error?: string }> {
+): Promise<{ synced: number; error?: string }> {
   try {
     return await retryWithBackoff(() => sql("sync_from_neon", { storeId }));
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("Neon import failed after retries:", errorMsg);
     return {
-      imported: 0,
+      synced: 0,
       error: `Import failed: ${errorMsg}. Please check your connection and try again.`,
     };
   }
+}
+
+export async function isPremiumEnabled(): Promise<boolean> {
+  return sql<boolean>("is_premium_enabled");
 }
 
 // ─── Cart Calculation (pure JS, no DB needed) ─────────────────────────────────
@@ -2274,6 +2278,8 @@ async function browserFallback<T>(
         (x) => x.user_id === user_id && !x.clock_out && x.store_id === storeId,
       ) as T;
     }
+    case "is_premium_enabled":
+      return (process.env.NEXT_PUBLIC_ENABLE_PREMIUM === "true") as T;
     case "get_gstr1_report": {
       const orders = lsGet<Order[]>(LS.orders) || [];
       const customers = lsGet<Customer[]>("pos_customers") || [];
