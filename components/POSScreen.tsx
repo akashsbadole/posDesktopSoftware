@@ -881,10 +881,11 @@ export default function POSScreen() {
   const itemCount = getItemCount();
 
   if (receipt) {
+    const isUnpaid = lastOrder && (lastOrder.status === "hold" || lastOrder.status === "pending" || lastOrder.status === "processing");
     const upiUrl =
       settings.country === "IN" &&
       settings.upi_id &&
-      lastOrder?.payment_method === "upi"
+      (lastOrder?.payment_method === "upi" || isUnpaid)
         ? `upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${lastOrder.total}&cu=INR`
         : null;
 
@@ -906,7 +907,7 @@ export default function POSScreen() {
               className="font-display text-base"
               style={{ color: "#F5C842" }}
             >
-              Order Complete!
+              {isUnpaid ? "Payment Request" : "Order Complete!"}
             </h2>
             <button
               onClick={() => {
@@ -1817,13 +1818,32 @@ export default function POSScreen() {
                 Hold
               </button>
               <button
+                onClick={() => {
+                  const order = toOrder(uuid(), user?.id || "system", user?.name || "System");
+                  order.status = "pending";
+                  order.payment_method = paymentMethod === "cash" ? "cash" : "upi"; // default for qr
+                  order.total = finalTotal;
+                  order.subtotal = totals.subtotal;
+                  order.tax_amount = totals.tax_amount;
+                  order.discount_amount = totals.discount_amount + couponDiscount + walletDeduction;
+                  const rec = generateReceipt(order, settings, true);
+                  setReceipt(rec);
+                  setLastOrder(order);
+                }}
+                disabled={processing || cart.length === 0}
+                className="p-2 rounded bg-[#141418] border border-[#1E1E26] hover:bg-[#1E1E26] shrink-0"
+                title="Print Proforma Receipt"
+              >
+                <QrCode size={14} className="text-[#F5C842]" />
+              </button>
+              <button
                 onClick={handleCheckout}
                 disabled={
                   processing ||
                   cart.length === 0 ||
                   (orderType === "dine_in" && !tableId)
                 }
-                className="flex-[2] py-2 text-[11px] font-bold uppercase bg-[#F5C842] text-[#0D0D0F] rounded hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                className="flex-[3] py-2 text-[11px] font-bold uppercase bg-[#F5C842] text-[#0D0D0F] rounded hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
                 data-checkout-button
               >
                 {processing ? (
@@ -2462,13 +2482,25 @@ export default function POSScreen() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleRestoreOrder(order)}
-                        className="btn-accent flex-1 py-2 text-sm"
+                        className="btn-accent flex-1 py-1.5 text-xs font-bold uppercase"
                       >
                         Restore
                       </button>
                       <button
+                        onClick={() => {
+                          const rec = generateReceipt(order, settings, true);
+                          setReceipt(rec);
+                          setLastOrder(order);
+                          setShowHeldOrders(false);
+                        }}
+                        className="py-1.5 px-3 rounded bg-[#141418] border border-[#1E1E26] text-[#F5C842] hover:bg-[#1E1E26] flex items-center justify-center"
+                        title="Print Payment Receipt"
+                      >
+                        <Printer size={14} />
+                      </button>
+                      <button
                         onClick={() => handleDeleteHeldOrder(order.id)}
-                        className="btn-danger py-2 px-4 text-sm"
+                        className="btn-danger py-1.5 px-3 text-xs font-bold uppercase"
                       >
                         Delete
                       </button>

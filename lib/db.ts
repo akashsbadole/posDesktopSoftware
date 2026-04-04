@@ -1375,7 +1375,11 @@ function r(n: number) {
 }
 
 // ─── Receipt ──────────────────────────────────────────────────────────────────
-export function generateReceipt(order: Order, settings: Settings): string {
+export function generateReceipt(
+  order: Order,
+  settings: Settings,
+  isPaymentRequest: boolean = false,
+): string {
   const c = settings.currency_symbol;
   const isIndia = settings.country === "IN";
   const lines: string[] = [];
@@ -1385,6 +1389,10 @@ export function generateReceipt(order: Order, settings: Settings): string {
     lines.push(`[LOGO: ${settings.logo_url}]`);
   }
   lines.push(`================================`);
+  if (isPaymentRequest) {
+    lines.push(`       PAYMENT REQUEST`);
+    lines.push(`--------------------------------`);
+  }
   lines.push(`       ${settings.store_name}`);
   if (settings.address) lines.push(`  ${settings.address}`);
   if (settings.phone) lines.push(`  ${settings.phone}`);
@@ -1446,44 +1454,50 @@ export function generateReceipt(order: Order, settings: Settings): string {
   lines.push(`================================`);
 
   // Payment Details
-  lines.push(`PAYMENT`);
-  lines.push(`--------------------------------`);
-  lines.push(`Method:   ${order.payment_method?.toUpperCase() || "CASH"}`);
+  if (!isPaymentRequest) {
+    lines.push(`PAYMENT`);
+    lines.push(`--------------------------------`);
+    lines.push(`Method:   ${order.payment_method?.toUpperCase() || "CASH"}`);
 
-  if (isIndia) {
-    if (order.payment_method === "upi" && settings.upi_id) {
-      lines.push(`UPI ID:   ${settings.upi_id}`);
+    if (isIndia) {
+      if (order.payment_method === "upi" && settings.upi_id) {
+        lines.push(`UPI ID:   ${settings.upi_id}`);
+      }
+      if (settings.merchant_id) {
+        lines.push(`Merchant: ${settings.merchant_id}`);
+      }
     }
-    if (settings.merchant_id) {
-      lines.push(`Merchant: ${settings.merchant_id}`);
-    }
-  }
 
-  if (order.payment_method === "cash") {
-    lines.push(
-      `Paid:     ${(c + (order.amount_paid || 0).toFixed(2)).padStart(18)}`,
-    );
-    lines.push(
-      `Change:   ${(c + (order.change_amount || 0).toFixed(2)).padStart(18)}`,
-    );
-  }
-
-  if (order.metadata?.split_payments) {
-    const split = order.metadata.split_payments as {
-      method: string;
-      amount: number;
-    }[];
-    split.forEach((s) => {
+    if (order.payment_method === "cash") {
       lines.push(
-        `${s.method.toUpperCase()}: ${(c + s.amount.toFixed(2)).padStart(21 - s.method.length)}`,
+        `Paid:     ${(c + (order.amount_paid || 0).toFixed(2)).padStart(18)}`,
       );
-    });
-  }
+      lines.push(
+        `Change:   ${(c + (order.change_amount || 0).toFixed(2)).padStart(18)}`,
+      );
+    }
 
-  if (order.amount_paid && order.total && order.amount_paid > order.total) {
-    lines.push(
-      `Balance:  ${(c + (order.amount_paid - order.total).toFixed(2)).padStart(18)}`,
-    );
+    if (order.metadata?.split_payments) {
+      const split = order.metadata.split_payments as {
+        method: string;
+        amount: number;
+      }[];
+      split.forEach((s) => {
+        lines.push(
+          `${s.method.toUpperCase()}: ${(c + s.amount.toFixed(2)).padStart(21 - s.method.length)}`,
+        );
+      });
+    }
+
+    if (order.amount_paid && order.total && order.amount_paid > order.total) {
+      lines.push(
+        `Balance:  ${(c + (order.amount_paid - order.total).toFixed(2)).padStart(18)}`,
+      );
+    }
+  } else if (isIndia && settings.upi_id) {
+    lines.push(`SCAN TO PAY UPI`);
+    lines.push(`UPI ID: ${settings.upi_id}`);
+    lines.push(`--------------------------------`);
   }
 
   // Footer
@@ -1497,6 +1511,7 @@ export function generateReceipt(order: Order, settings: Settings): string {
 
   return lines.filter(Boolean).join("\n");
 }
+
 
 // ─── Browser Fallback (localStorage) ─────────────────────────────────────────
 // Used when running `next dev` without Tauri
