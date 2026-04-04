@@ -192,6 +192,7 @@ export default function POSScreen() {
     null,
   );
   const [activeCustomer, setActiveCustomer] = useState<Customer | null>(null);
+  const [isEditingCustomer, setIsEditingCustomer] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -1344,250 +1345,188 @@ export default function POSScreen() {
         role="region"
         aria-label="Shopping cart"
       >
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <span className="font-display font-bold text-base" id="cart-title">
-            Cart
-          </span>
-          <div className="flex gap-2 items-center">
-            {cart.length > 0 && (
-              <span
-                className="px-2 py-0.5 rounded-full text-xs font-bold"
-                style={{
-                  background: "rgba(245,200,66,0.15)",
-                  color: "#F5C842",
-                }}
-                aria-label={`${itemCount} items in cart`}
-              >
-                {itemCount} items
+        <div className="p-3 border-b border-border bg-[#0D0D0F]/50">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="font-display font-bold text-sm uppercase tracking-tight text-[#F5C842]">
+                Cart ({itemCount})
               </span>
-            )}
-            <button
-              onClick={handleNoSale}
-              className="p-1.5 rounded-lg"
-              style={{ color: "#2ECC71", background: "rgba(46,204,113,0.1)" }}
-              title="No Sale / Open Drawer"
-              aria-label="Open cash drawer"
-            >
-              <Banknote size={14} aria-hidden="true" />
-            </button>
-            {cart.length > 0 && (
+              <div
+                className="flex bg-[#141418] rounded-md p-0.5 border border-[#1E1E26]"
+                role="group"
+                aria-label="Price Tier"
+              >
+                <button
+                  onClick={() => setPriceTier("retail")}
+                  className={`px-2 py-0.5 text-[9px] font-bold rounded-sm transition-all ${priceTier === "retail" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
+                >
+                  RETAIL
+                </button>
+                <button
+                  onClick={() => setPriceTier("wholesale")}
+                  className={`px-2 py-0.5 text-[9px] font-bold rounded-sm transition-all ${priceTier === "wholesale" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
+                >
+                  WHOL.
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-1.5 items-center">
+              <button
+                onClick={handleNoSale}
+                className="p-1.5 rounded-lg text-[#2ECC71] bg-green-500/5 border border-green-500/10 hover:bg-green-500/10"
+                title="Open Drawer"
+              >
+                <Banknote size={14} />
+              </button>
               <button
                 onClick={handleClearCart}
-                className="p-1.5 rounded-lg"
-                style={{
-                  color: "#E74C3C",
-                  background: "rgba(231,76,60,0.1)",
-                }}
-                aria-label="Clear cart"
+                className="p-1.5 rounded-lg text-[#E74C3C] bg-red-500/5 border border-red-500/10 hover:bg-red-500/10"
+                title="Clear Cart"
               >
-                <Trash2 size={14} aria-hidden="true" />
+                <Trash2 size={14} />
               </button>
-            )}
-            <button
-              onClick={() => setShowHeldOrders(true)}
-              className="p-1.5 rounded-lg relative"
-              style={{ color: "#F5C842", background: "rgba(245,200,66,0.1)" }}
-              aria-label="View held orders"
-            >
-              <Clock size={14} aria-hidden="true" />
-              {heldOrders.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
-                  {heldOrders.length}
-                </span>
-              )}
-            </button>
+              <button
+                onClick={() => setShowHeldOrders(true)}
+                className="p-1.5 rounded-lg text-[#F5C842] bg-yellow-500/5 border border-yellow-500/10 hover:bg-yellow-500/10 relative"
+              >
+                <Clock size={14} />
+                {heldOrders.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center border-2 border-[#0D0D0F]">
+                    {heldOrders.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex gap-1" role="group" aria-label="Order type">
+            {[
+              { id: "dine_in", label: labels.dine_in },
+              {
+                id: "takeaway",
+                label: labels.takeaway.split("/")[1] || "Takeaway",
+              },
+              { id: "delivery", label: "Delivery" },
+            ].map((type) => (
+              <button
+                key={type.id}
+                onClick={() => setOrderType(type.id as any)}
+                className={`flex-1 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-all border ${orderType === type.id ? "bg-[#F5C842] border-[#F5C842] text-[#0D0D0F]" : "bg-[#141418] border-[#1E1E26] text-[#4A4A5A] hover:border-[#F5C842]/50"}`}
+              >
+                {type.label}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="px-4 pt-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] uppercase font-bold text-[#4A4A5A]">
-              Price Tier
-            </span>
-              <div className="flex bg-[#141418] rounded-lg p-0.5 border border-[#1E1E26]" role="group" aria-label="Price Tier">
-              <button
-                onClick={() => setPriceTier("retail")}
-                aria-pressed={priceTier === "retail"}
-                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${priceTier === "retail" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
-              >
-                RETAIL
-              </button>
-              <button
-                onClick={() => setPriceTier("wholesale")}
-                aria-pressed={priceTier === "wholesale"}
-                className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${priceTier === "wholesale" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
-              >
-                WHOLESALE
-              </button>
-            </div>
-          </div>
-
-          <div className="flex gap-2 mb-3" role="group" aria-label="Order type">
-            <button
-              onClick={() => setOrderType("dine_in")}
-              aria-pressed={orderType === "dine_in"}
-              data-testid="order-type-dine-in"
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "dine_in" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
-            >
-              {labels.dine_in}
-            </button>
-            <button
-              onClick={() => setOrderType("takeaway")}
-              aria-pressed={orderType === "takeaway"}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "takeaway" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
-            >
-              {labels.takeaway.split("/")[1] || "Takeaway"}
-            </button>
-            <button
-              onClick={() => setOrderType("delivery")}
-              aria-pressed={orderType === "delivery"}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] ${orderType === "delivery" ? "bg-yellow-400 text-black" : "bg-[#1E1E26] text-gray-400"}`}
-            >
-              Delivery
-            </button>
-          </div>
-
-          {orderType === "dine_in" && (
-            <div className="mb-3">
+        <div className="px-3 pt-2">
+          <div className="grid grid-cols-2 gap-1 border border-[#1E1E26] rounded-sm p-1.5 bg-[#141418]/30 mb-1.5">
+            <div className="flex flex-col">
+              <span className="text-[8px] uppercase font-bold text-[#4A4A5A] leading-none mb-1">
+                Table
+              </span>
               <button
                 onClick={() => setShowTableModal(true)}
                 data-testid="select-table-btn"
-                className="w-full py-2 px-3 rounded-lg text-sm font-medium bg-[#1E1E26] text-gray-400 border border-[#2E2E3E] hover:border-[#F5C842] transition-all flex items-center justify-between"
+                className="text-[10px] font-bold text-white flex items-center justify-between hover:text-[#F5C842] transition-colors"
               >
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${tableName ? "bg-green-500" : "bg-red-500"}`} />
-                  <span>{tableName ? `Table: ${tableName}` : "Select Table"}</span>
+                <span className="truncate">{tableName || "No Table"}</span>
+                <span className="text-[8px] text-[#F5C842] uppercase ml-1">
+                  (Edit)
+                </span>
+              </button>
+            </div>
+            <div className="flex flex-col border-l border-[#1E1E26] pl-1.5">
+              <span className="text-[8px] uppercase font-bold text-[#4A4A5A] leading-none mb-1">
+                Customer
+              </span>
+              <button
+                onClick={() => setIsEditingCustomer(!isEditingCustomer)}
+                data-testid="edit-customer-btn"
+                className="text-[10px] font-bold text-white flex items-center justify-between hover:text-[#F5C842] transition-colors"
+              >
+                <span className="truncate">
+                  {customerInfo?.name || activeCustomer?.name || "Walk-in"}
+                </span>
+                <span className="text-[8px] text-[#F5C842] uppercase ml-1">
+                  (Edit)
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {isEditingCustomer && (
+            <div className="space-y-2 mb-3 p-2 bg-[#141418] rounded-lg border border-[#1E1E26] slide-in">
+              <div className="relative">
+                <User
+                  size={12}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#4A4A5A]"
+                />
+                <input
+                  placeholder="Customer Name"
+                  value={customerInfo?.name || ""}
+                  onChange={(e) =>
+                    setCustomerInfo({
+                      ...customerInfo,
+                      name: e.target.value,
+                    } as any)
+                  }
+                  className="text-[11px] pl-8 py-1.5 w-full bg-[#0D0D0F]"
+                />
+              </div>
+              <div className="flex gap-2">
+                <input
+                  placeholder="Phone"
+                  value={customerInfo?.phone || ""}
+                  onChange={(e) => {
+                    setCustomerInfo({
+                      ...customerInfo,
+                      phone: e.target.value,
+                    } as any);
+                    lookupCustomerData(e.target.value);
+                  }}
+                  className="text-[11px] py-1.5 flex-1 bg-[#0D0D0F]"
+                />
+                <input
+                  placeholder="Address"
+                  value={customerInfo?.address || ""}
+                  onChange={(e) =>
+                    setCustomerInfo({
+                      ...customerInfo,
+                      address: e.target.value,
+                    } as any)
+                  }
+                  className="text-[11px] py-1.5 flex-1 bg-[#0D0D0F]"
+                />
+              </div>
+              {customerAddresses.length > 0 && (
+                <div className="flex gap-1 overflow-x-auto py-1">
+                  {customerAddresses.map((addr) => (
+                    <button
+                      key={addr.id}
+                      onClick={() =>
+                        setCustomerInfo({
+                          ...customerInfo,
+                          address: addr.address,
+                          phone: addr.phone,
+                          name: customerInfo?.name || "",
+                        } as any)
+                      }
+                      className="flex-shrink-0 px-2 py-1 rounded bg-[#1E1E26] text-[9px] border border-transparent hover:border-[#F5C842]"
+                    >
+                      {addr.label}
+                    </button>
+                  ))}
                 </div>
-                <ChevronRight size={14} />
+              )}
+              <button
+                onClick={() => setIsEditingCustomer(false)}
+                className="w-full py-1 text-[9px] font-bold uppercase bg-[#1E1E26] text-[#4A4A5A] rounded hover:text-white"
+              >
+                Close Editor
               </button>
             </div>
           )}
-
-          {orderType === "delivery" && (
-            <div className="space-y-2 mb-3">
-              <label htmlFor="delivery-address" className="sr-only">
-                Delivery address
-              </label>
-              <input
-                id="delivery-address"
-                placeholder="Delivery address"
-                value={customerInfo?.address || ""}
-                onChange={(e) => {
-                  setCustomerInfo({
-                    ...customerInfo,
-                    address: e.target.value,
-                    name: customerInfo?.name || "",
-                    phone: customerInfo?.phone || "",
-                  } as any);
-                  setErrors((prev) => ({ ...prev, address: "" }));
-                }}
-                className={`text-sm ${errors.address ? "error" : ""}`}
-                style={{ padding: "7px 12px" }}
-              />
-              {errors.address && (
-                <div className="text-xs px-1" style={{ color: "#E74C3C" }}>
-                  {errors.address}
-                </div>
-              )}
-              <label htmlFor="delivery-phone" className="sr-only">
-                Phone number
-              </label>
-              <input
-                id="delivery-phone"
-                placeholder="Phone number"
-                value={customerInfo?.phone || ""}
-                onChange={(e) => {
-                  setCustomerInfo({
-                    ...customerInfo,
-                    phone: e.target.value,
-                    name: customerInfo?.name || "",
-                    address: customerInfo?.address || "",
-                  } as any);
-                  setErrors((prev) => ({ ...prev, phone: "" }));
-                  lookupCustomerData(e.target.value);
-                }}
-                className={`text-sm ${errors.phone ? "error" : ""}`}
-                style={{ padding: "7px 12px" }}
-              />
-
-              {customerAddresses.length > 0 && (
-                <div className="space-y-1 mt-2">
-                  <label className="text-[10px] uppercase font-bold text-gray-500 px-1">
-                    Select Saved Address
-                  </label>
-                  <div className="flex gap-2 overflow-x-auto pb-2 px-1">
-                    {customerAddresses.map((addr) => (
-                      <button
-                        key={addr.id}
-                        onClick={() => {
-                          setSelectedAddressId(addr.id);
-                          setCustomerInfo({
-                            ...customerInfo,
-                            address: addr.address,
-                            phone: addr.phone,
-                            name: customerInfo?.name || "",
-                          } as any);
-                        }}
-                        className={`flex-shrink-0 px-3 py-2 rounded-lg text-xs border transition-all ${
-                          selectedAddressId === addr.id
-                            ? "bg-yellow-400/10 border-yellow-400 text-yellow-400"
-                            : "bg-[#1E1E26] border-transparent text-gray-400"
-                        }`}
-                      >
-                        <div className="font-bold">{addr.label}</div>
-                        <div className="text-[10px] truncate max-w-[100px] opacity-70">
-                          {addr.address}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {errors.phone && (
-                <div className="text-xs px-1" style={{ color: "#E74C3C" }}>
-                  {errors.phone}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="relative">
-            <User
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2"
-              style={{ color: "#4A4A5A" }}
-              aria-hidden="true"
-            />
-            <label htmlFor="customer-name" className="sr-only">
-              Customer name (optional)
-            </label>
-            <input
-              id="customer-name"
-              placeholder={
-                activeCustomer ? activeCustomer.name : "Walk-in Customer"
-              }
-              value={customerInfo?.name || ""}
-              onChange={(e) => {
-                const val = e.target.value;
-                setCustomerInfo({
-                  ...customerInfo,
-                  name: val,
-                  phone: customerInfo?.phone || "",
-                  address: customerInfo?.address || "",
-                } as any);
-                if (orderType !== "delivery") {
-                  if (val.length >= 7 && /^\+?[\d\s-]+$/.test(val)) {
-                    lookupCustomerData(val);
-                  }
-                }
-              }}
-              style={{
-                paddingLeft: 30,
-                fontSize: 13,
-                padding: "7px 12px 7px 30px",
-              }}
-            />
-          </div>
         </div>
 
         <div
@@ -1617,171 +1556,86 @@ export default function POSScreen() {
               <div className="mt-3 text-sm">Cart is empty</div>
             </div>
           )}
-          {cart.map((item) => (
-            <div
-              key={item.cartItemId}
-              className="card p-3 slide-in"
-              role="listitem"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm truncate">
-                    {item.product.name}
-                  </div>
-                  <div
-                    className="text-xs mt-0.5 flex items-center gap-2"
-                    style={{ color: "#4A4A5A" }}
-                  >
-                    <button
-                      onClick={() =>
-                        setShowPinModal({
-                          type: "price_override",
-                          productId: item.cartItemId,
-                        })
-                      }
-                      className="hover:text-[#F5C842] transition-colors"
-                      title="Override price"
-                      aria-label={`Override price for ${item.product.name}`}
-                    >
-                      {curr}
-                      {item.override_price !== undefined
-                        ? item.override_price
-                        : item.product.price}
-                    </button>
-                    × {item.quantity} = {curr}
-                    {(
-                      (item.override_price !== undefined
-                        ? item.override_price
-                        : item.product.price) * item.quantity
-                    ).toFixed(2)}
-                    <button
-                      onClick={() => {
-                        const currentPrice =
-                          item.override_price !== undefined
-                            ? item.override_price
-                            : item.product.price;
-                        overrideItemPrice(item.cartItemId, -currentPrice);
-                      }}
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${(item.override_price || item.product.price) < 0 ? "bg-red-500 text-white" : "bg-[#1E1E26] text-[#9090A8]"}`}
-                    >
-                      RET
-                    </button>
-                    {item.product.metadata?.duration && (
-                      <span className="flex items-center gap-1 text-[10px]">
-                        <Clock size={10} /> {item.product.metadata.duration}m
-                      </span>
-                    )}
-                  </div>
-                  {item.product.metadata?.serial_number && (
-                    <div className="text-[10px] text-[#F5C842] flex items-center gap-1 mt-1 font-mono">
-                      <ShieldCheck size={10} /> SN:{" "}
-                      {item.product.metadata.serial_number}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => removeItem(item.cartItemId)}
-                  style={{ color: "#4A4A5A" }}
-                  aria-label={`Remove ${item.product.name} from cart`}
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              </div>
-              <div className="flex items-center gap-2 mt-2">
-                <div
-                  className="flex items-center gap-1 rounded-lg overflow-hidden"
-                  style={{ border: "1px solid #1E1E26" }}
-                  role="group"
-                  aria-label={`Quantity for ${item.product.name}`}
-                >
+          {cart.map((item) => {
+            const currentPrice =
+              item.override_price !== undefined
+                ? item.override_price
+                : item.product.price;
+            return (
+              <div
+                key={item.cartItemId}
+                className="flex items-center gap-1.5 py-1 border-b border-white/5 slide-in"
+                role="listitem"
+              >
+                <div className="flex items-center bg-[#1E1E26] rounded-sm overflow-hidden shrink-0 h-6">
                   <button
                     onClick={() =>
                       updateQuantity(item.cartItemId, item.quantity - 1)
                     }
-                    className="w-10 h-10 flex items-center justify-center touch-manipulation"
-                    style={{ color: "#9090A8" }}
-                    aria-label={`Decrease quantity of ${item.product.name}`}
+                    className="px-1 h-full hover:bg-[#F5C842] hover:text-[#0D0D0F] transition-colors"
+                    aria-label="Decrease"
                   >
-                    <Minus size={16} aria-hidden="true" />
+                    <Minus size={8} />
                   </button>
-                  <span
-                    className="w-10 text-center text-base font-bold"
-                    aria-label={`Quantity: ${item.quantity}`}
-                  >
-                    {item.quantity}
+                  <span className="w-5 text-center text-[9px] font-bold leading-none">
+                    {item.quantity}x
                   </span>
                   <button
                     onClick={() =>
                       updateQuantity(item.cartItemId, item.quantity + 1)
                     }
-                    className="w-10 h-10 flex items-center justify-center touch-manipulation"
-                    style={{ color: "#9090A8" }}
-                    aria-label={`Increase quantity of ${item.product.name}`}
+                    className="px-1 h-full hover:bg-[#F5C842] hover:text-[#0D0D0F] transition-colors"
+                    aria-label="Increase"
                   >
-                    <Plus size={16} aria-hidden="true" />
+                    <Plus size={8} />
                   </button>
                 </div>
-                <div className="flex items-center gap-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
-                  <input
-                    id={`discount-${item.cartItemId}`}
-                    type="number"
-                    placeholder="Disc"
-                    value={item.discount || ""}
-                    onChange={(e) =>
-                      updateItemDiscount(
-                        item.cartItemId,
-                        parseFloat(e.target.value) || 0,
-                        item.discount_type,
-                      )
-                    }
-                    className="w-16 bg-transparent border-none text-xs px-2"
-                    aria-label={`Discount amount for ${item.product.name}`}
-                  />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[9px] font-bold truncate leading-tight uppercase text-gray-200">
+                    {item.product.name}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     onClick={() =>
-                      updateItemDiscount(
-                        item.cartItemId,
-                        item.discount,
-                        item.discount_type === "percentage"
-                          ? "fixed"
-                          : "percentage",
-                      )
+                      setShowPinModal({
+                        type: "price_override",
+                        productId: item.cartItemId,
+                      })
                     }
-                    className="px-2 py-1 text-[10px] font-bold bg-[#1E1E26] text-[#9090A8] hover:text-[#F5C842]"
-                    aria-label={item.discount_type === "percentage" ? "Switch to fixed discount" : "Switch to percentage discount"}
+                    className="text-[10px] font-bold text-[#F5C842] tabular-nums"
                   >
-                    {item.discount_type === "percentage" ? "%" : curr}
+                    {curr}
+                    {currentPrice.toFixed(2)}
+                  </button>
+                  <button
+                    onClick={() => removeItem(item.cartItemId)}
+                    className="text-[#4A4A5A] hover:text-[#E74C3C]"
+                    aria-label="Remove"
+                  >
+                    <X size={10} />
                   </button>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {cart.length > 0 && (
-          <div
-            className="p-4 border-t border-border space-y-3"
-            role="region"
-            aria-label="Checkout"
-          >
-            <div className="flex items-center gap-2">
-              <label
-                htmlFor="order-discount"
-                className="text-sm min-w-max"
-                style={{ color: "#9090A8" }}
-              >
-                Order Disc
-              </label>
-              <div className="flex items-center flex-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
+          <div className="p-1.5 border-t border-border bg-[#0D0D0F]/30 space-y-1.5">
+            <div className="flex gap-1 items-center">
+              <div className="flex-1 flex items-center bg-[#141418] rounded-sm border border-[#1E1E26] px-1 py-0.5">
+                <span className="text-[8px] uppercase font-bold text-[#4A4A5A] mr-1">
+                  Disc
+                </span>
                 <input
-                  id="order-discount"
                   type="number"
-                  placeholder="0"
                   value={globalDiscount || ""}
                   onChange={(e) =>
                     setGlobalDiscount(parseFloat(e.target.value) || 0)
                   }
-                  className="flex-1 bg-transparent border-none text-sm px-2 py-1"
+                  className="w-6 bg-transparent border-none text-[10px] p-0 h-4"
+                  placeholder="0"
                 />
                 <button
                   onClick={() =>
@@ -1792,368 +1646,193 @@ export default function POSScreen() {
                         : "percentage",
                     )
                   }
-                  className="px-3 py-1.5 text-xs font-bold bg-[#1E1E26] text-[#9090A8] hover:text-[#F5C842]"
-                  aria-label={globalDiscountType === "percentage" ? "Switch to fixed order discount" : "Switch to percentage order discount"}
+                  className="text-[8px] font-bold text-[#F5C842] ml-0.5"
                 >
                   {globalDiscountType === "percentage" ? "%" : curr}
                 </button>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <label
-                htmlFor="order-tip"
-                className="text-sm min-w-max"
-                style={{ color: "#9090A8" }}
-              >
-                Add Tip
-              </label>
-              <div className="flex items-center flex-1 bg-[#141418] rounded-lg border border-[#1E1E26] overflow-hidden">
-                <span className="pl-2 text-[#4A4A5A] text-sm">{curr}</span>
+              <div className="flex-1 flex items-center bg-[#141418] rounded-sm border border-[#1E1E26] px-1 py-0.5">
+                <span className="text-[8px] uppercase font-bold text-[#4A4A5A] mr-1">
+                  Tip
+                </span>
                 <input
-                  id="order-tip"
                   type="number"
-                  placeholder="0.00"
                   value={tipAmount || ""}
                   onChange={(e) =>
                     setTipAmount(parseFloat(e.target.value) || 0)
                   }
-                  className="flex-1 bg-transparent border-none text-sm px-2 py-1"
+                  className="flex-1 bg-transparent border-none text-[10px] p-0 h-4"
+                  placeholder="0"
                 />
               </div>
+              <div className="flex-[2] flex items-center bg-[#141418] rounded-sm border border-[#1E1E26] px-1 py-0.5">
+                <Tag size={8} className="text-[#4A4A5A] mr-1" />
+                <input
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  placeholder="Coupon"
+                  className="flex-1 bg-transparent border-none text-[10px] p-0 h-4"
+                  disabled={!!appliedCoupon}
+                />
+                <button
+                  onClick={
+                    appliedCoupon ? handleRemoveCoupon : handleApplyCoupon
+                  }
+                  className="text-[8px] font-bold text-[#F5C842] ml-1"
+                >
+                  {appliedCoupon ? "REM" : "APP"}
+                </button>
+              </div>
             </div>
 
-            {/* Coupon Code */}
-            <div className="flex items-center gap-2">
-              <Tag size={14} style={{ color: "#4A4A5A" }} />
-              <input
-                value={couponCode}
-                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                placeholder="Coupon code"
-                className="flex-1"
-                style={{ fontSize: 13, padding: "5px 8px" }}
-                disabled={!!appliedCoupon}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleApplyCoupon();
-                }}
-              />
-              {appliedCoupon ? (
-                <button
-                  onClick={handleRemoveCoupon}
-                  className="btn-ghost py-1 px-2 text-xs"
-                  style={{ color: "#E74C3C" }}
-                  aria-label={`Remove coupon ${appliedCoupon.code}`}
-                >
-                  Remove
-                </button>
-              ) : (
-                <button
-                  onClick={handleApplyCoupon}
-                  className="btn-ghost py-1 px-2 text-xs"
-                  disabled={!couponCode.trim()}
-                  aria-label="Apply coupon code"
-                >
-                  Apply
-                </button>
-              )}
-            </div>
-            {couponError && (
-              <div className="text-xs" style={{ color: "#E74C3C" }}>
-                {couponError}
-              </div>
-            )}
-            {appliedCoupon && (
-              <div className="text-xs" style={{ color: "#2ECC71" }}>
-                ✓ Coupon "{appliedCoupon.code}" applied (
-                {appliedCoupon.discount_type === "percentage"
-                  ? `${appliedCoupon.discount_value}%`
-                  : `${curr}${appliedCoupon.discount_value}`}
-                )
-              </div>
-            )}
-
-            {/* Wallet */}
-            {walletCustomerId && walletBalance > 0 && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Wallet size={14} style={{ color: "#3498DB" }} />
-                  <span className="text-sm" style={{ color: "#9090A8" }}>
-                    Wallet: {curr}
-                    {walletBalance.toFixed(2)}
+            <div className="flex items-center justify-between py-1.5 border-y border-white/5 text-[10px] font-bold tracking-tight">
+              <div className="flex gap-2">
+                <div className="flex gap-0.5">
+                  <span className="text-[#4A4A5A]">SUB:</span>
+                  <span>
+                    {curr}
+                    {totals.subtotal.toFixed(2)}
                   </span>
                 </div>
-                <button
-                  onClick={() => setUseWallet(!useWallet)}
-                  aria-pressed={useWallet}
-                  aria-label="Use wallet balance"
-                  style={{
-                    width: 44,
-                    height: 24,
-                    borderRadius: 12,
-                    background: useWallet ? "#3498DB" : "#1E1E26",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      background: "#fff",
-                      position: "relative",
-                      left: useWallet ? 24 : 2,
-                      transition: "left 0.2s",
-                    }}
-                  />
-                </button>
+                <div className="flex gap-0.5">
+                  <span className="text-[#4A4A5A]">TAX:</span>
+                  <span>
+                    {curr}
+                    {totals.tax_amount.toFixed(2)}
+                  </span>
+                </div>
               </div>
-            )}
-
-            <div
-              className="space-y-1.5 text-sm"
-              role="status"
-              aria-live="polite"
-            >
-              <div
-                className="flex justify-between"
-                style={{ color: "#9090A8" }}
-              >
-                <span>Subtotal</span>
-                <span>
-                  {curr}
-                  {totals.subtotal.toFixed(2)}
+              <div className="flex gap-1 items-baseline">
+                <span className="text-[#4A4A5A] text-[8px] uppercase">
+                  Total:
                 </span>
-              </div>
-              <div
-                className="flex justify-between"
-                style={{ color: "#9090A8" }}
-              >
-                <span>Tax</span>
-                <span>
-                  +{curr}
-                  {totals.tax_amount.toFixed(2)}
-                </span>
-              </div>
-              {totals.discount_amount > 0 && (
-                <div
-                  className="flex justify-between"
-                  style={{ color: "#2ECC71" }}
-                >
-                  <span>Discount</span>
-                  <span>
-                    −{curr}
-                    {totals.discount_amount.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              {couponDiscount > 0 && (
-                <div
-                  className="flex justify-between"
-                  style={{ color: "#2ECC71" }}
-                >
-                  <span>Coupon</span>
-                  <span>
-                    −{curr}
-                    {couponDiscount.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              {walletDeduction > 0 && (
-                <div
-                  className="flex justify-between"
-                  style={{ color: "#3498DB" }}
-                >
-                  <span>Wallet</span>
-                  <span>
-                    −{curr}
-                    {walletDeduction.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between font-bold text-base pt-1 border-t border-border">
-                <span>Total</span>
-                <span
-                  style={{ color: "#F5C842" }}
-                  aria-label={`Total amount: ${curr}${finalTotal.toFixed(2)}`}
-                  aria-live="polite"
-                >
+                <span className="text-[15px] text-[#F5C842]">
                   {curr}
                   {finalTotal.toFixed(2)}
                 </span>
               </div>
             </div>
 
+            {/* Wallet Toggle */}
+            {walletCustomerId && walletBalance > 0 && (
+              <div className="flex items-center justify-between bg-blue-500/5 border border-blue-500/10 rounded p-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Wallet size={12} className="text-[#3498DB]" />
+                  <span className="text-[10px] text-[#9090A8]">
+                    Wallet: {curr}
+                    {walletBalance.toFixed(2)}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setUseWallet(!useWallet)}
+                  className={`w-8 h-4 rounded-full transition-colors relative ${useWallet ? "bg-[#3498DB]" : "bg-[#1E1E26]"}`}
+                >
+                  <div
+                    className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${useWallet ? "left-4.5" : "left-0.5"}`}
+                    style={{ left: useWallet ? "18px" : "2px" }}
+                  />
+                </button>
+              </div>
+            )}
+
             <div
-              className="flex gap-2 overflow-x-auto pb-1"
+              className="grid grid-cols-4 gap-1"
               role="group"
               aria-label="Payment method"
             >
-              {(["cash", "card", "upi", "split"] as const).map((m) => {
-                const icons = {
-                  cash: Banknote,
-                  card: CreditCard,
-                  upi: Smartphone,
-                  split: Split,
-                };
-                const Icon = icons[m];
-                return (
-                  <button
-                    key={m}
-                    onClick={() => {
-                      setPaymentMethod(m);
-                      if (m === "split") setShowSplitPaymentModal(true);
-                    }}
-                    aria-pressed={paymentMethod === m}
-                    className="flex-1 min-w-[70px] flex flex-col items-center gap-1 py-2 rounded-xl text-xs font-semibold uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842]"
-                    style={{
-                      background:
-                        paymentMethod === m
-                          ? "rgba(245,200,66,0.12)"
-                          : "#141418",
-                      border: `1px solid ${paymentMethod === m ? "rgba(245,200,66,0.3)" : "#1E1E26"}`,
-                      color: paymentMethod === m ? "#F5C842" : "#4A4A5A",
-                    }}
-                  >
-                    <Icon size={16} aria-hidden="true" />
-                    {m}
-                  </button>
-                );
-              })}
+              {(["cash", "card", "upi", "split"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setPaymentMethod(m);
+                    if (m === "split") setShowSplitPaymentModal(true);
+                  }}
+                  className={`py-1.5 rounded-sm text-[8px] font-bold uppercase tracking-wider border transition-all ${paymentMethod === m ? "bg-[#F5C842] border-[#F5C842] text-[#0D0D0F]" : "bg-[#141418] border-[#1E1E26] text-[#4A4A5A] hover:border-[#F5C842]/50"}`}
+                >
+                  {m}
+                </button>
+              ))}
             </div>
 
-            {paymentMethod === "upi" &&
-              settings.country === "IN" &&
-              settings.upi_id && (
-                <div className="card p-4 flex flex-col items-center gap-2 mt-2 bg-[#141418]">
-                  <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    Scan to Pay
-                  </div>
-                  <div className="p-2 bg-white rounded-lg">
-                    <QRCodeSVG
-                      value={`upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${finalTotal}&cu=INR`}
-                      size={160}
-                    />
-                  </div>
-                  <div className="text-sm font-bold text-[#F5C842]">
-                    {curr}
-                    {finalTotal.toFixed(2)}
-                  </div>
-                  <div className="text-[10px] text-gray-500">
-                    {settings.upi_id}
-                  </div>
-                </div>
-              )}
-
             {paymentMethod === "cash" && (
-              <div>
-                <div className="flex gap-2 mb-2 items-end">
-                  <label htmlFor="amount-tendered" className="sr-only">
-                    Amount tendered
-                  </label>
+              <div className="flex flex-col gap-1">
+                <div className="flex gap-2 items-center bg-[#141418] rounded border border-[#1E1E26] px-2 py-1">
+                  <span className="text-[9px] uppercase font-bold text-[#4A4A5A]">
+                    Tendered
+                  </span>
                   <input
-                    id="amount-tendered"
                     type="number"
-                    placeholder={`Amount tendered (${curr})`}
-                    value={amountPaid}
-                    onChange={(e) => {
-                      setAmountPaid(parseFloat(e.target.value) || 0);
-                      setErrors((prev) => ({ ...prev, amount: "" }));
-                    }}
-                    className={`text-sm ${errors.amount ? "error" : ""}`}
-                    style={{ flex: 1 }}
-                    aria-describedby="change-display"
+                    value={amountPaid || ""}
+                    onChange={(e) =>
+                      setAmountPaid(parseFloat(e.target.value) || 0)
+                    }
+                    className="flex-1 bg-transparent border-none text-[11px] p-0 h-4"
+                    placeholder="0.00"
                   />
                   <button
                     onClick={() => setAmountPaid(finalTotal)}
-                    className="btn-ghost py-2 px-3 text-xs"
-                    aria-label={`Copy total amount ${curr}${finalTotal.toFixed(2)} to amount tendered`}
+                    className="text-[9px] font-bold text-[#F5C842] hover:underline"
                   >
-                    Copy Total
+                    COPY
                   </button>
                 </div>
-
-                {errors.amount && (
-                  <div
-                    className="text-xs px-1 mb-2"
-                    style={{ color: "#E74C3C" }}
-                  >
-                    {errors.amount}
-                  </div>
-                )}
-
-                {amountPaid >= totals.total && (
-                  <div
-                    id="change-display"
-                    className="text-sm mt-1.5 font-semibold"
-                    style={{ color: "#2ECC71" }}
-                    role="status"
-                    aria-live="polite"
-                  >
-                    Change: {curr}
-                    {change.toFixed(2)}
+                {amountPaid > finalTotal && (
+                  <div className="flex justify-end">
+                    <span className="text-[10px] font-bold text-[#2ECC71]">
+                      Change: {curr}
+                      {change.toFixed(2)}
+                    </span>
                   </div>
                 )}
               </div>
             )}
 
-            <div className="flex gap-2">
-              {cart.length > 0 && (
-                <>
-                  <button
-                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
-                    style={{
-                      background: "transparent",
-                      border: "1px solid #2E2E3E",
-                      color: "#9090A8",
-                    }}
-                    onClick={handlePrintKOT}
-                    disabled={processing}
-                    aria-label="Print Kitchen Order Ticket"
-                  >
-                    <Printer size={14} />
-                    KOT
-                  </button>
-                  <button
-                    className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold rounded-xl transition-all"
-                    style={{
-                      background: "transparent",
-                      border: "1px solid #2E2E3E",
-                      color: "#9090A8",
-                    }}
-                    onClick={handleHoldOrder}
-                    disabled={processing}
-                    aria-label="Hold order for later"
-                  >
-                    Hold
-                  </button>
-                </>
-              )}
+            {paymentMethod === "upi" && settings.upi_id && (
+              <div className="flex flex-col items-center gap-2 p-2 bg-[#141418] rounded border border-[#1E1E26]">
+                <QRCodeSVG
+                  value={`upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${finalTotal}&cu=INR`}
+                  size={80}
+                />
+                <span className="text-[9px] text-[#4A4A5A] font-mono">
+                  {settings.upi_id}
+                </span>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2 border-t border-white/5">
               <button
-                className="btn-accent flex-[2] flex items-center justify-center gap-2 py-3 text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] focus-visible:ring-offset-2 focus-visible:ring-offset-[#141418]"
+                onClick={handlePrintKOT}
+                disabled={processing}
+                aria-label="Print Kitchen Order Ticket"
+                className="flex-1 py-2 text-[10px] font-bold uppercase bg-[#141418] border border-[#1E1E26] rounded hover:bg-[#1E1E26] transition-colors"
+              >
+                KOT
+              </button>
+              <button
+                onClick={handleHoldOrder}
+                disabled={processing}
+                aria-label="Hold order for later"
+                className="flex-1 py-2 text-[10px] font-bold uppercase bg-[#141418] border border-[#1E1E26] rounded hover:bg-[#1E1E26] transition-colors"
+              >
+                Hold
+              </button>
+              <button
                 onClick={handleCheckout}
                 disabled={
                   processing ||
                   cart.length === 0 ||
-                  (orderType === "dine_in" && !tableId) ||
-                  (paymentMethod === "cash" && (amountPaid || 0) < finalTotal)
+                  (orderType === "dine_in" && !tableId)
                 }
+                className="flex-[2] py-2 text-[11px] font-bold uppercase bg-[#F5C842] text-[#0D0D0F] rounded hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
                 data-checkout-button
-                data-testid="charge-button"
-                aria-label={
-                  processing
-                    ? "Processing order..."
-                    : `Complete order - Charge ${curr}${finalTotal.toFixed(2)}`
-                }
               >
                 {processing ? (
-                  <RefreshCw size={16} className="spin" aria-hidden="true" />
+                  <RefreshCw size={12} className="spin" />
                 ) : (
-                  <ChevronRight size={16} aria-hidden="true" />
+                  <ChevronRight size={12} />
                 )}
-                {processing
-                  ? "Processing..."
-                  : `Charge ${curr}${finalTotal.toFixed(2)}`}
+                Charge {curr}
+                {finalTotal.toFixed(2)}
               </button>
             </div>
           </div>
@@ -2662,7 +2341,10 @@ export default function POSScreen() {
               <h3 className="text-lg font-bold flex items-center gap-2">
                 <FolderOpen size={20} className="text-[#F5C842]" /> Select Table
               </h3>
-              <button onClick={() => setShowTableModal(false)} className="text-gray-400 hover:text-white">
+              <button
+                onClick={() => setShowTableModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
                 <X size={20} />
               </button>
             </div>
@@ -2679,12 +2361,14 @@ export default function POSScreen() {
                     tableId === t.id
                       ? "bg-[#F5C842]/10 border-[#F5C842] text-[#F5C842]"
                       : t.status === "occupied"
-                      ? "bg-red-500/5 border-red-500/20 text-red-500 opacity-60"
-                      : "bg-[#141418] border-[#1E1E26] text-gray-400 hover:border-[#F5C842]"
+                        ? "bg-red-500/5 border-red-500/20 text-red-500 opacity-60"
+                        : "bg-[#141418] border-[#1E1E26] text-gray-400 hover:border-[#F5C842]"
                   }`}
                 >
                   <span className="text-lg font-bold">{t.name}</span>
-                  <span className="text-[10px] uppercase font-bold opacity-60 mt-1">{t.status}</span>
+                  <span className="text-[10px] uppercase font-bold opacity-60 mt-1">
+                    {t.status}
+                  </span>
                 </button>
               ))}
             </div>

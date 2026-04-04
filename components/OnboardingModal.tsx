@@ -23,6 +23,7 @@ import {
 import { useSettingsStore, useStoresStore } from "@/lib/stores";
 import { Settings, Store as StoreType } from "@/lib/db";
 import { countryPresets, taxSystems } from "@/lib/countries";
+import { invoke } from '@tauri-apps/api/tauri';
 
 const industries = [
   { id: "food", label: "Food & Beverage", icon: ChefHat, description: "Restaurants, cafes, bakeries" },
@@ -55,6 +56,22 @@ export default function OnboardingModal() {
     logoUrl: "",
     primaryColor: "#F5C842",
   });
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const data = Array.from(new Uint8Array(arrayBuffer));
+        const filename = `logo_${Date.now()}.${file.name.split('.').pop()}`;
+        const path = await invoke<string>('save_image', { data, filename });
+        setFormData({ ...formData, logoUrl: path });
+      } catch (error) {
+        console.error('Failed to upload image:', error);
+        alert('Failed to upload image. Please try again.');
+      }
+    }
+  };
 
   useEffect(() => {
     fetchStores();
@@ -377,14 +394,17 @@ export default function OnboardingModal() {
               <div className="space-y-6 max-w-md mx-auto">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-muted-foreground flex items-center gap-2">
-                    <ImageIcon size={14} /> Logo URL
+                    <ImageIcon size={14} /> Logo
                   </label>
                   <input
-                    placeholder="https://example.com/logo.png"
-                    value={formData.logoUrl}
-                    onChange={(e) => setFormData({ ...formData, logoUrl: e.target.value })}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
                     className="w-full p-4 bg-muted border border-border rounded-xl focus:ring-2 focus:ring-[#F5C842]/50"
                   />
+                  {formData.logoUrl && (
+                    <p className="text-xs text-muted-foreground">Logo uploaded: {formData.logoUrl.split('/').pop()}</p>
+                  )}
                 </div>
                 <div className="space-y-3">
                   <label className="text-xs font-bold text-muted-foreground flex items-center gap-2">

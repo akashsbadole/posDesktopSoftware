@@ -6,7 +6,7 @@ use aes_gcm::{
 use bcrypt;
 use csv;
 use rand::Rng;
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::Path;
@@ -724,11 +724,10 @@ impl Database {
     }
 
     fn get_current_version(&self) -> Result<i32> {
-        let version: Option<i32> = self.conn.query_row(
-            "SELECT version FROM schema_version",
-            [],
-            |row| row.get(0),
-        ).optional()?;
+        let version: Option<i32> = self
+            .conn
+            .query_row("SELECT version FROM schema_version", [], |row| row.get(0))
+            .optional()?;
         Ok(version.unwrap_or(0))
     }
 
@@ -749,11 +748,23 @@ impl Database {
             self.set_version(1)?;
         }
 
-        // Future migrations:
-        // if current < 2 {
-        //     self.migration_v2()?;
-        //     self.set_version(2)?;
-        // }
+        // Migration to fix foreign key mismatches due to multi-store primary keys
+        if current < 2 {
+            self.migration_v2()?;
+            self.set_version(2)?;
+        }
+
+        // Migration to add proper composite foreign keys to order_items and product_variants
+        if current < 3 {
+            self.migration_v3()?;
+            self.set_version(3)?;
+        }
+
+        // Migration to fix products primary key (ensure it's composite)
+        if current < 4 {
+            self.migration_v4()?;
+            self.set_version(4)?;
+        }
 
         Ok(())
     }
@@ -844,20 +855,23 @@ impl Database {
                 id          TEXT PRIMARY KEY,
                 count_id    TEXT NOT NULL,
                 product_id  TEXT NOT NULL,
+                store_id    TEXT NOT NULL DEFAULT 'default',
                 expected_qty INTEGER NOT NULL,
                 actual_qty  INTEGER NOT NULL,
-                FOREIGN KEY (count_id) REFERENCES stock_counts(id) ON DELETE CASCADE
+                FOREIGN KEY (count_id) REFERENCES stock_counts(id) ON DELETE CASCADE,
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS product_variants (
                 id         TEXT PRIMARY KEY,
-                product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                product_id TEXT NOT NULL,
                 store_id   TEXT NOT NULL DEFAULT 'default',
                 name       TEXT NOT NULL,
                 value      TEXT NOT NULL,
                 sku        TEXT NOT NULL DEFAULT '',
                 price      REAL NOT NULL DEFAULT 0,
-                stock      INTEGER NOT NULL DEFAULT 0
+                stock      INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS orders (
@@ -897,7 +911,8 @@ impl Database {
                 discount_type TEXT,
                 tax          REAL NOT NULL DEFAULT 18,
                 metadata     TEXT,
-                done         INTEGER NOT NULL DEFAULT 0
+                done         INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS settings_multi (
@@ -1015,9 +1030,9 @@ impl Database {
                 product_id TEXT NOT NULL,
                 ingredient_id TEXT NOT NULL,
                 quantity REAL NOT NULL DEFAULT 1,
-                FOREIGN KEY (product_id) REFERENCES products(id),
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id),
                 FOREIGN KEY (ingredient_id) REFERENCES ingredients(id),
-                UNIQUE(product_id, ingredient_id)
+                UNIQUE(product_id, ingredient_id, store_id)
             );
 
             CREATE TABLE IF NOT EXISTS suppliers (
@@ -1327,6 +1342,178 @@ impl Database {
                 params![ing_delta, ing_id, store_id],
             )?;
         }
+        Ok(())
+    }
+
+    fn migration_v2(&self) -> Result<()> {
+        // Fix stock_count_items and recipes to use composite FKs
+        self.conn.execute_batch(
+            "
+            PRAGMA foreign_keys = OFF;
+
+            -- 1. Recreate stock_count_items
+            CREATE TABLE stock_count_items_new (
+                id          TEXT PRIMARY KEY,
+                count_id    TEXT NOT NULL,
+                product_id  TEXT NOT NULL,
+                store_id    TEXT NOT NULL DEFAULT 'default',
+                expected_qty INTEGER NOT NULL,
+                actual_qty  INTEGER NOT NULL,
+                FOREIGN KEY (count_id) REFERENCES stock_counts(id) ON DELETE CASCADE,
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id) ON DELETE CASCADE
+            );
+            INSERT INTO stock_count_items_new (id, count_id, product_id, expected_qty, actual_qty)
+            SELECT id, count_id, product_id, expected_qty, actual_qty FROM stock_count_items;
+            DROP TABLE stock_count_items;
+            ALTER TABLE stock_count_items_new RENAME TO stock_count_items;
+
+            -- 2. Recreate recipes
+            CREATE TABLE recipes_new (
+                id TEXT PRIMARY KEY,
+                store_id TEXT NOT NULL DEFAULT 'default',
+                product_id TEXT NOT NULL,
+                ingredient_id TEXT NOT NULL,
+                quantity REAL NOT NULL DEFAULT 1,
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id),
+                FOREIGN KEY (ingredient_id) REFERENCES ingredients(id),
+                UNIQUE(product_id, ingredient_id, store_id)
+            );
+            INSERT INTO recipes_new (id, store_id, product_id, ingredient_id, quantity)
+            SELECT id, store_id, product_id, ingredient_id, quantity FROM recipes;
+            DROP TABLE recipes;
+            ALTER TABLE recipes_new RENAME TO recipes;
+
+            PRAGMA foreign_keys = ON;
+            "
+        )?;
+        Ok(())
+    }
+
+    fn migration_v3(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            -- Clean up invalid order_items where product doesn't exist in the store
+            DELETE FROM order_items
+            WHERE NOT EXISTS (
+                SELECT 1 FROM products
+                WHERE products.id = order_items.product_id
+                AND products.store_id = order_items.store_id
+            );
+
+            -- Clean up invalid product_variants where product doesn't exist in the store
+            DELETE FROM product_variants
+            WHERE NOT EXISTS (
+                SELECT 1 FROM products
+                WHERE products.id = product_variants.product_id
+                AND products.store_id = product_variants.store_id
+            );
+
+            -- Add composite foreign key to order_items
+            -- Note: SQLite doesn't support ALTER TABLE ADD CONSTRAINT, so we recreate the table
+            PRAGMA foreign_keys = OFF;
+
+            -- Recreate order_items with proper foreign key
+            CREATE TABLE order_items_new (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id     TEXT NOT NULL,
+                store_id     TEXT NOT NULL DEFAULT 'default',
+                product_id   TEXT NOT NULL,
+                product_name TEXT NOT NULL,
+                price        REAL NOT NULL,
+                quantity     INTEGER NOT NULL,
+                discount     REAL NOT NULL DEFAULT 0,
+                discount_type TEXT,
+                tax          REAL NOT NULL DEFAULT 18,
+                metadata     TEXT,
+                done         INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id) ON DELETE CASCADE
+            );
+
+            INSERT INTO order_items_new (id, order_id, store_id, product_id, product_name, price, quantity, discount, discount_type, tax, metadata, done)
+            SELECT id, order_id, store_id, product_id, product_name, price, quantity, discount, discount_type, tax, metadata, done
+            FROM order_items;
+
+            DROP TABLE order_items;
+            ALTER TABLE order_items_new RENAME TO order_items;
+
+            -- Recreate product_variants with proper foreign key
+            CREATE TABLE product_variants_new (
+                id         TEXT PRIMARY KEY,
+                product_id TEXT NOT NULL,
+                store_id   TEXT NOT NULL DEFAULT 'default',
+                name       TEXT NOT NULL,
+                value      TEXT NOT NULL,
+                sku        TEXT NOT NULL DEFAULT '',
+                price      REAL NOT NULL DEFAULT 0,
+                stock      INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (product_id, store_id) REFERENCES products(id, store_id) ON DELETE CASCADE
+            );
+
+            INSERT INTO product_variants_new (id, product_id, store_id, name, value, sku, price, stock)
+            SELECT id, product_id, store_id, name, value, sku, price, stock
+            FROM product_variants;
+
+            DROP TABLE product_variants;
+            ALTER TABLE product_variants_new RENAME TO product_variants;
+
+            PRAGMA foreign_keys = ON;
+            "
+        )?;
+        Ok(())
+    }
+
+    fn migration_v4(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            PRAGMA foreign_keys = OFF;
+
+            -- Recreate products table with proper composite primary key
+            CREATE TABLE IF NOT EXISTS products_new (
+                id          TEXT NOT NULL,
+                store_id    TEXT NOT NULL DEFAULT 'default',
+                name        TEXT NOT NULL,
+                price       REAL NOT NULL DEFAULT 0,
+                cost_price  REAL NOT NULL DEFAULT 0,
+                wholesale_price REAL NOT NULL DEFAULT 0,
+                category    TEXT NOT NULL DEFAULT 'General',
+                subcategory TEXT,
+                stock       INTEGER NOT NULL DEFAULT 0,
+                barcode     TEXT NOT NULL DEFAULT '',
+                sku         TEXT,
+                description TEXT,
+                tax         REAL NOT NULL DEFAULT 18,
+                status      TEXT NOT NULL DEFAULT 'active',
+                tags        TEXT NOT NULL DEFAULT '',
+                is_digital  INTEGER NOT NULL DEFAULT 0,
+                is_favorite INTEGER NOT NULL DEFAULT 0,
+                image_url   TEXT NOT NULL DEFAULT '',
+                metadata    TEXT,
+                base_unit   TEXT,
+                conversion_factor REAL,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (id, store_id)
+            );
+
+            INSERT OR IGNORE INTO products_new (
+                id, store_id, name, price, cost_price, wholesale_price, 
+                category, subcategory, stock, barcode, sku, description, 
+                tax, status, tags, is_digital, is_favorite, image_url, 
+                metadata, base_unit, conversion_factor, created_at
+            )
+            SELECT 
+                id, coalesce(store_id, 'default'), name, price, cost_price, wholesale_price,
+                category, subcategory, stock, barcode, sku, description,
+                tax, status, tags, is_digital, is_favorite, image_url,
+                metadata, base_unit, conversion_factor, created_at
+            FROM products;
+
+            DROP TABLE products;
+            ALTER TABLE products_new RENAME TO products;
+
+            PRAGMA foreign_keys = ON;
+            "
+        )?;
         Ok(())
     }
 
@@ -4583,6 +4770,19 @@ impl Database {
 
     pub fn save_order(&self, o: &Order, store_id: &str) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
+
+        // Validate that all products exist in the store before saving
+        for item in &o.items {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM products WHERE id = ?1 AND store_id = ?2)",
+                params![item.product_id, store_id],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                return Err(rusqlite::Error::QueryReturnedNoRows);
+            }
+        }
+
         let metadata_str = o
             .metadata
             .as_ref()
