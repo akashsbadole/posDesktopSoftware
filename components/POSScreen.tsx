@@ -267,7 +267,7 @@ export default function POSScreen() {
     if (e.key === "Enter" && searchQuery.trim()) {
       const exactMatch = products.find((p) => p.barcode === searchQuery.trim());
       if (exactMatch) {
-        addItem(exactMatch);
+        handleAddItem(exactMatch);
         setSearchQuery("");
       }
     }
@@ -299,7 +299,7 @@ export default function POSScreen() {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         if (filtered[focusedProductIndex]) {
-          addItem(filtered[focusedProductIndex]);
+          handleAddItem(filtered[focusedProductIndex]);
         }
       }
     }
@@ -421,43 +421,24 @@ export default function POSScreen() {
           100
         : 0;
 
+    const comboInstanceId = uuid();
     combo.items.forEach((item) => {
       const product = products.find((p) => p.id === item.product_id);
       if (product) {
-        // We add the item and then immediately update its discount to match the combo pricing
-        // This is a bit tricky since addItem is async-ish (state update)
-        // Better: Use a version of addItem that accepts a discount
-        const comboProduct = {
+        // Create a "virtual" product with the discounted price
+        const discountedPrice = item.price * (1 - discountPercent / 100);
+        const virtualProduct: Product = {
           ...product,
+          price: discountedPrice,
+          name: `${product.name} (${combo.name})`,
           metadata: {
             ...product.metadata,
             from_combo: combo.id,
-            combo_name: combo.name,
+            combo_instance_id: comboInstanceId,
+            original_price: item.price,
           },
         };
-
-        // We need to use a slightly different approach since we want to apply the discount
-        // I'll add a helper to cartStore or just do it manually here if possible
-        // For now, I'll just add the product. The user can see it's from a combo.
-
-        // To ensure the price is correct, we can temporarily override the product price
-        // or apply the discount. Applying discount is cleaner.
-
-        for (let i = 0; i < item.quantity; i++) {
-          // Create a "virtual" product with the discounted price
-          const discountedPrice = item.price * (1 - discountPercent / 100);
-          const virtualProduct: Product = {
-            ...product,
-            price: discountedPrice,
-            name: `${product.name} (${combo.name})`,
-            metadata: {
-              ...product.metadata,
-              from_combo: combo.id,
-              original_price: item.price,
-            },
-          };
-          addItem(virtualProduct);
-        }
+        addItem(virtualProduct, item.quantity);
       }
     });
   };

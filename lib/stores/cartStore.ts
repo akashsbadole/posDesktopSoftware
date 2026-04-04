@@ -14,6 +14,7 @@ export interface CartItem {
   discount: number;
   discount_type: 'percentage' | 'fixed';
   override_price?: number;
+  retail_price: number; // Keep track of original retail price for tier switching
 }
 
 export interface PaymentEntry {
@@ -114,29 +115,49 @@ export const useCartStore = create<CartState>((set, get) => ({
     set((state) => {
       const tier = state.priceTier;
       let finalProduct = { ...product };
+      const retail_price = product.price;
 
       // If we're in wholesale tier, use wholesale price
       if (tier === 'wholesale' && product.wholesale_price) {
         finalProduct.price = product.wholesale_price;
       }
 
+      // Consistent grouping criteria: id, metadata, price, and name
       const existing = state.items.find((i) =>
         i.product.id === finalProduct.id &&
         JSON.stringify(i.product.metadata) === JSON.stringify(finalProduct.metadata) &&
         i.product.price === finalProduct.price &&
-        i.product.name === finalProduct.name
+        i.product.name === finalProduct.name &&
+        !i.override_price // Don't group if price was overridden
       );
+
       if (existing) {
         return {
           items: state.items.map((i) =>
-            (i.product.id === finalProduct.id && JSON.stringify(i.product.metadata) === JSON.stringify(finalProduct.metadata))
+            (i.product.id === finalProduct.id &&
+             JSON.stringify(i.product.metadata) === JSON.stringify(finalProduct.metadata) &&
+             i.product.price === finalProduct.price &&
+             i.product.name === finalProduct.name &&
+             !i.override_price)
               ? { ...i, quantity: i.quantity + quantity }
               : i
           ),
         };
       }
       const cartItemId = uuid();
-      return { items: [...state.items, { cartItemId, product: finalProduct, quantity, discount: 0, discount_type: 'percentage' }] };
+      return {
+        items: [
+          ...state.items,
+          {
+            cartItemId,
+            product: finalProduct,
+            quantity,
+            discount: 0,
+            discount_type: 'percentage',
+            retail_price
+          }
+        ]
+      };
     });
   },
 
@@ -195,15 +216,16 @@ export const useCartStore = create<CartState>((set, get) => ({
       priceTier,
       items: state.items.map(item => {
         const product = item.product;
-        let newPrice = product.price;
+        let newPrice = item.retail_price;
         if (priceTier === 'wholesale') {
-          newPrice = product.wholesale_price || product.price;
-        } else {
-          // This is a bit tricky since we might have overridden the price
-          // We'd need to fetch the original retail price or store both
-          // For now, we'll assume product.price was the retail price
+          newPrice = product.wholesale_price || item.retail_price;
         }
-        return { ...item, product: { ...product, price: newPrice } };
+        // When switching tiers, we clear override_price to match the tier price
+        return {
+          ...item,
+          product: { ...product, price: newPrice },
+          override_price: undefined
+        };
       })
     }));
   },

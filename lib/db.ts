@@ -1676,6 +1676,10 @@ async function browserFallback<T>(
         LS.products,
         seedProducts("default").concat(seedProducts("retail1")),
       );
+      lsSet("pos_product_variants", [
+        { id: "v1", product_id: "p1_default", store_id: "default", name: "Size", value: "Large", sku: "COF-L", price: 150, stock: 50 },
+        { id: "v2", product_id: "p1_default", store_id: "default", name: "Size", value: "Small", sku: "COF-S", price: 100, stock: 50 },
+      ]);
       lsSet(LS.settings, {
         default: { ...defaultSettings(), onboarding_completed: true },
         retail1: { ...defaultSettings(), onboarding_completed: true },
