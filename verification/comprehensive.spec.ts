@@ -147,7 +147,13 @@ test.describe('Comprehensive POS Features Verification', () => {
       { name: 'Customers', heading: 'Customer CRM' },
       { name: 'Expenses', heading: 'Expenses' },
       { name: 'Ingredients', heading: 'Ingredients & Stock' },
+      { name: 'Schedule', heading: 'Staff Scheduling' },
+      { name: 'Day End', heading: 'Day-End Reconciliation' },
+      { name: 'Suppliers', heading: 'Suppliers' },
+      { name: 'PO', heading: 'Purchase Orders' },
+      { name: 'Wallet', heading: 'Customer Wallet' },
       { name: 'Coupons', heading: 'Coupons & Offers' },
+      { name: 'Inventory', heading: 'Inventory Management' },
       { name: 'Alerts', heading: 'Inventory Alerts' },
       { name: 'Refunds', heading: 'Refund Requests' },
       { name: 'Staff', heading: 'Staff Attendance' },
@@ -156,10 +162,7 @@ test.describe('Comprehensive POS Features Verification', () => {
       { name: 'Logs', heading: 'Activity Logs' },
       { name: 'Stores', heading: 'Stores' },
       { name: 'Settings', heading: 'Settings' },
-      { name: 'Training', heading: 'Training Guide' },
-      { name: 'Schedule', heading: 'Staff Scheduling' },
-      { name: 'Day End', heading: 'Day-End Reconciliation' },
-      { name: 'Support Us', heading: 'Support Us' },
+      { name: 'Support', heading: 'Support' },
     ];
 
     const allItems = await page.getByRole('menuitem').allInnerTexts();
@@ -167,7 +170,7 @@ test.describe('Comprehensive POS Features Verification', () => {
 
     for (const item of navItems) {
       console.log(`Navigating to ${item.name}`);
-      const btn = page.getByRole('menuitem').filter({ hasText: new RegExp(item.name, 'i') });
+      const btn = page.getByRole('menuitem', { name: item.name, exact: true });
 
       await btn.scrollIntoViewIfNeeded();
       await btn.click();

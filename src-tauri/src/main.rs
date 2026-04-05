@@ -61,6 +61,11 @@ fn is_premium_enabled() -> bool {
         .unwrap_or(false)
 }
 
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 // ─── Product Commands ────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1500,6 +1505,7 @@ fn main() {
             reset_database,
             reset_and_seed_database,
             is_premium_enabled,
+            get_app_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

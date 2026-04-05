@@ -30,9 +30,8 @@ import DayEndReconciliation from "@/components/DayEndReconciliation";
 import RefundRequestsScreen from "@/components/RefundRequestsScreen";
 import InventoryAlertsScreen from "@/components/InventoryAlertsScreen";
 import InventoryManagementScreen from "@/components/InventoryManagementScreen";
-import ContactTraining from "@/components/ContactTraining";
+import SupportScreen from "@/components/SupportScreen";
 import StoresScreen from "@/components/StoresScreen";
-import DonateScreen from "@/components/DonateScreen";
 import OnboardingModal from "@/components/OnboardingModal";
 import { dbGetPendingOrdersCount } from "@/lib/db";
 import { useAuthStore, useSettingsStore } from "@/lib/stores";
@@ -62,9 +61,8 @@ export type Screen =
   | "refund_requests"
   | "inventory_alerts"
   | "inventory"
-  | "contact_training"
-  | "stores"
-  | "donate";
+  | "support"
+  | "stores";
 
 const adminScreens: Screen[] = [
   "settings",
@@ -303,9 +301,8 @@ export default function Home() {
               {screen === "refund_requests" && <RefundRequestsScreen />}
               {screen === "inventory_alerts" && <InventoryAlertsScreen />}
               {screen === "inventory" && <InventoryManagementScreen />}
-              {screen === "contact_training" && <ContactTraining />}
+              {screen === "support" && <SupportScreen />}
               {screen === "stores" && <StoresScreen />}
-              {screen === "donate" && <DonateScreen />}
             </ErrorBoundary>
           </main>
         </div>
