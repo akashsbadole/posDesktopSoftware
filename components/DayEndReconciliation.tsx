@@ -50,9 +50,9 @@ export default function DayEndReconciliationScreen() {
       dbGetSettings(activeStoreId),
       getSalesByPaymentMethod(selectedDate, activeStoreId),
     ]);
-    setReconciliation(rec as any);
+    setReconciliation(rec);
     setSummary(sum);
-    setExpenses(exp as any);
+    setExpenses(exp);
     setPaymentBreakdown(payments);
     if (rec) {
       setFormData({

@@ -777,7 +777,7 @@ export default function ProductsScreen() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Status</label>
-                <select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value as any })}>
+                <select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value as 'active' | 'inactive' | 'discontinued' })}>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                   <option value="discontinued">Discontinued</option>

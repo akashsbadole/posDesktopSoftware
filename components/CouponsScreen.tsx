@@ -44,7 +44,7 @@ export default function CouponsScreen() {
 
   const loadCoupons = async () => {
     const data = await getCoupons(activeStoreId);
-    setCoupons(data as any);
+    setCoupons(data);
   };
 
   const handleSave = async () => {

@@ -40,10 +40,12 @@ import { v4 as uuid } from 'uuid';
 type Tab = 'overview' | 'adjustments' | 'transfers' | 'audit' | 'counts';
 
 export default function InventoryManagementScreen() {
-  const { activeStoreId } = useSettingsStore();
+  const { activeStoreId, settings } = useSettingsStore();
   const { user } = useAuthStore();
   const { stores } = useStoresStore();
   const { products, fetchProducts } = useProductsStore();
+
+  const curr = settings?.currency_symbol ?? "₹";
 
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [searchQuery, setSearchQuery] = useState("");
@@ -150,7 +152,7 @@ export default function InventoryManagementScreen() {
                   <div className="flex items-center gap-1">
                     <select
                       value={valuationMethod}
-                      onChange={(e) => setValuationMethod(e.target.value as any)}
+                      onChange={(e) => setValuationMethod(e.target.value as 'AVG' | 'FIFO' | 'LIFO')}
                       className="bg-transparent text-[10px] font-bold uppercase border border-border rounded px-1"
                     >
                       <option value="AVG">AVG</option>
@@ -160,7 +162,7 @@ export default function InventoryManagementScreen() {
                   </div>
                 </div>
                 <div className="text-2xl font-bold text-[#F5C842]">
-                  ${valuation[valuationMethod].toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  {curr}{valuation[valuationMethod].toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </div>
               </div>
 
@@ -245,10 +247,10 @@ export default function InventoryManagementScreen() {
                             </div>
                          </td>
                          <td className="p-4 text-right font-medium text-muted-foreground">
-                            ${product.cost_price.toFixed(2)}
+                            {curr}{product.cost_price.toFixed(2)}
                          </td>
                          <td className="p-4 text-right font-bold">
-                            ${(product.stock * product.cost_price).toFixed(2)}
+                            {curr}{(product.stock * product.cost_price).toFixed(2)}
                          </td>
                          <td className="p-4 text-right">
                             <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

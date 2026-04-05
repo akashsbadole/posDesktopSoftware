@@ -481,6 +481,7 @@ pub struct ActivityLog {
     pub previous_data: Option<String>,
     pub new_data: Option<String>,
     pub reason: String,
+    #[serde(rename = "userId")]
     pub user_id: String,
     pub user_name: String,
     pub created_at: String,
@@ -500,6 +501,9 @@ pub struct KdsItem {
     pub product_name: String,
     pub quantity: i64,
     pub done: bool,
+    pub status: String,
+    pub started_at: Option<String>,
+    pub done_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -677,12 +681,12 @@ pub struct GstReport {
 pub struct ActivityLogEntry {
     pub id: String,
     pub store_id: String,
+    pub order_id: String,
     pub action: String,
-    pub entity_type: Option<String>,
-    pub entity_id: Option<String>,
-    pub previous_value: Option<String>,
-    pub new_value: Option<String>,
-    pub reason: Option<String>,
+    pub previous_data: Option<String>,
+    pub new_data: Option<String>,
+    pub reason: String,
+    #[serde(rename = "userId")]
     pub user_id: String,
     pub user_name: String,
     pub created_at: String,
@@ -776,19 +780,11 @@ impl Database {
             self.set_version(3)?;
         }
 
-        // Migration to fix products primary key (ensure it's composite)
-        if current < 4 {
-            self.migration_v4()?;
-            self.set_version(4)?;
-        }
-
-        // Example for future migrations:
-        /*
+        // Migration to add KDS status and timestamps to order_items
         if current < 5 {
             self.migration_v5()?;
             self.set_version(5)?;
         }
-        */
 
         Ok(())
     }
@@ -1536,8 +1532,22 @@ impl Database {
             ALTER TABLE products_new RENAME TO products;
 
             PRAGMA foreign_keys = ON;
-            "
+            ",
         )?;
+        Ok(())
+    }
+
+    fn migration_v5(&self) -> Result<()> {
+        // Add status and timestamps to order_items for KDS
+        let _ = self
+            .conn
+            .execute("ALTER TABLE order_items ADD COLUMN status TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE order_items ADD COLUMN started_at TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE order_items ADD COLUMN done_at TEXT", []);
         Ok(())
     }
 
@@ -3783,10 +3793,12 @@ impl Database {
         // Seed activity logs - expanded with comprehensive audit trail
         let activity_logs = vec![
             (
+                "default",
                 "log1",
                 "create",
                 "order",
                 "order1",
+                None::<String>,
                 None::<String>,
                 "New dine-in order created",
                 "cashier",
@@ -3794,10 +3806,12 @@ impl Database {
                 "2026-04-01T12:00:00Z",
             ),
             (
+                "default",
                 "log2",
                 "create",
                 "product",
                 "prod1",
+                None::<String>,
                 None::<String>,
                 "Added Margherita Pizza product",
                 "admin",
@@ -3805,10 +3819,12 @@ impl Database {
                 "2026-04-01T10:00:00Z",
             ),
             (
+                "default",
                 "log3",
                 "update",
                 "customer",
                 "cust1",
+                None::<String>,
                 None::<String>,
                 "Updated customer contact information",
                 "cashier",
@@ -3816,10 +3832,12 @@ impl Database {
                 "2026-04-01T11:00:00Z",
             ),
             (
+                "default",
                 "log4",
                 "create",
                 "order",
                 "order2",
+                None::<String>,
                 None::<String>,
                 "Takeaway order placed",
                 "cashier",
@@ -3827,10 +3845,12 @@ impl Database {
                 "2026-04-01T13:30:00Z",
             ),
             (
+                "default",
                 "log5",
                 "update",
                 "product",
                 "prod3",
+                None::<String>,
                 None::<String>,
                 "Updated Coca Cola stock levels",
                 "admin",
@@ -3838,10 +3858,12 @@ impl Database {
                 "2026-04-01T09:00:00Z",
             ),
             (
+                "default",
                 "log6",
                 "create",
                 "customer",
                 "cust5",
+                None::<String>,
                 None::<String>,
                 "New customer registration",
                 "cashier",
@@ -3849,32 +3871,25 @@ impl Database {
                 "2026-04-01T14:00:00Z",
             ),
             (
+                "default",
                 "log7",
                 "update",
                 "order",
                 "order3",
                 None::<String>,
+                None::<String>,
                 "Order status changed to completed",
                 "cashier",
                 "Cashier",
-                "2026-04-01T15:30:00Z",
+                "2026-04-01T15:00:00Z",
             ),
             (
+                "default",
                 "log8",
-                "create",
-                "coupon",
-                "coupon4",
-                None::<String>,
-                "Created new loyalty discount coupon",
-                "admin",
-                "Administrator",
-                "2026-03-28T10:00:00Z",
-            ),
-            (
-                "log9",
                 "delete",
                 "order",
                 "order_draft",
+                None::<String>,
                 None::<String>,
                 "Cancelled draft order",
                 "cashier",
@@ -3882,10 +3897,12 @@ impl Database {
                 "2026-04-02T11:00:00Z",
             ),
             (
-                "log10",
+                "default",
+                "log9",
                 "update",
                 "settings",
                 "tax_rate",
+                None::<String>,
                 None::<String>,
                 "Updated GST tax rate to 18%",
                 "admin",
@@ -3895,28 +3912,23 @@ impl Database {
         ];
 
         for (
+            store_id,
             id,
             action,
             entity_type,
             entity_id,
             previous_value,
             new_value,
+            reason,
             user_id,
             user_name,
             created_at,
         ) in activity_logs
         {
-            if let Some(prev) = previous_value {
-                self.conn.execute(
-                    "INSERT INTO activity_logs (id, action, entity_type, entity_id, previous_data, new_data, reason, user_id, user_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    params![id, action, entity_type, entity_id, prev, new_value, new_value, user_id, user_name, created_at],
-                )?;
-            } else {
-                self.conn.execute(
-                    "INSERT INTO activity_logs (id, action, entity_type, entity_id, new_data, reason, user_id, user_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    params![id, action, entity_type, entity_id, new_value, new_value, user_id, user_name, created_at],
-                )?;
-            }
+            self.conn.execute(
+                "INSERT INTO activity_logs (id, store_id, entity_type, entity_id, action, previous_data, new_data, reason, user_id, user_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                params![id, store_id, entity_type, entity_id, action, previous_value, new_value, reason, user_id, user_name, created_at],
+            )?;
         }
 
         // Seed wallet transactions - expanded with various transaction types
@@ -4242,14 +4254,19 @@ impl Database {
 
         for order in &mut orders {
             let mut item_stmt = self.conn.prepare(
-                "SELECT product_name, quantity, done FROM order_items WHERE order_id = ?1",
+                "SELECT product_name, quantity, done, status, started_at, done_at FROM order_items WHERE order_id = ?1",
             )?;
             order.items = item_stmt
                 .query_map(params![order.id], |row| {
                     Ok(KdsItem {
                         product_name: row.get(0)?,
                         quantity: row.get(1)?,
-                        done: row.get::<_, i32>(2)? == 1,
+                        done: row.get::<usize, i32>(2)? == 1,
+                        status: row
+                            .get::<usize, Option<String>>(3)?
+                            .unwrap_or_else(|| "pending".to_string()),
+                        started_at: row.get::<usize, Option<String>>(4)?,
+                        done_at: row.get::<usize, Option<String>>(5)?,
                     })
                 })?
                 .collect::<Result<Vec<_>>>()?;
@@ -4271,10 +4288,60 @@ impl Database {
 
         if let Some(item_id) = items.get(item_index) {
             self.conn.execute(
-                "UPDATE order_items SET done = 1 WHERE id = ?1",
+                "UPDATE order_items SET done = 1, status = 'done', done_at = datetime('now') WHERE id = ?1",
                 params![item_id],
             )?;
         }
+        Ok(())
+    }
+
+    pub fn start_preparing_item(
+        &self,
+        order_id: &str,
+        item_index: usize,
+        _store_id: &str,
+    ) -> Result<()> {
+        let items: Vec<i64> = self
+            .conn
+            .prepare("SELECT id FROM order_items WHERE order_id = ?1 ORDER BY id")?
+            .query_map(params![order_id], |r| r.get(0))?
+            .collect::<Result<Vec<_>>>()?;
+
+        if let Some(item_id) = items.get(item_index) {
+            self.conn.execute(
+                "UPDATE order_items SET status = 'preparing', started_at = datetime('now') WHERE id = ?1",
+                params![item_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn cancel_kds_item(
+        &self,
+        order_id: &str,
+        item_index: usize,
+        _store_id: &str,
+    ) -> Result<()> {
+        let items: Vec<i64> = self
+            .conn
+            .prepare("SELECT id FROM order_items WHERE order_id = ?1 ORDER BY id")?
+            .query_map(params![order_id], |r| r.get(0))?
+            .collect::<Result<Vec<_>>>()?;
+
+        if let Some(item_id) = items.get(item_index) {
+            self.conn.execute(
+                "UPDATE order_items SET status = 'cancelled', done = 0 WHERE id = ?1",
+                params![item_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn recall_kds_order(&self, order_id: &str, _store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE order_items SET status = 'pending', done = 0, started_at = NULL, done_at = NULL WHERE order_id = ?1",
+            params![order_id],
+        )?;
         Ok(())
     }
 
@@ -4728,46 +4795,106 @@ impl Database {
         limit: Option<i64>,
         offset: Option<i64>,
     ) -> Result<Vec<Order>> {
-        let limit_val = limit.unwrap_or(500);
+        self.get_orders_by_date_range(store_id, None, None, limit, offset)
+    }
+
+    pub fn get_orders_by_date_range(
+        &self,
+        store_id: &str,
+        start_date: Option<&str>,
+        end_date: Option<&str>,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> Result<Vec<Order>> {
+        let limit_val = limit.unwrap_or(5000);
         let offset_val = offset.unwrap_or(0);
-        let mut stmt = self.conn.prepare(
-            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at
-             FROM orders WHERE store_id=?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
-        )?;
 
-        let mut orders: Vec<Order> = stmt
-            .query_map(params![store_id, limit_val, offset_val], |row| {
-                let metadata_str: Option<String> = row.get(18)?;
-                let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
-                Ok(Order {
-                    id: row.get(0)?,
-                    store_id: row.get(1)?,
-                    items: vec![],
-                    subtotal: row.get(2)?,
-                    tax_amount: row.get(3)?,
-                    discount_amount: row.get(4)?,
-                    total: row.get(5)?,
-                    payment_method: row.get(6)?,
-                    amount_paid: row.get(7)?,
-                    change_amount: row.get(8)?,
-                    customer_name: row.get(9)?,
-                    status: row.get(10)?,
-                    order_type: row.get(11)?,
-                    delivery_status: row.get(12)?,
-                    delivery_address: row.get(13)?,
-                    delivery_phone: row.get(14)?,
-                    user_id: row.get(15)?,
-                    user_name: row.get(16)?,
-                    synced: Some(row.get::<_, i32>(17)? == 1),
-                    metadata,
-                    tip_amount: row.get(19)?,
-                    discount_type: row.get(20)?,
-                    created_at: row.get(21)?,
-                })
-            })?
-            .collect::<Result<Vec<_>>>()?;
+        match (start_date, end_date) {
+            (Some(start), Some(end)) => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at
+                     FROM orders WHERE store_id=?1 AND DATE(created_at) BETWEEN ?2 AND ?3 ORDER BY created_at DESC LIMIT ?4 OFFSET ?5"
+                )?;
+                let orders = stmt
+                    .query_map(
+                        params![store_id, start, end, limit_val, offset_val],
+                        |row| {
+                            let metadata_str: Option<String> = row.get(18)?;
+                            let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
+                            Ok(Order {
+                                id: row.get(0)?,
+                                store_id: row.get(1)?,
+                                items: vec![],
+                                subtotal: row.get(2)?,
+                                tax_amount: row.get(3)?,
+                                discount_amount: row.get(4)?,
+                                total: row.get(5)?,
+                                payment_method: row.get(6)?,
+                                amount_paid: row.get(7)?,
+                                change_amount: row.get(8)?,
+                                customer_name: row.get(9)?,
+                                status: row.get(10)?,
+                                order_type: row.get(11)?,
+                                delivery_status: row.get(12)?,
+                                delivery_address: row.get(13)?,
+                                delivery_phone: row.get(14)?,
+                                user_id: row.get(15)?,
+                                user_name: row.get(16)?,
+                                synced: Some(row.get::<_, i32>(17)? == 1),
+                                metadata,
+                                tip_amount: row.get(19)?,
+                                discount_type: row.get(20)?,
+                                created_at: row.get(21)?,
+                            })
+                        },
+                    )?
+                    .collect::<Result<Vec<_>>>()?;
+                self.load_order_items_for_orders(&orders)
+            }
+            _ => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at
+                     FROM orders WHERE store_id=?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
+                )?;
+                let orders = stmt
+                    .query_map(params![store_id, limit_val, offset_val], |row| {
+                        let metadata_str: Option<String> = row.get(18)?;
+                        let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
+                        Ok(Order {
+                            id: row.get(0)?,
+                            store_id: row.get(1)?,
+                            items: vec![],
+                            subtotal: row.get(2)?,
+                            tax_amount: row.get(3)?,
+                            discount_amount: row.get(4)?,
+                            total: row.get(5)?,
+                            payment_method: row.get(6)?,
+                            amount_paid: row.get(7)?,
+                            change_amount: row.get(8)?,
+                            customer_name: row.get(9)?,
+                            status: row.get(10)?,
+                            order_type: row.get(11)?,
+                            delivery_status: row.get(12)?,
+                            delivery_address: row.get(13)?,
+                            delivery_phone: row.get(14)?,
+                            user_id: row.get(15)?,
+                            user_name: row.get(16)?,
+                            synced: Some(row.get::<_, i32>(17)? == 1),
+                            metadata,
+                            tip_amount: row.get(19)?,
+                            discount_type: row.get(20)?,
+                            created_at: row.get(21)?,
+                        })
+                    })?
+                    .collect::<Result<Vec<_>>>()?;
+                self.load_order_items_for_orders(&orders)
+            }
+        }
+    }
 
-        for order in &mut orders {
+    fn load_order_items_for_orders(&self, orders: &[Order]) -> Result<Vec<Order>> {
+        let mut result = orders.to_vec();
+        for order in &mut result {
             let mut item_stmt = self.conn.prepare(
                 "SELECT product_id, product_name, price, quantity, discount, tax, metadata, discount_type FROM order_items WHERE order_id=?1"
             )?;
@@ -4788,8 +4915,7 @@ impl Database {
                 })?
                 .collect::<Result<Vec<_>>>()?;
         }
-
-        Ok(orders)
+        Ok(result)
     }
 
     pub fn save_order(&self, o: &Order, store_id: &str) -> Result<()> {
@@ -6442,6 +6568,20 @@ impl Database {
         Ok(())
     }
 
+    pub fn delete_purchase_order(&self, id: &str, store_id: &str) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "DELETE FROM purchase_order_items WHERE po_id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
+        tx.execute(
+            "DELETE FROM purchase_orders WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn get_shifts(&self, date: &str, store_id: &str) -> Result<Vec<Shift>> {
         let mut stmt = self.conn.prepare("SELECT id, store_id, staff_id, staff_name, date, start_time, end_time, role, notes FROM shifts WHERE store_id=?1 AND date=?2")?;
         let items = stmt
@@ -6600,38 +6740,344 @@ impl Database {
         limit: i32,
         store_id: &str,
     ) -> Result<Vec<ActivityLogEntry>> {
-        let mut stmt = self.conn.prepare("SELECT id, store_id, action, user_id, user_name, created_at FROM activity_logs WHERE store_id=?1 AND DATE(created_at) BETWEEN ?2 AND ?3 ORDER BY created_at DESC LIMIT ?4")?;
+        let mut stmt = self.conn.prepare("SELECT id, store_id, order_id, action, previous_data, new_data, reason, user_id, user_name, created_at FROM activity_logs WHERE store_id=?1 AND DATE(created_at) BETWEEN ?2 AND ?3 ORDER BY created_at DESC LIMIT ?4")?;
         let items = stmt
             .query_map(params![store_id, start, end, limit], |row| {
                 Ok(ActivityLogEntry {
                     id: row.get(0)?,
                     store_id: row.get(1)?,
-                    action: row.get(2)?,
-                    entity_type: None,
-                    entity_id: None,
-                    previous_value: None,
-                    new_value: None,
-                    reason: None,
-                    user_id: row.get(3)?,
-                    user_name: row.get(4)?,
-                    created_at: row.get(5)?,
+                    order_id: row.get(2)?,
+                    action: row.get(3)?,
+                    previous_data: row.get(4)?,
+                    new_data: row.get(5)?,
+                    reason: row.get(6)?,
+                    user_id: row.get(7)?,
+                    user_name: row.get(8)?,
+                    created_at: row.get(9)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
         Ok(items)
     }
 
-    pub fn export_to_tally(&self, _start: &str, _end: &str, _store_id: &str) -> Result<String> {
-        Ok("Tally XML export placeholder".into())
+    pub fn export_to_tally(&self, start: &str, end: &str, store_id: &str) -> Result<String> {
+        let settings = self.get_settings(store_id)?;
+        let orders = self.get_orders_by_date_range(store_id, Some(start), Some(end), None, None)?;
+
+        let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        xml.push_str("<TALLYEXPORT>\n");
+        xml.push_str("  <HEADER>\n");
+        xml.push_str(&format!("    <COMPANY>{}</COMPANY>\n", settings.store_name));
+        xml.push_str(&format!("    <DATEFROM>{}</DATEFROM>\n", start));
+        xml.push_str(&format!("    <DATETO>{}</DATETO>\n", end));
+        xml.push_str(&format!("    <CURRENCY>{}</CURRENCY>\n", settings.currency));
+        xml.push_str(&format!(
+            "    <TAXRATE>{:.2}</TAXRATE>\n",
+            settings.tax_rate
+        ));
+        xml.push_str("  </HEADER>\n");
+        xml.push_str("  <LEDGERS>\n");
+        xml.push_str("    <LEDGER>\n");
+        xml.push_str("      <NAME>Sales</NAME>\n");
+        xml.push_str("      <TYPE>Revenue</TYPE>\n");
+        xml.push_str("    </LEDGER>\n");
+        xml.push_str("    <LEDGER>\n");
+        xml.push_str("      <NAME>Sales Tax</NAME>\n");
+        xml.push_str("      <TYPE>Duties &amp; Taxes</TYPE>\n");
+        xml.push_str("    </LEDGER>\n");
+        xml.push_str("    <LEDGER>\n");
+        xml.push_str("      <NAME>Discount</NAME>\n");
+        xml.push_str("      <TYPE>Indirect Income</TYPE>\n");
+        xml.push_str("    </LEDGER>\n");
+        xml.push_str("  </LEDGERS>\n");
+        xml.push_str("  <VOUCHERS>\n");
+
+        for order in orders {
+            if order.status == "cancelled" || order.status == "refunded" {
+                continue;
+            }
+            let date = order
+                .created_at
+                .split('T')
+                .next()
+                .unwrap_or(&order.created_at);
+            let time = order
+                .created_at
+                .split('T')
+                .nth(1)
+                .unwrap_or("")
+                .split('.')
+                .next()
+                .unwrap_or("");
+
+            xml.push_str("    <VOUCHER>\n");
+            xml.push_str(&format!("      <DATE>{}</DATE>\n", date));
+            xml.push_str(&format!("      <TIME>{}</TIME>\n", time));
+            xml.push_str("      <VOUCHERTYPE>Sales</VOUCHERTYPE>\n");
+            xml.push_str(&format!(
+                "      <VOUCHERNUMBER>{}</VOUCHERNUMBER>\n",
+                order.id
+            ));
+            xml.push_str(&format!(
+                "      <PARTYNAME>{}</PARTYNAME>\n",
+                Self::escape_xml(&order.customer_name)
+            ));
+            if !order.delivery_address.is_empty() {
+                xml.push_str(&format!(
+                    "      <ADDRESS>{}</ADDRESS>\n",
+                    Self::escape_xml(&order.delivery_address)
+                ));
+            }
+            if !order.delivery_phone.is_empty() {
+                xml.push_str(&format!("      <PHONE>{}</PHONE>\n", order.delivery_phone));
+            }
+            xml.push_str(&format!(
+                "      <USER>{}</USER>\n",
+                order.user_name.as_deref().unwrap_or("")
+            ));
+            xml.push_str(&format!(
+                "      <ORDERTYPE>{}</ORDERTYPE>\n",
+                order.order_type
+            ));
+            xml.push_str("      <ALLLEDGERENTRIES>\n");
+            xml.push_str("        <LEDGERENTRY>\n");
+            xml.push_str("          <LEDGERNAME>Sales</LEDGERNAME>\n");
+            xml.push_str(&format!(
+                "          <AMOUNT>{:.2}</AMOUNT>\n",
+                order.subtotal
+            ));
+            xml.push_str("        </LEDGERENTRY>\n");
+            if order.tax_amount > 0.0 {
+                xml.push_str("        <LEDGERENTRY>\n");
+                xml.push_str("          <LEDGERNAME>Sales Tax</LEDGERNAME>\n");
+                xml.push_str(&format!(
+                    "          <AMOUNT>{:.2}</AMOUNT>\n",
+                    order.tax_amount
+                ));
+                xml.push_str("        </LEDGERENTRY>\n");
+            }
+            if order.discount_amount > 0.0 {
+                xml.push_str("        <LEDGERENTRY>\n");
+                xml.push_str("          <LEDGERNAME>Discount</LEDGERNAME>\n");
+                xml.push_str(&format!(
+                    "          <AMOUNT>-{:.2}</AMOUNT>\n",
+                    order.discount_amount
+                ));
+                xml.push_str("        </LEDGERENTRY>\n");
+            }
+            xml.push_str("      </ALLLEDGERENTRIES>\n");
+            xml.push_str(&format!(
+                "      <SUBTOTAL>{:.2}</SUBTOTAL>\n",
+                order.subtotal
+            ));
+            xml.push_str(&format!("      <TAX>{:.2}</TAX>\n", order.tax_amount));
+            xml.push_str(&format!(
+                "      <DISCOUNT>{:.2}</DISCOUNT>\n",
+                order.discount_amount
+            ));
+            xml.push_str(&format!("      <TOTAL>{:.2}</TOTAL>\n", order.total));
+            xml.push_str(&format!(
+                "      <PAYMENTMODE>{}</PAYMENTMODE>\n",
+                order.payment_method
+            ));
+            xml.push_str(&format!(
+                "      <AMOUNTPAID>{:.2}</AMOUNTPAID>\n",
+                order.amount_paid
+            ));
+            xml.push_str(&format!(
+                "      <CHANGE>{:.2}</CHANGE>\n",
+                order.change_amount
+            ));
+            if let Some(tip) = order.tip_amount {
+                if tip > 0.0 {
+                    xml.push_str(&format!("      <TIP>{:.2}</TIP>\n", tip));
+                }
+            }
+            xml.push_str("      <INVENTORYENTRIES>\n");
+            for item in &order.items {
+                xml.push_str("        <INVENTORYENTRY>\n");
+                xml.push_str(&format!(
+                    "          <PRODUCT>{}</PRODUCT>\n",
+                    Self::escape_xml(&item.product_name)
+                ));
+                xml.push_str(&format!(
+                    "          <QUANTITY>{}</QUANTITY>\n",
+                    item.quantity
+                ));
+                xml.push_str(&format!("          <RATE>{:.2}</RATE>\n", item.price));
+                xml.push_str(&format!(
+                    "          <AMOUNT>{:.2}</AMOUNT>\n",
+                    item.price * item.quantity as f64
+                ));
+                if item.discount > 0.0 {
+                    xml.push_str(&format!(
+                        "          <DISCOUNT>{:.2}</DISCOUNT>\n",
+                        item.discount
+                    ));
+                }
+                if item.tax > 0.0 {
+                    xml.push_str(&format!("          <TAX>{:.2}</TAX>\n", item.tax));
+                }
+                xml.push_str("        </INVENTORYENTRY>\n");
+            }
+            xml.push_str("      </INVENTORYENTRIES>\n");
+            xml.push_str("    </VOUCHER>\n");
+        }
+
+        xml.push_str("  </VOUCHERS>\n");
+        xml.push_str("</TALLYEXPORT>");
+
+        Ok(xml)
     }
-    pub fn export_to_quickbooks(
-        &self,
-        _start: &str,
-        _end: &str,
-        _store_id: &str,
-    ) -> Result<String> {
-        Ok("Quickbooks CSV export placeholder".into())
+
+    pub fn export_to_quickbooks(&self, start: &str, end: &str, store_id: &str) -> Result<String> {
+        let settings = self.get_settings(store_id)?;
+        let orders = self.get_orders_by_date_range(store_id, Some(start), Some(end), None, None)?;
+
+        let mut csv = String::new();
+        csv.push_str("Date,Time,TransactionType,VoucherNumber,Customer,Phone,Address,OrderType,User,ItemName,ItemQty,ItemRate,ItemAmount,ItemDiscount,ItemTax,Subtotal,TaxAmount,TaxName,TaxRate,DiscountAmount,DiscountType,Total,PaymentMethod,AmountPaid,Change,Tip,Status,CreatedAt\n");
+
+        for order in orders {
+            let date = order
+                .created_at
+                .split('T')
+                .next()
+                .unwrap_or(&order.created_at);
+            let time = order
+                .created_at
+                .split('T')
+                .nth(1)
+                .unwrap_or("")
+                .split('.')
+                .next()
+                .unwrap_or("");
+            let status = if order.status == "cancelled" {
+                "Cancelled"
+            } else if order.status == "refunded" {
+                "Refunded"
+            } else {
+                "Completed"
+            };
+
+            if order.items.is_empty() {
+                let row = vec![
+                    date.to_string(),
+                    time.to_string(),
+                    if order.status == "refunded" {
+                        "Refund"
+                    } else {
+                        "Sale"
+                    }
+                    .to_string(),
+                    order.id.clone(),
+                    Self::escape_csv(&order.customer_name),
+                    order.delivery_phone.clone(),
+                    Self::escape_csv(&order.delivery_address),
+                    order.order_type.clone(),
+                    order.user_name.clone().unwrap_or_default(),
+                    "".to_string(),
+                    "".to_string(),
+                    "".to_string(),
+                    "".to_string(),
+                    format!("{:.2}", 0.0_f64),
+                    format!("{:.2}", order.subtotal),
+                    settings.tax_name.clone(),
+                    format!("{:.2}", settings.tax_rate),
+                    format!("{:.2}", order.discount_amount),
+                    order.discount_type.clone().unwrap_or_default(),
+                    format!("{:.2}", order.total),
+                    order.payment_method.clone(),
+                    format!("{:.2}", order.amount_paid),
+                    format!("{:.2}", order.change_amount),
+                    format!("{:.2}", order.tip_amount.unwrap_or(0.0)),
+                    status.to_string(),
+                    order.created_at.clone(),
+                ]
+                .join(",");
+                csv.push_str(&row);
+                csv.push('\n');
+            } else {
+                for (i, item) in order.items.iter().enumerate() {
+                    if i == 0 {
+                        let row = vec![
+                            date.to_string(),
+                            time.to_string(),
+                            if order.status == "refunded" {
+                                "Refund"
+                            } else {
+                                "Sale"
+                            }
+                            .to_string(),
+                            order.id.clone(),
+                            Self::escape_csv(&order.customer_name),
+                            order.delivery_phone.clone(),
+                            Self::escape_csv(&order.delivery_address),
+                            order.order_type.clone(),
+                            order.user_name.clone().unwrap_or_default(),
+                            Self::escape_csv(&item.product_name),
+                            item.quantity.to_string(),
+                            format!("{:.2}", item.price),
+                            format!("{:.2}", item.price * item.quantity as f64),
+                            format!("{:.2}", item.discount),
+                            format!("{:.2}", item.tax),
+                            format!("{:.2}", order.subtotal),
+                            format!("{:.2}", order.tax_amount),
+                            settings.tax_name.clone(),
+                            format!("{:.2}", settings.tax_rate),
+                            format!("{:.2}", order.discount_amount),
+                            order.discount_type.clone().unwrap_or_default(),
+                            format!("{:.2}", order.total),
+                            order.payment_method.clone(),
+                            format!("{:.2}", order.amount_paid),
+                            format!("{:.2}", order.change_amount),
+                            format!("{:.2}", order.tip_amount.unwrap_or(0.0)),
+                            status.to_string(),
+                            order.created_at.clone(),
+                        ]
+                        .join(",");
+                        csv.push_str(&row);
+                        csv.push('\n');
+                    } else {
+                        let row = vec![
+                            date.to_string(),
+                            time.to_string(),
+                            "".to_string(),
+                            "".to_string(),
+                            "".to_string(),
+                            "".to_string(),
+                            "".to_string(),
+                            "".to_string(),
+                            "".to_string(),
+                            Self::escape_csv(&item.product_name),
+                            item.quantity.to_string(),
+                            format!("{:.2}", item.price),
+                            format!("{:.2}", item.price * item.quantity as f64),
+                            format!("{:.2}", item.discount),
+                            format!("{:.2}", item.tax),
+                        ]
+                        .join(",");
+                        csv.push_str(&row);
+                        csv.push('\n');
+                    }
+                }
+            }
+        }
+
+        Ok(csv)
     }
+
+    fn escape_xml(s: &str) -> String {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;")
+    }
+
+    fn escape_csv(s: &str) -> String {
+        s.replace('"', "\"\"")
+    }
+
     pub fn add_activity_log(
         &self,
         store_id: &str,
@@ -6640,9 +7086,11 @@ impl Database {
         user_id: &str,
         user_name: &str,
         order_id: Option<&str>,
+        previous_data: Option<&str>,
+        new_data: Option<&str>,
     ) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO activity_logs (id, store_id, order_id, action, reason, user_id, user_name) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            "INSERT INTO activity_logs (id, store_id, order_id, action, reason, user_id, user_name, previous_data, new_data) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
             params![
                 uuid::Uuid::new_v4().to_string(),
                 store_id,
@@ -6650,7 +7098,9 @@ impl Database {
                 action,
                 reason,
                 user_id,
-                user_name
+                user_name,
+                previous_data,
+                new_data
             ],
         )?;
         Ok(())

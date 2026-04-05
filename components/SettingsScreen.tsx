@@ -24,10 +24,6 @@ import {
   syncFromNeon,
   sendSmsNotification,
   sendWhatsAppMessage,
-  startLanServer,
-  stopLanServer,
-  getLanServerStatus,
-  LanServerStatus,
   changePin,
   Settings,
   exportBackup,
@@ -121,8 +117,7 @@ export default function SettingsScreen() {
   } | null>(null);
   const [waTestPhone, setWaTestPhone] = useState("");
   const [waTestMessage, setWaTestMessage] = useState("");
-  const [lanStatus, setLanStatus] = useState<LanServerStatus | null>(null);
-  const [lanLoading, setLanLoading] = useState(false);
+
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [pinMsg, setPinMsg] = useState<{ text: string; ok: boolean } | null>(
@@ -156,8 +151,7 @@ export default function SettingsScreen() {
       twilio_sid: "",
       twilio_token: "",
       twilio_phone: "",
-      lan_sync_enabled: false,
-      lan_server_port: 8765,
+
       logo_url: "",
       primary_color: "#F5C842",
       secondary_color: "#1E1E26",
@@ -180,7 +174,6 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     fetchSettings();
-    fetchLanStatus();
     checkPremium();
   }, [activeStoreId]);
 
@@ -222,8 +215,7 @@ export default function SettingsScreen() {
     const taxRateError = validateTaxRate(localSettings.tax_rate);
     if (taxRateError) newErrors.tax_rate = taxRateError;
 
-    const portError = validatePort(localSettings.lan_server_port);
-    if (portError) newErrors.lan_server_port = portError;
+
 
     const whatsappUrlError = validateUrl(localSettings.whatsapp_api_url);
     if (whatsappUrlError) newErrors.whatsapp_api_url = whatsappUrlError;
@@ -464,38 +456,9 @@ export default function SettingsScreen() {
     setResetAndSeeding(false);
   };
 
-  const fetchLanStatus = async () => {
-    try {
-      const status = await getLanServerStatus();
-      setLanStatus(status);
-    } catch (err) {
-      console.error("Failed to get LAN status:", err);
-    }
-  };
 
-  const handleStartLan = async () => {
-    setLanLoading(true);
-    try {
-      await startLanServer(activeStoreId, localSettings.lan_server_port);
-      await fetchLanStatus();
-      updateLocal("lan_sync_enabled", true);
-    } catch (err) {
-      console.error("Failed to start LAN server:", err);
-    }
-    setLanLoading(false);
-  };
 
-  const handleStopLan = async () => {
-    setLanLoading(true);
-    try {
-      await stopLanServer();
-      await fetchLanStatus();
-      updateLocal("lan_sync_enabled", false);
-    } catch (err) {
-      console.error("Failed to stop LAN server:", err);
-    }
-    setLanLoading(false);
-  };
+
 
   const { user } = useAuthStore();
 

@@ -27,6 +27,7 @@ import {
   DollarSign,
   Split,
 } from "lucide-react";
+import { OrderType, PaymentMethod } from '@/lib/stores/cartStore';
 import {
   dbSaveOrder,
   generateReceipt,
@@ -502,10 +503,10 @@ export default function POSScreen() {
       if (customer) {
         setActiveCustomer(customer);
         setCustomerInfo({
-          ...customerInfo,
           name: customer.name,
           phone: customer.phone,
-        } as any);
+          address: customerInfo?.address,
+        });
 
         const [wallet, addrs] = await Promise.all([
           getCustomerWallet(customer.id),
@@ -529,7 +530,9 @@ export default function POSScreen() {
         setWalletCustomerId(null);
         setCustomerAddresses([]);
       }
-    } catch {
+    } catch (error) {
+      console.error("Failed to lookup customer:", error);
+      alert("Failed to lookup customer by phone number");
       setActiveCustomer(null);
       setWalletBalance(0);
       setWalletCustomerId(null);
@@ -629,6 +632,9 @@ export default function POSScreen() {
             walletDeduction,
             order.id,
           );
+          // Refresh wallet balance after deduction
+          const updatedWallet = await getCustomerWallet(walletCustomerId);
+          setWalletBalance(updatedWallet.balance);
         } catch (e) {
           console.error("Failed to deduct wallet:", e);
         }
@@ -705,14 +711,14 @@ export default function POSScreen() {
     order.delivery_phone = customerInfo?.phone || "";
 
     try {
-      await dbSaveOrder(order, activeStoreId);
       const kotText = generateKOTText(order);
       await printReceipt(kotText);
+      await dbSaveOrder(order, activeStoreId);
       alert("KOT sent to printer!");
       clearCart();
     } catch (err) {
       console.error("Failed to print KOT:", err);
-      alert("Failed to print KOT");
+      alert("Failed to print KOT - Order not saved");
     }
     setProcessing(false);
   };
@@ -958,7 +964,7 @@ export default function POSScreen() {
                     try {
                       imgSrc =
                         typeof window !== "undefined" &&
-                        (window as any).__TAURI_METADATA__
+                        (window as unknown as { __TAURI_METADATA__: unknown }).__TAURI_METADATA__
                           ? convertFileSrc(path)
                           : path;
                     } catch (e) {}
@@ -1470,7 +1476,7 @@ export default function POSScreen() {
               ].map((type) => (
                 <button
                   key={type.id}
-                  onClick={() => setOrderType(type.id as any)}
+                  onClick={() => setOrderType(type.id as OrderType)}
                   className={`flex-1 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-all border ${orderType === type.id ? "bg-[#F5C842] border-[#F5C842] text-[#0D0D0F]" : "bg-[#141418] border-[#1E1E26] text-[#4A4A5A] hover:border-[#F5C842]/50"}`}
                 >
                   {type.label}
@@ -1527,9 +1533,10 @@ export default function POSScreen() {
                     value={customerInfo?.name || ""}
                     onChange={(e) =>
                       setCustomerInfo({
-                        ...customerInfo,
                         name: e.target.value,
-                      } as any)
+                        phone: customerInfo?.phone || "",
+                        address: customerInfo?.address,
+                      })
                     }
                     className="text-[11px] pl-8 py-1.5 w-full bg-[#0D0D0F]"
                   />
@@ -1540,9 +1547,10 @@ export default function POSScreen() {
                     value={customerInfo?.phone || ""}
                     onChange={(e) => {
                       setCustomerInfo({
-                        ...customerInfo,
+                        name: customerInfo?.name || "",
                         phone: e.target.value,
-                      } as any);
+                        address: customerInfo?.address,
+                      });
                       lookupCustomerData(e.target.value);
                     }}
                     className="text-[11px] py-1.5 flex-1 bg-[#0D0D0F]"
@@ -1552,9 +1560,10 @@ export default function POSScreen() {
                     value={customerInfo?.address || ""}
                     onChange={(e) =>
                       setCustomerInfo({
-                        ...customerInfo,
+                        name: customerInfo?.name || "",
+                        phone: customerInfo?.phone || "",
                         address: e.target.value,
-                      } as any)
+                      })
                     }
                     className="text-[11px] py-1.5 flex-1 bg-[#0D0D0F]"
                   />
@@ -1566,11 +1575,10 @@ export default function POSScreen() {
                         key={addr.id}
                         onClick={() =>
                           setCustomerInfo({
-                            ...customerInfo,
-                            address: addr.address,
-                            phone: addr.phone,
                             name: customerInfo?.name || "",
-                          } as any)
+                            phone: customerInfo?.phone || "",
+                            address: addr.address,
+                          })
                         }
                         className="flex-shrink-0 px-2 py-1 rounded bg-[#1E1E26] text-[9px] border border-transparent hover:border-[#F5C842]"
                       >
@@ -2134,7 +2142,7 @@ export default function POSScreen() {
                             );
                             setSplitPayments([
                               ...others,
-                              { method: method as any, amount: amt },
+                              { method: method as PaymentMethod | 'wallet', amount: amt },
                             ]);
                           }}
                           className="flex-1 bg-transparent border-none px-3 py-2 text-white"

@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { Plus, Trash2, RefreshCw, ClipboardList, Check, Package } from "lucide-react";
-import { getPurchaseOrders, savePurchaseOrder, updatePoStatus, receivePurchaseOrder, getSuppliers, getIngredients, PurchaseOrder, PurchaseOrderItem, Supplier, Ingredient } from "@/lib/db";
+import { getPurchaseOrders, savePurchaseOrder, updatePoStatus, receivePurchaseOrder, deletePurchaseOrder, getSuppliers, getIngredients, PurchaseOrder, PurchaseOrderItem, Supplier, Ingredient } from "@/lib/db";
 import { useSettingsStore } from "@/lib/stores";
 import { v4 as uuid } from "uuid";
 
 export default function PurchaseOrdersScreen() {
-  const { activeStoreId } = useSettingsStore();
+  const { activeStoreId, settings } = useSettingsStore();
+  const curr = settings?.currency_symbol ?? "₹";
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -90,6 +91,20 @@ export default function PurchaseOrdersScreen() {
       await fetchData();
     } catch (err) {
       console.error("Failed to receive PO:", err);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this purchase order?")) return;
+    setProcessing(id);
+    try {
+      await deletePurchaseOrder(id, activeStoreId);
+      await fetchData();
+    } catch (err) {
+      console.error("Failed to delete PO:", err);
+      alert("Failed to delete purchase order");
     } finally {
       setProcessing(null);
     }
@@ -182,7 +197,7 @@ export default function PurchaseOrdersScreen() {
                  <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Order notes" rows={2} />
                </div>
                <div className="text-right font-semibold" style={{ color: "#F5C842" }}>
-                 Total: {total.toFixed(2)}
+                 Total: {curr}{total.toFixed(2)}
                </div>
              </div>
              <div className="flex gap-2 mt-4">
@@ -218,17 +233,22 @@ export default function PurchaseOrdersScreen() {
                   {po.items.map((item) => (
                     <div key={item.id} className="flex justify-between text-sm">
                       <span style={{ color: "#9090A8" }}>{item.ingredient_name} x{item.quantity}</span>
-                      <span>{(item.quantity * item.unit_cost).toFixed(2)}</span>
+                      <span>{curr}{(item.quantity * item.unit_cost).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>
                 <div className="flex items-center justify-between pt-3 border-t" style={{ borderColor: "var(--border)" }}>
-                  <span className="font-semibold" style={{ color: "#F5C842" }}>Total: {po.total.toFixed(2)}</span>
+                  <span className="font-semibold" style={{ color: "#F5C842" }}>Total: {curr}{po.total.toFixed(2)}</span>
                   <div className="flex gap-2">
                     {po.status === "draft" && (
-                      <button onClick={() => handleStatusChange(po.id, "sent")} disabled={processing === po.id} className="btn-ghost py-1 px-3 text-xs">
-                        {processing === po.id ? <RefreshCw size={12} className="spin" /> : "Mark Sent"}
-                      </button>
+                      <>
+                        <button onClick={() => handleStatusChange(po.id, "sent")} disabled={processing === po.id} className="btn-ghost py-1 px-3 text-xs">
+                          {processing === po.id ? <RefreshCw size={12} className="spin" /> : "Mark Sent"}
+                        </button>
+                        <button onClick={() => handleDelete(po.id)} disabled={processing === po.id} className="btn-danger py-1 px-3 text-xs flex items-center gap-1">
+                          {processing === po.id ? <RefreshCw size={12} className="spin" /> : <><Trash2 size={12} /> Delete</>}
+                        </button>
+                      </>
                     )}
                     {(po.status === "sent" || po.status === "draft") && (
                       <button onClick={() => handleReceive(po.id)} disabled={processing === po.id} className="btn-success py-1 px-3 text-xs flex items-center gap-1">

@@ -547,13 +547,12 @@ export interface GstReport {
 export interface ActivityLogEntry {
   id: string;
   store_id: string;
+  order_id: string;
   action: string;
-  entity_type?: string;
-  entity_id?: string;
-  previous_value?: string;
-  new_value?: string;
-  reason?: string;
-  user_id: string;
+  previous_data: string | null;
+  new_data: string | null;
+  reason: string;
+  userId: string;
   user_name: string;
   created_at: string;
 }
@@ -885,7 +884,7 @@ export async function importBackup(
 
   return sql<{ products_imported: number; orders_imported: number }>(
     "import_backup",
-    { backup_json: jsonString, storeId },
+    { backupJson: jsonString, storeId },
   );
 }
 
@@ -910,6 +909,8 @@ export async function dbAddActivityLog(
   userId: string,
   userName: string,
   orderId?: string,
+  previousData?: string,
+  newData?: string,
 ): Promise<void> {
   return sql("add_activity_log", {
     storeId,
@@ -918,6 +919,8 @@ export async function dbAddActivityLog(
     userId,
     userName,
     orderId,
+    previousData,
+    newData,
   });
 }
 
@@ -1007,7 +1010,7 @@ export async function dbGetCustomerAddresses(
   customerId: string,
 ): Promise<CustomerAddress[]> {
   return sql<CustomerAddress[]>("get_customer_addresses", {
-    customer_id: customerId,
+    customerId: customerId,
   });
 }
 
@@ -1030,7 +1033,7 @@ export async function importCustomersCsv(
   storeId: string,
 ): Promise<{ imported: number; errors: number }> {
   return sql<{ imported: number; errors: number }>("import_customers_csv", {
-    csv_data: csvData,
+    csvData,
     storeId,
   });
 }
@@ -1039,7 +1042,7 @@ export async function dbGetCustomerStatistics(
   customerId: string,
 ): Promise<CustomerStatistics> {
   return sql<CustomerStatistics>("get_customer_statistics", {
-    customer_id: customerId,
+    customerId: customerId,
   });
 }
 
@@ -1057,7 +1060,7 @@ export async function dbAddLoyaltyPoints(
   storeId: string,
 ): Promise<void> {
   return sql("add_loyalty_points", {
-    customer_id: customerId,
+    customerId: customerId,
     points,
     spent,
     storeId,
@@ -1077,14 +1080,14 @@ export async function dbAddOrderNote(
   note: string,
   storeId: string,
 ): Promise<void> {
-  return sql("add_order_note", { order_id: orderId, note, storeId });
+  return sql("add_order_note", { orderId, note, storeId });
 }
 
 export async function dbGetOrderNotes(
   orderId: string,
   storeId: string,
 ): Promise<OrderNote[]> {
-  return sql<OrderNote[]>("get_order_notes", { order_id: orderId, storeId });
+  return sql<OrderNote[]>("get_order_notes", { orderId, storeId });
 }
 
 // ─── Inventory Alerts ───────────────────────────────────────────────────────
@@ -1386,18 +1389,25 @@ export function calcCart(
 
   discountAmount += globalDisc;
   const taxableSubtotal = Math.max(0, subtotal - globalDisc);
-  
+
   // Recalculate tax on the final taxable subtotal
-  // We assume items in the cart might have different tax rates. 
+  // We assume items in the cart might have different tax rates.
   // For simplicity if we want global accuracy, we can sum up individual tax proportions.
   items.forEach((item) => {
-    const price = item.override_price !== undefined ? item.override_price : item.product.price;
+    const price =
+      item.override_price !== undefined
+        ? item.override_price
+        : item.product.price;
     const line = price * item.quantity;
-    const itemDisc = item.discount_type === "fixed" ? item.discount : line * (item.discount / 100);
+    const itemDisc =
+      item.discount_type === "fixed"
+        ? item.discount
+        : line * (item.discount / 100);
     const afterDisc = Math.max(0, line - itemDisc);
-    
+
     // Proportion of global discount to this item
-    const itemGlobalDisc = subtotal > 0 ? (afterDisc / subtotal) * globalDisc : 0;
+    const itemGlobalDisc =
+      subtotal > 0 ? (afterDisc / subtotal) * globalDisc : 0;
     const itemTaxable = Math.max(0, afterDisc - itemGlobalDisc);
     const tax = itemTaxable * (item.product.tax / 100);
     taxAmount += tax;
@@ -1424,9 +1434,13 @@ export function generateReceipt(
   isPaymentRequest: boolean = false,
 ): string {
   const c = settings.currency_symbol;
-  const isIndia = settings.country === "IN" || settings.country === "India" || settings.currency_symbol === "₹" || settings.currency === "INR";
+  const isIndia =
+    settings.country === "IN" ||
+    settings.country === "India" ||
+    settings.currency_symbol === "₹" ||
+    settings.currency === "INR";
   const lines: string[] = [];
-  const W = 40; 
+  const W = 40;
 
   const center = (t: string) => {
     const pad = Math.max(0, Math.floor((W - t.length) / 2));
@@ -1442,7 +1456,8 @@ export function generateReceipt(
   lines.push("=".repeat(W));
   lines.push(center(settings.store_name.toUpperCase()));
   if (settings.address) lines.push(center(settings.address));
-  if (isIndia && settings.tax_id) lines.push(center(`GSTIN: ${settings.tax_id}`));
+  if (isIndia && settings.tax_id)
+    lines.push(center(`GSTIN: ${settings.tax_id}`));
   if (settings.phone) lines.push(center(`Contact: ${settings.phone}`));
   lines.push("=".repeat(W));
 
@@ -1450,16 +1465,19 @@ export function generateReceipt(
   const title = isIndia ? "TAX INVOICE" : "RECEIPT ID";
   lines.push(`${title.padEnd(12)}: #${order.id.slice(-6).toUpperCase()}`);
   lines.push("-".repeat(W));
-  
+
   const created = new Date(order.created_at);
   const dateStr = created.toLocaleDateString();
-  const timeStr = created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timeStr = created.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   lines.push(`Date: ${dateStr.padEnd(15)} Time: ${timeStr}`);
-  
+
   const typeStr = (order.order_type || "dine_in").toUpperCase();
   const staffStr = order.user_name || "Admin";
   lines.push(`Type: ${typeStr.padEnd(15)} Staff: ${staffStr}`);
-  
+
   if (order.customer_name) lines.push(`Customer: ${order.customer_name}`);
   if (order.table_id) lines.push(`Table:    ${order.table_id}`);
   lines.push("-".repeat(W));
@@ -1473,7 +1491,10 @@ export function generateReceipt(
   lines.push("-".repeat(W));
 
   order.items.forEach((i) => {
-    const name = i.product_name.length > 17 ? i.product_name.slice(0, 14) + "..." : i.product_name;
+    const name =
+      i.product_name.length > 17
+        ? i.product_name.slice(0, 14) + "..."
+        : i.product_name;
     const qty = i.quantity.toString().padStart(3);
     const rate = i.price.toFixed(2).padStart(8);
     const amount = (i.price * i.quantity).toFixed(2).padStart(10);
@@ -1488,48 +1509,70 @@ export function generateReceipt(
   // 5. Totals
   const L = 25;
   const V = W - L;
-  
-  lines.push(`${"SUBTOTAL:".padEnd(L)}${c}${order.subtotal.toFixed(2).padStart(V - 1)}`);
+
+  lines.push(
+    `${"SUBTOTAL:".padEnd(L)}${c}${order.subtotal.toFixed(2).padStart(V - 1)}`,
+  );
 
   if (order.tax_amount > 0) {
     if (isIndia) {
       const split = order.tax_amount / 2;
-      lines.push(`${"CGST (9%):".padEnd(L)}${c}${split.toFixed(2).padStart(V - 1)}`);
-      lines.push(`${"SGST (9%):".padEnd(L)}${c}${split.toFixed(2).padStart(V - 1)}`);
+      lines.push(
+        `${"CGST (9%):".padEnd(L)}${c}${split.toFixed(2).padStart(V - 1)}`,
+      );
+      lines.push(
+        `${"SGST (9%):".padEnd(L)}${c}${split.toFixed(2).padStart(V - 1)}`,
+      );
     } else {
       const taxName = settings.tax_name || "TAX";
       const taxRate = settings.tax_rate || 0;
-      lines.push(`${(taxName + " (" + taxRate + "%):").padEnd(L)}${c}${order.tax_amount.toFixed(2).padStart(V - 1)}`);
+      lines.push(
+        `${(taxName + " (" + taxRate + "%):").padEnd(L)}${c}${order.tax_amount.toFixed(2).padStart(V - 1)}`,
+      );
     }
   }
 
   if (order.discount_amount > 0) {
-    lines.push(`${"DISCOUNT:".padEnd(L)}-${c}${order.discount_amount.toFixed(2).padStart(V - 2)}`);
+    lines.push(
+      `${"DISCOUNT:".padEnd(L)}-${c}${order.discount_amount.toFixed(2).padStart(V - 2)}`,
+    );
   }
 
   if (order.tip_amount && order.tip_amount > 0) {
-    lines.push(`${"TIP:".padEnd(L)}${c}${order.tip_amount.toFixed(2).padStart(V - 1)}`);
+    lines.push(
+      `${"TIP:".padEnd(L)}${c}${order.tip_amount.toFixed(2).padStart(V - 1)}`,
+    );
   }
 
   lines.push("-".repeat(W));
-  
+
   if (isIndia) {
     const rounded = Math.round(order.total);
     const roundingOff = rounded - order.total;
-    lines.push(`${"TOTAL AMOUNT:".padEnd(L)}${c}${order.total.toFixed(2).padStart(V - 1)}`);
+    lines.push(
+      `${"TOTAL AMOUNT:".padEnd(L)}${c}${order.total.toFixed(2).padStart(V - 1)}`,
+    );
     lines.push("-".repeat(W));
     if (Math.abs(roundingOff) > 0.001) {
-      lines.push(`${"Rounding Off:".padEnd(L)}${roundingOff >= 0 ? "+" : "-"}${c}${Math.abs(roundingOff).toFixed(2).padStart(V - 2)}`);
+      lines.push(
+        `${"Rounding Off:".padEnd(L)}${roundingOff >= 0 ? "+" : "-"}${c}${Math.abs(
+          roundingOff,
+        )
+          .toFixed(2)
+          .padStart(V - 2)}`,
+      );
     }
     lines.push(`${"NET PAYABLE:".padEnd(L)}${c}${rounded.toFixed(2)}`);
-    
+
     // 6.5 QR Code for India (Positioned here for maximum visibility)
     if (settings.upi_id) {
       const upiUrl = `upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${rounded.toFixed(2)}&cu=INR`;
       lines.push(`[QRCODE: ${upiUrl}]`);
     }
   } else {
-    lines.push(`${"GRAND TOTAL:".padEnd(L)}${c}${order.total.toFixed(2).padStart(V - 1)}`);
+    lines.push(
+      `${"GRAND TOTAL:".padEnd(L)}${c}${order.total.toFixed(2).padStart(V - 1)}`,
+    );
   }
   lines.push("=".repeat(W));
 
@@ -1538,15 +1581,18 @@ export function generateReceipt(
     const method = (order.payment_method || "CASH").toUpperCase();
     lines.push(`${"PAYMENT METHOD:".padEnd(L)}${method.padStart(V)}`);
     if (order.payment_method === "cash") {
-      lines.push(`${"PAID:".padEnd(L)}${c}${(order.amount_paid || 0).toFixed(2).padStart(V - 1)}`);
-      lines.push(`${"CHANGE:".padEnd(L)}${c}${(order.change_amount || 0).toFixed(2).padStart(V - 1)}`);
+      lines.push(
+        `${"PAID:".padEnd(L)}${c}${(order.amount_paid || 0).toFixed(2).padStart(V - 1)}`,
+      );
+      lines.push(
+        `${"CHANGE:".padEnd(L)}${c}${(order.change_amount || 0).toFixed(2).padStart(V - 1)}`,
+      );
     }
   } else if (isIndia && settings.upi_id) {
     lines.push(center("SCAN TO PAY UPI"));
     lines.push(center(`UPI ID: ${settings.upi_id}`));
   }
 
-  
   lines.push("-".repeat(W));
 
   // 7. Footer
@@ -1560,7 +1606,6 @@ export function generateReceipt(
 
   return lines.filter(Boolean).join("\n");
 }
-
 
 // ─── Browser Fallback (localStorage) ─────────────────────────────────────────
 // Used when running `next dev` without Tauri
@@ -1746,11 +1791,35 @@ async function browserFallback<T>(
       });
       lsSet("pos_initialized", true);
     }
-    if (!lsGet("pos_tables") || (lsGet<any[]>("pos_tables")?.length === 0)) {
+    if (!lsGet("pos_tables") || lsGet<any[]>("pos_tables")?.length === 0) {
       lsSet("pos_tables", [
-        { id: "t1", store_id: "default", name: "Table 1", capacity: 4, status: "available", position_x: 100, position_y: 100 },
-        { id: "t2", store_id: "default", name: "Table 2", capacity: 2, status: "available", position_x: 250, position_y: 100 },
-        { id: "t3", store_id: "default", name: "Table 3", capacity: 6, status: "available", position_x: 100, position_y: 250 },
+        {
+          id: "t1",
+          store_id: "default",
+          name: "Table 1",
+          capacity: 4,
+          status: "available",
+          position_x: 100,
+          position_y: 100,
+        },
+        {
+          id: "t2",
+          store_id: "default",
+          name: "Table 2",
+          capacity: 2,
+          status: "available",
+          position_x: 250,
+          position_y: 100,
+        },
+        {
+          id: "t3",
+          store_id: "default",
+          name: "Table 3",
+          capacity: 6,
+          status: "available",
+          position_x: 100,
+          position_y: 250,
+        },
       ]);
     }
   };
@@ -1927,15 +1996,15 @@ async function browserFallback<T>(
       return tables.filter((t) => t.store_id === storeId) as T;
     }
     case "get_customer_wallet": {
-      const customerId = (args as any).customer_id;
+      const customerId = (args as any).customerId;
       // Mock wallet from customer lifetime spend
       const customers = lsGet<Customer[]>("pos_customers") || [];
-      const c = customers.find(x => x.id === customerId);
+      const c = customers.find((x) => x.id === customerId);
       return {
-        customer_id: customerId,
+        customerId: customerId,
         balance: (c?.total_spent || 0) * 0.05,
         total_loaded: 0,
-        total_spent: 0
+        total_spent: 0,
       } as T;
     }
     case "get_customers": {
@@ -1976,7 +2045,7 @@ async function browserFallback<T>(
             ["completed", "pending", "processing"].includes(o.status),
         )
         .map((o) => {
-          const table = tables.find(t => t.id === o.table_id);
+          const table = tables.find((t) => t.id === o.table_id);
           return {
             id: o.id,
             order_type: o.order_type,
@@ -1994,8 +2063,9 @@ async function browserFallback<T>(
     }
     case "get_pending_orders_count": {
       const orders = lsGet<Order[]>(LS.orders) || [];
-      return orders.filter((o) => o.store_id === storeId && o.status === "pending")
-        .length as T;
+      return orders.filter(
+        (o) => o.store_id === storeId && o.status === "pending",
+      ).length as T;
     }
     case "get_lan_server_status":
       return { running: false, port: 0, connected_clients: 0 } as T;
@@ -2009,7 +2079,9 @@ async function browserFallback<T>(
           o.created_at.split("T")[0] === date,
       );
       const get = (m: string) =>
-        filtered.filter((o) => o.payment_method === m).reduce((s, o) => s + o.total, 0);
+        filtered
+          .filter((o) => o.payment_method === m)
+          .reduce((s, o) => s + o.total, 0);
       return [get("cash"), get("upi"), get("card")] as T;
     }
     case "get_day_end_reconciliation": {
@@ -2094,7 +2166,7 @@ async function browserFallback<T>(
     }
     case "get_customer_addresses": {
       const a = lsGet<CustomerAddress[]>("pos_customer_addresses") || [];
-      return a.filter((x) => x.customer_id === (args as any).customer_id) as T;
+      return a.filter((x) => x.customer_id === (args as any).customerId) as T;
     }
     case "save_customer_address": {
       const addresses =
@@ -2198,7 +2270,7 @@ async function browserFallback<T>(
     }
     case "get_customer_statistics": {
       const customers = lsGet<Customer[]>("pos_customers") || [];
-      const c = customers.find((x) => x.id === (args as any).customer_id);
+      const c = customers.find((x) => x.id === (args as any).customerId);
       if (!c) return { total_spent: 0, visits: 0, avg_order_value: 0 } as T;
       return {
         total_spent: c.total_spent,
@@ -2299,7 +2371,9 @@ async function browserFallback<T>(
         // Mock stock adjustment for ingredients
         const ingredients = lsGet<Ingredient[]>("pos_ingredients") || [];
         items[idx].items.forEach((item) => {
-          const ingIdx = ingredients.findIndex((i) => i.id === item.ingredient_id);
+          const ingIdx = ingredients.findIndex(
+            (i) => i.id === item.ingredient_id,
+          );
           if (ingIdx >= 0) ingredients[ingIdx].stock += item.quantity;
         });
         lsSet("pos_ingredients", ingredients);
@@ -2310,7 +2384,9 @@ async function browserFallback<T>(
     case "get_reservations": {
       const items = lsGet<Reservation[]>("pos_reservations") || [];
       const { date } = args as any;
-      return items.filter((x) => x.store_id === storeId && x.date === date) as T;
+      return items.filter(
+        (x) => x.store_id === storeId && x.date === date,
+      ) as T;
     }
     case "save_reservation": {
       const items = lsGet<Reservation[]>("pos_reservations") || [];
@@ -2430,12 +2506,12 @@ async function browserFallback<T>(
     }
     case "clock_in": {
       const items = lsGet<StaffAttendance[]>("pos_attendance") || [];
-      const { user_id, user_name } = args as any;
+      const { userId, userName } = args as any;
       items.push({
         id: Math.random().toString(36).substr(2, 9),
         store_id: storeId,
-        user_id,
-        user_name,
+        user_id: userId,
+        user_name: userName,
         clock_in: new Date().toISOString(),
         clock_out: null,
         date: new Date().toISOString().split("T")[0],
@@ -2445,9 +2521,9 @@ async function browserFallback<T>(
     }
     case "clock_out": {
       const items = lsGet<StaffAttendance[]>("pos_attendance") || [];
-      const { user_id } = args as any;
+      const { userId } = args as any;
       const idx = items.findIndex(
-        (x) => x.user_id === user_id && !x.clock_out && x.store_id === storeId,
+        (x) => x.user_id === userId && !x.clock_out && x.store_id === storeId,
       );
       if (idx >= 0) items[idx].clock_out = new Date().toISOString();
       lsSet("pos_attendance", items);
@@ -2455,9 +2531,9 @@ async function browserFallback<T>(
     }
     case "is_clocked_in": {
       const items = lsGet<StaffAttendance[]>("pos_attendance") || [];
-      const { user_id } = args as any;
+      const { userId } = args as any;
       return items.some(
-        (x) => x.user_id === user_id && !x.clock_out && x.store_id === storeId,
+        (x) => x.user_id === userId && !x.clock_out && x.store_id === storeId,
       ) as T;
     }
     case "is_premium_enabled":
@@ -2477,7 +2553,9 @@ async function browserFallback<T>(
             o.created_at.split("T")[0] <= endDate,
         )
         .map((o) => {
-          const c = customers.find((x) => x.name === o.customer_name && x.store_id === storeId);
+          const c = customers.find(
+            (x) => x.name === o.customer_name && x.store_id === storeId,
+          );
           return {
             invoice_no: o.id,
             date: o.created_at.split("T")[0],
@@ -2521,7 +2599,7 @@ async function browserFallback<T>(
       return btoa(JSON.stringify(data)) as T;
     }
     case "import_backup": {
-      const data = JSON.parse((args as any).backup_json);
+      const data = JSON.parse((args as any).backupJson);
       const products = lsGet<Product[]>(LS.products) || [];
       const orders = lsGet<Order[]>(LS.orders) || [];
       const settings = lsGet<Record<string, Settings>>(LS.settings) || {};
@@ -2920,8 +2998,8 @@ export async function markKdsItemDone(
   storeId: string,
 ): Promise<void> {
   return sql("mark_kds_item_done", {
-    order_id: orderId,
-    item_index: itemIndex,
+    orderId: orderId,
+    itemIndex: itemIndex,
     storeId,
   });
 }
@@ -2932,8 +3010,8 @@ export async function startPreparingItem(
   storeId: string,
 ): Promise<void> {
   return sql("start_preparing_item", {
-    order_id: orderId,
-    item_index: itemIndex,
+    orderId: orderId,
+    itemIndex: itemIndex,
     storeId,
   });
 }
@@ -2944,8 +3022,8 @@ export async function cancelKdsItem(
   storeId: string,
 ): Promise<void> {
   return sql("cancel_kds_item", {
-    order_id: orderId,
-    item_index: itemIndex,
+    orderId: orderId,
+    itemIndex: itemIndex,
     storeId,
   });
 }
@@ -2954,7 +3032,7 @@ export async function recallKdsOrder(
   orderId: string,
   storeId: string,
 ): Promise<void> {
-  return sql("recall_kds_order", { order_id: orderId, storeId });
+  return sql("recall_kds_order", { orderId: orderId, storeId });
 }
 
 // ─── Ingredient Functions ───────────────────────────────────────────────────
@@ -3034,6 +3112,13 @@ export async function receivePurchaseOrder(
   storeId: string,
 ): Promise<void> {
   return sql("receive_purchase_order", { id, storeId });
+}
+
+export async function deletePurchaseOrder(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  return sql("delete_purchase_order", { id, storeId });
 }
 
 // ─── Reservation Functions ─────────────────────────────────────────────────
@@ -3151,7 +3236,7 @@ export async function getCustomerWallet(
   customerId: string,
 ): Promise<CustomerWallet> {
   return sql<CustomerWallet>("get_customer_wallet", {
-    customer_id: customerId,
+    customerId: customerId,
   });
 }
 
@@ -3160,7 +3245,7 @@ export async function addWalletBalance(
   amount: number,
   notes: string,
 ): Promise<void> {
-  return sql("add_wallet_balance", { customer_id: customerId, amount, notes });
+  return sql("add_wallet_balance", { customerId: customerId, amount, notes });
 }
 
 export async function deductWalletBalance(
@@ -3169,9 +3254,9 @@ export async function deductWalletBalance(
   orderId: string,
 ): Promise<void> {
   return sql("deduct_wallet_balance", {
-    customer_id: customerId,
+    customerId: customerId,
     amount,
-    order_id: orderId,
+    orderId: orderId,
   });
 }
 
@@ -3179,7 +3264,7 @@ export async function getWalletTransactions(
   customerId: string,
 ): Promise<WalletTransaction[]> {
   return sql<WalletTransaction[]>("get_wallet_transactions", {
-    customer_id: customerId,
+    customerId: customerId,
   });
 }
 
@@ -3202,7 +3287,7 @@ export async function validateCoupon(
 ): Promise<Coupon> {
   return sql<Coupon>("validate_coupon", {
     code,
-    order_amount: orderAmount,
+    orderAmount: orderAmount,
     storeId,
   });
 }

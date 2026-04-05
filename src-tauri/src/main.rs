@@ -552,16 +552,16 @@ fn get_customer_orders(phone: String, store_id: String) -> Result<Vec<db::Order>
 // ─── Order Notes Commands ─────────────────────────────────────────────────────
 
 #[tauri::command]
-fn add_order_note(order_id: String, note: String, store_id: String) -> Result<(), String> {
+fn add_order_note(#[allow(non_snake_case)] orderId: String, note: String, #[allow(non_snake_case)] storeId: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.add_order_note(&order_id, &note, &store_id)
+    db.add_order_note(&orderId, &note, &storeId)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_order_notes(order_id: String, store_id: String) -> Result<Vec<db::OrderNote>, String> {
+fn get_order_notes(#[allow(non_snake_case)] orderId: String, #[allow(non_snake_case)] storeId: String) -> Result<Vec<db::OrderNote>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_order_notes(&order_id, &store_id)
+    db.get_order_notes(&orderId, &storeId)
         .map_err(|e| e.to_string())
 }
 
@@ -738,6 +738,12 @@ fn upsert_store(store: db::Store) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn delete_store(id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.delete_store(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn save_image(app: tauri::AppHandle, data: Vec<u8>, filename: String) -> Result<String, String> {
     let app_dir = app
         .path_resolver()
@@ -757,6 +763,8 @@ async fn add_activity_log(
     user_id: String,
     user_name: String,
     order_id: Option<String>,
+    previous_data: Option<String>,
+    new_data: Option<String>,
 ) -> Result<(), String> {
     let db = DB.lock().unwrap();
     db.add_activity_log(
@@ -766,6 +774,8 @@ async fn add_activity_log(
         &user_id,
         &user_name,
         order_id.as_deref(),
+        previous_data.as_deref(),
+        new_data.as_deref(),
     )
     .map_err(|e: Error| e.to_string())
 }
@@ -799,6 +809,31 @@ fn get_kds_orders(store_id: String) -> Result<Vec<db::KdsOrder>, String> {
 fn mark_kds_item_done(order_id: String, item_index: usize, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.mark_kds_item_done(&order_id, item_index, &store_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn start_preparing_item(
+    order_id: String,
+    item_index: usize,
+    store_id: String,
+) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.start_preparing_item(&order_id, item_index, &store_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cancel_kds_item(order_id: String, item_index: usize, store_id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.cancel_kds_item(&order_id, item_index, &store_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn recall_kds_order(order_id: String, store_id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.recall_kds_order(&order_id, &store_id)
         .map_err(|e| e.to_string())
 }
 
@@ -883,6 +918,13 @@ fn update_po_status(id: String, status: String, store_id: String) -> Result<(), 
 fn receive_purchase_order(id: String, store_id: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.receive_purchase_order(&id, &store_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_purchase_order(id: String, store_id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.delete_purchase_order(&id, &store_id)
         .map_err(|e| e.to_string())
 }
 
@@ -1219,6 +1261,15 @@ fn create_compressed_backup(store_id: String) -> Result<Vec<u8>, String> {
 // ─── Print Commands ──────────────────────────────────────────────────────────────
 
 #[tauri::command]
+fn save_receipt_to_file(receipt: String, file_name: String) -> Result<String, String> {
+    let downloads_dir = dirs::download_dir().ok_or("Failed to get downloads directory")?;
+
+    let path = downloads_dir.join(&file_name);
+    std::fs::write(&path, receipt).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 fn print_receipt(_receipt: String) -> Result<(), String> {
     Ok(())
 }
@@ -1448,9 +1499,13 @@ fn main() {
             delete_pending_order,
             get_stores,
             upsert_store,
+            delete_store,
             open_kds_window,
             get_kds_orders,
             mark_kds_item_done,
+            start_preparing_item,
+            cancel_kds_item,
+            recall_kds_order,
             get_ingredients,
             save_ingredient,
             delete_ingredient,
@@ -1463,6 +1518,7 @@ fn main() {
             save_purchase_order,
             update_po_status,
             receive_purchase_order,
+            delete_purchase_order,
             get_reservations,
             save_reservation,
             delete_reservation,
@@ -1498,6 +1554,7 @@ fn main() {
             export_to_quickbooks,
             create_compressed_backup,
             send_whatsapp_message,
+            save_receipt_to_file,
             print_receipt,
             print_to_printer,
             open_cash_drawer,

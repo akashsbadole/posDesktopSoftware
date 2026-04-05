@@ -71,7 +71,7 @@ export default function OrdersScreen() {
   };
 
   const handleDeliveryStatus = async (id: string, status: string) => {
-    await updateStatus(id, status as any);
+    await updateStatus(id, status as Order['delivery_status']);
   };
 
   const handleEditOrder = (order: Order) => {

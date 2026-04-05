@@ -14,6 +14,7 @@ export interface CartItem {
   discount: number;
   discount_type: 'percentage' | 'fixed';
   override_price?: number;
+  originalPrice: number;
 }
 
 export interface PaymentEntry {
@@ -114,6 +115,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     set((state) => {
       const tier = state.priceTier;
       let finalProduct = { ...product };
+      const originalPrice = product.price;
 
       // If we're in wholesale tier, use wholesale price
       if (tier === 'wholesale' && product.wholesale_price) {
@@ -136,7 +138,7 @@ export const useCartStore = create<CartState>((set, get) => ({
         };
       }
       const cartItemId = uuid();
-      return { items: [...state.items, { cartItemId, product: finalProduct, quantity, discount: 0, discount_type: 'percentage' }] };
+      return { items: [...state.items, { cartItemId, product: finalProduct, quantity, discount: 0, discount_type: 'percentage', originalPrice }] };
     });
   },
 
@@ -195,13 +197,11 @@ export const useCartStore = create<CartState>((set, get) => ({
       priceTier,
       items: state.items.map(item => {
         const product = item.product;
-        let newPrice = product.price;
+        let newPrice: number;
         if (priceTier === 'wholesale') {
-          newPrice = product.wholesale_price || product.price;
+          newPrice = product.wholesale_price || item.originalPrice;
         } else {
-          // This is a bit tricky since we might have overridden the price
-          // We'd need to fetch the original retail price or store both
-          // For now, we'll assume product.price was the retail price
+          newPrice = item.originalPrice;
         }
         return { ...item, product: { ...product, price: newPrice } };
       })

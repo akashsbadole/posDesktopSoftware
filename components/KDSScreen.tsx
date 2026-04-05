@@ -6,7 +6,7 @@ import { KdsOrder, getKdsOrders, markKdsItemDone, openKdsWindow, startPreparingI
 import { useSettingsStore } from "@/lib/stores";
 
 const playNotificationSound = () => {
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
   const oscillator = audioContext.createOscillator();
   const gainNode = audioContext.createGain();
   oscillator.connect(gainNode);

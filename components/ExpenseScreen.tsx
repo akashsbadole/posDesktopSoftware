@@ -64,7 +64,7 @@ export default function ExpenseScreen() {
   const loadCategories = async () => {
     try {
       const cats = await getExpenseCategories(activeStoreId);
-      setCategories(cats as any);
+      setCategories(cats);
     } catch (e) {
       console.error("Failed to load categories", e);
     }
@@ -78,7 +78,7 @@ export default function ExpenseScreen() {
       } else {
         data = await getExpensesByRange(dateRange.start, dateRange.end, activeStoreId);
       }
-      setExpenses(data as any);
+      setExpenses(data);
       setTotalExpenses(data.reduce((sum, e) => sum + e.amount, 0));
     } catch (e) {
       console.error("Failed to load expenses", e);

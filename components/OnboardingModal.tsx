@@ -264,7 +264,7 @@ export default function OnboardingModal() {
                   <button
                     key={ind.id}
                     onClick={() =>
-                      setFormData({ ...formData, industry: ind.id as any })
+                      setFormData({ ...formData, industry: ind.id as StoreType["industry"] })
                     }
                     className={`p-4 rounded-2xl border-2 transition-all text-left group ${
                       formData.industry === ind.id

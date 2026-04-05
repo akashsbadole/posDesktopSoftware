@@ -376,7 +376,7 @@ export default function StoresScreen() {
                       <button
                         key={ind.id}
                         type="button"
-                        onClick={() => setFormData({ ...formData, industry: ind.id as any })}
+                        onClick={() => setFormData({ ...formData, industry: ind.id as Store["industry"] })}
                         className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all text-left ${
                           formData.industry === ind.id
                             ? 'border-[#F5C842] bg-[#F5C842]/10'
