@@ -740,6 +740,22 @@ impl Database {
         Ok(())
     }
 
+    /// Runs all necessary database migrations to reach the latest schema version.
+    ///
+    /// HOW TO ADD NEW MIGRATIONS:
+    /// 1. Create a new function `migration_vX(&self) -> Result<()>` where X is the next version number.
+    /// 2. Inside the function, use `self.conn.execute` or `self.conn.execute_batch` to apply changes.
+    /// 3. If you need to add columns to existing tables, use `ALTER TABLE ... ADD COLUMN ...`.
+    /// 4. If you need to perform complex changes (like changing a primary key or adding constraints
+    ///    that SQLite doesn't support via ALTER TABLE), use the "shadow table" pattern:
+    ///    a. PRAGMA foreign_keys = OFF;
+    ///    b. CREATE TABLE table_new (...);
+    ///    c. INSERT INTO table_new SELECT ... FROM table;
+    ///    d. DROP TABLE table;
+    ///    e. ALTER TABLE table_new RENAME TO table;
+    ///    f. PRAGMA foreign_keys = ON;
+    /// 5. Add a new `if current < X` block at the end of this function to call your new migration.
+    /// 6. Ensure you call `self.set_version(X)?` inside that block.
     fn run_migrations(&self) -> Result<()> {
         let current = self.get_current_version()?;
 
@@ -765,6 +781,14 @@ impl Database {
             self.migration_v4()?;
             self.set_version(4)?;
         }
+
+        // Example for future migrations:
+        /*
+        if current < 5 {
+            self.migration_v5()?;
+            self.set_version(5)?;
+        }
+        */
 
         Ok(())
     }
