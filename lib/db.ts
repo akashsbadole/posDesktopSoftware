@@ -1320,6 +1320,33 @@ export async function isPremiumEnabled(): Promise<boolean> {
   return sql<boolean>("is_premium_enabled");
 }
 
+export async function getAppVersion(): Promise<string> {
+  return sql<string>("get_app_version");
+}
+
+export interface AppUpdateMetadata {
+  latest_version: string;
+  changelog: string[];
+  download_url: string;
+  critical: boolean;
+}
+
+export async function checkAppUpdates(): Promise<AppUpdateMetadata> {
+  // Mock logic to simulate update check
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  return {
+    latest_version: "1.0.1",
+    changelog: [
+      "Optimized database performance during high-volume sales.",
+      "Added Support Center for better user assistance.",
+      "Fixed UI glitch in Table Manager on smaller screens.",
+      "Enhanced printer compatibility for 80mm thermal printers.",
+    ],
+    download_url: "https://www.appixen.com/pos-billing/download",
+    critical: false,
+  };
+}
+
 // ─── Cart Calculation (pure JS, no DB needed) ─────────────────────────────────
 export function calcCart(
   items: {
@@ -2398,6 +2425,8 @@ async function browserFallback<T>(
     }
     case "is_premium_enabled":
       return (process.env.NEXT_PUBLIC_ENABLE_PREMIUM === "true") as T;
+    case "get_app_version":
+      return "1.0.0" as any as T;
     case "get_gstr1_report": {
       const orders = lsGet<Order[]>(LS.orders) || [];
       const customers = lsGet<Customer[]>("pos_customers") || [];

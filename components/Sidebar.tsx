@@ -26,7 +26,8 @@ import {
   Lock,
   ChevronDown,
   LayoutGrid,
-  Heart
+  Heart,
+  LifeBuoy
 } from "lucide-react";
 import { Screen } from "@/app/page";
 import { User } from "@/lib/db";
@@ -150,15 +151,9 @@ const allNavItems = [
     adminOnly: true,
   },
   {
-    id: "contact_training" as Screen,
-    label: "Training",
-    icon: GraduationCap,
-    adminOnly: false,
-  },
-  {
-    id: "donate" as Screen,
-    label: "Support Us",
-    icon: Heart,
+    id: "support" as Screen,
+    label: "Support",
+    icon: LifeBuoy,
     adminOnly: false,
   },
 ];
