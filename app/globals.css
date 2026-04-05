@@ -288,16 +288,63 @@ button {
 
 /* Print styles */
 @media print {
+  @page {
+    margin: 0;
+    size: auto;
+  }
+
+  html,
   body {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    visibility: hidden !important;
+    position: relative !important;
+  }
+
+  #printable-receipt {
+    visibility: visible !important;
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 150px !important;
+    margin: 0 !important;
+    padding: 5px !important;
     background: white !important;
     color: black !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 10pt !important;
+    line-height: 1.2 !important;
+    z-index: 9999999 !important;
   }
-  
+
+  #printable-receipt * {
+    visibility: visible !important;
+  }
+
+  /* Explicitly show the QR section */
+  #printable-receipt .qr-container,
+  #printable-receipt .qr-container * {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  #printable-receipt svg {
+    display: block !important;
+    margin: 5px auto !important;
+    width: 120px !important;
+    height: 120px !important;
+  }
+
   .no-print {
     display: none !important;
+    visibility: hidden !important;
   }
-  
-  .print-only {
-    display: block !important;
-  }
+}
+
+.print-only {
+  display: none;
 }

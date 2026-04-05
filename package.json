@@ -1,7 +1,7 @@
 {
   "name": "pos-tauri",
   "version": "0.1.0",
-  "author": "akash badole",
+  "author": "appixen",
   "private": true,
   "scripts": {
     "dev": "next dev",

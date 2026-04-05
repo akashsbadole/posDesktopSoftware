@@ -1348,9 +1348,7 @@ export function calcCart(
         : line * (item.discount / 100);
 
     const afterDisc = Math.max(0, line - itemDisc);
-    const tax = afterDisc * (item.product.tax / 100);
     subtotal += afterDisc;
-    taxAmount += tax;
     discountAmount += itemDisc;
   });
 
@@ -1360,7 +1358,25 @@ export function calcCart(
       : subtotal * (globalDiscount / 100);
 
   discountAmount += globalDisc;
-  const total = Math.max(0, subtotal - globalDisc + taxAmount);
+  const taxableSubtotal = Math.max(0, subtotal - globalDisc);
+  
+  // Recalculate tax on the final taxable subtotal
+  // We assume items in the cart might have different tax rates. 
+  // For simplicity if we want global accuracy, we can sum up individual tax proportions.
+  items.forEach((item) => {
+    const price = item.override_price !== undefined ? item.override_price : item.product.price;
+    const line = price * item.quantity;
+    const itemDisc = item.discount_type === "fixed" ? item.discount : line * (item.discount / 100);
+    const afterDisc = Math.max(0, line - itemDisc);
+    
+    // Proportion of global discount to this item
+    const itemGlobalDisc = subtotal > 0 ? (afterDisc / subtotal) * globalDisc : 0;
+    const itemTaxable = Math.max(0, afterDisc - itemGlobalDisc);
+    const tax = itemTaxable * (item.product.tax / 100);
+    taxAmount += tax;
+  });
+
+  const total = Math.max(0, taxableSubtotal + taxAmount);
 
   return {
     subtotal: r(subtotal),
@@ -1381,133 +1397,139 @@ export function generateReceipt(
   isPaymentRequest: boolean = false,
 ): string {
   const c = settings.currency_symbol;
-  const isIndia = settings.country === "IN";
+  const isIndia = settings.country === "IN" || settings.country === "India" || settings.currency_symbol === "₹" || settings.currency === "INR";
   const lines: string[] = [];
+  const W = 40; 
 
-  // Header
+  const center = (t: string) => {
+    const pad = Math.max(0, Math.floor((W - t.length) / 2));
+    return " ".repeat(pad) + t;
+  };
+
+  // 1. Logo
   if (settings.show_logo_on_receipt && settings.logo_url) {
     lines.push(`[LOGO: ${settings.logo_url}]`);
   }
-  lines.push(`================================`);
-  if (isPaymentRequest) {
-    lines.push(`       PAYMENT REQUEST`);
-    lines.push(`--------------------------------`);
-  }
-  lines.push(`       ${settings.store_name}`);
-  if (settings.address) lines.push(`  ${settings.address}`);
-  if (settings.phone) lines.push(`  ${settings.phone}`);
-  if (settings.receipt_header_text)
-    lines.push(`  ${settings.receipt_header_text}`);
-  if (isIndia && settings.tax_id) lines.push(`  GSTIN: ${settings.tax_id}`);
-  lines.push(`================================`);
 
-  // Order Info
-  lines.push(`Order #: ${order.id.slice(-6).toUpperCase()}`);
-  lines.push(`Date:    ${new Date(order.created_at).toLocaleString()}`);
+  // 2. Header
+  lines.push("=".repeat(W));
+  lines.push(center(settings.store_name.toUpperCase()));
+  if (settings.address) lines.push(center(settings.address));
+  if (isIndia && settings.tax_id) lines.push(center(`GSTIN: ${settings.tax_id}`));
+  if (settings.phone) lines.push(center(`Contact: ${settings.phone}`));
+  lines.push("=".repeat(W));
+
+  // 3. Invoice Info
+  const title = isIndia ? "TAX INVOICE" : "RECEIPT ID";
+  lines.push(`${title.padEnd(12)}: #${order.id.slice(-6).toUpperCase()}`);
+  lines.push("-".repeat(W));
+  
+  const created = new Date(order.created_at);
+  const dateStr = created.toLocaleDateString();
+  const timeStr = created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  lines.push(`Date: ${dateStr.padEnd(15)} Time: ${timeStr}`);
+  
+  const typeStr = (order.order_type || "dine_in").toUpperCase();
+  const staffStr = order.user_name || "Admin";
+  lines.push(`Type: ${typeStr.padEnd(15)} Staff: ${staffStr}`);
+  
   if (order.customer_name) lines.push(`Customer: ${order.customer_name}`);
-  if (order.delivery_phone) lines.push(`Phone:    ${order.delivery_phone}`);
   if (order.table_id) lines.push(`Table:    ${order.table_id}`);
-  lines.push(`Type:     ${order.order_type || "dine_in"}`);
-  if (order.user_name) lines.push(`Staff:    ${order.user_name}`);
-  lines.push(`--------------------------------`);
+  lines.push("-".repeat(W));
 
-  // Items
-  lines.push(`ITEMS`);
-  lines.push(`--------------------------------`);
+  // 4. Items Table
+  if (isIndia) {
+    lines.push(`ITEMS             QTY    RATE     AMOUNT`);
+  } else {
+    lines.push(`DESCRIPTION       QTY    PRICE     TOTAL`);
+  }
+  lines.push("-".repeat(W));
+
   order.items.forEach((i) => {
-    const itemTotal = i.price * i.quantity;
-    const left = `${i.product_name} x${i.quantity}`;
-    const right = `${c}${itemTotal.toFixed(2)}`;
-    lines.push(`${left.padEnd(22)}${right.padStart(8)}`);
+    const name = i.product_name.length > 17 ? i.product_name.slice(0, 14) + "..." : i.product_name;
+    const qty = i.quantity.toString().padStart(3);
+    const rate = i.price.toFixed(2).padStart(8);
+    const amount = (i.price * i.quantity).toFixed(2).padStart(10);
+    lines.push(`${name.padEnd(17)} ${qty} ${rate} ${amount}`);
     if (i.discount > 0) {
-      lines.push(
-        `  Discount: -${c}${((itemTotal * i.discount) / 100).toFixed(2)}`,
-      );
+      const discAmt = (i.price * i.quantity * i.discount) / 100;
+      lines.push(`  (Discount -${c}${discAmt.toFixed(2)})`);
     }
   });
-  lines.push(`--------------------------------`);
+  lines.push("-".repeat(W));
 
-  // Totals
-  lines.push(`Subtotal: ${(c + order.subtotal.toFixed(2)).padStart(18)}`);
+  // 5. Totals
+  const L = 25;
+  const V = W - L;
+  
+  lines.push(`${"SUBTOTAL:".padEnd(L)}${c}${order.subtotal.toFixed(2).padStart(V - 1)}`);
 
-  if (order.tip_amount && order.tip_amount > 0) {
-    lines.push(`Tip:      ${(c + order.tip_amount.toFixed(2)).padStart(18)}`);
-  }
-
-  // Tax breakdown
-  if (settings.show_tax_breakdown && order.tax_amount > 0) {
-    const taxName = settings.tax_name || "Tax";
-    const taxRate = settings.tax_rate || 0;
-    lines.push(
-      `${taxName} (${taxRate}%): ${(c + order.tax_amount.toFixed(2)).padStart(13)}`,
-    );
+  if (order.tax_amount > 0) {
+    if (isIndia) {
+      const split = order.tax_amount / 2;
+      lines.push(`${"CGST (9%):".padEnd(L)}${c}${split.toFixed(2).padStart(V - 1)}`);
+      lines.push(`${"SGST (9%):".padEnd(L)}${c}${split.toFixed(2).padStart(V - 1)}`);
+    } else {
+      const taxName = settings.tax_name || "TAX";
+      const taxRate = settings.tax_rate || 0;
+      lines.push(`${(taxName + " (" + taxRate + "%):").padEnd(L)}${c}${order.tax_amount.toFixed(2).padStart(V - 1)}`);
+    }
   }
 
   if (order.discount_amount > 0) {
-    lines.push(
-      `Discount: -${(c + order.discount_amount.toFixed(2)).padStart(16)}`,
-    );
+    lines.push(`${"DISCOUNT:".padEnd(L)}-${c}${order.discount_amount.toFixed(2).padStart(V - 2)}`);
   }
 
-  lines.push(`================================`);
-  lines.push(`TOTAL:    ${(c + order.total.toFixed(2)).padStart(18)}`);
-  lines.push(`================================`);
+  if (order.tip_amount && order.tip_amount > 0) {
+    lines.push(`${"TIP:".padEnd(L)}${c}${order.tip_amount.toFixed(2).padStart(V - 1)}`);
+  }
 
-  // Payment Details
+  lines.push("-".repeat(W));
+  
+  if (isIndia) {
+    const rounded = Math.round(order.total);
+    const roundingOff = rounded - order.total;
+    lines.push(`${"TOTAL AMOUNT:".padEnd(L)}${c}${order.total.toFixed(2).padStart(V - 1)}`);
+    lines.push("-".repeat(W));
+    if (Math.abs(roundingOff) > 0.001) {
+      lines.push(`${"Rounding Off:".padEnd(L)}${roundingOff >= 0 ? "+" : "-"}${c}${Math.abs(roundingOff).toFixed(2).padStart(V - 2)}`);
+    }
+    lines.push(`${"NET PAYABLE:".padEnd(L)}${c}${rounded.toFixed(2)}`);
+    
+    // 6.5 QR Code for India (Positioned here for maximum visibility)
+    if (settings.upi_id) {
+      const upiUrl = `upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${rounded.toFixed(2)}&cu=INR`;
+      lines.push(`[QRCODE: ${upiUrl}]`);
+    }
+  } else {
+    lines.push(`${"GRAND TOTAL:".padEnd(L)}${c}${order.total.toFixed(2).padStart(V - 1)}`);
+  }
+  lines.push("=".repeat(W));
+
+  // 6. Payment Info
   if (!isPaymentRequest) {
-    lines.push(`PAYMENT`);
-    lines.push(`--------------------------------`);
-    lines.push(`Method:   ${order.payment_method?.toUpperCase() || "CASH"}`);
-
-    if (isIndia) {
-      if (order.payment_method === "upi" && settings.upi_id) {
-        lines.push(`UPI ID:   ${settings.upi_id}`);
-      }
-      if (settings.merchant_id) {
-        lines.push(`Merchant: ${settings.merchant_id}`);
-      }
-    }
-
+    const method = (order.payment_method || "CASH").toUpperCase();
+    lines.push(`${"PAYMENT METHOD:".padEnd(L)}${method.padStart(V)}`);
     if (order.payment_method === "cash") {
-      lines.push(
-        `Paid:     ${(c + (order.amount_paid || 0).toFixed(2)).padStart(18)}`,
-      );
-      lines.push(
-        `Change:   ${(c + (order.change_amount || 0).toFixed(2)).padStart(18)}`,
-      );
-    }
-
-    if (order.metadata?.split_payments) {
-      const split = order.metadata.split_payments as {
-        method: string;
-        amount: number;
-      }[];
-      split.forEach((s) => {
-        lines.push(
-          `${s.method.toUpperCase()}: ${(c + s.amount.toFixed(2)).padStart(21 - s.method.length)}`,
-        );
-      });
-    }
-
-    if (order.amount_paid && order.total && order.amount_paid > order.total) {
-      lines.push(
-        `Balance:  ${(c + (order.amount_paid - order.total).toFixed(2)).padStart(18)}`,
-      );
+      lines.push(`${"PAID:".padEnd(L)}${c}${(order.amount_paid || 0).toFixed(2).padStart(V - 1)}`);
+      lines.push(`${"CHANGE:".padEnd(L)}${c}${(order.change_amount || 0).toFixed(2).padStart(V - 1)}`);
     }
   } else if (isIndia && settings.upi_id) {
-    lines.push(`SCAN TO PAY UPI`);
-    lines.push(`UPI ID: ${settings.upi_id}`);
-    lines.push(`--------------------------------`);
+    lines.push(center("SCAN TO PAY UPI"));
+    lines.push(center(`UPI ID: ${settings.upi_id}`));
   }
 
-  // Footer
-  lines.push(`================================`);
+  
+  lines.push("-".repeat(W));
+
+  // 7. Footer
   if (settings.footer_text) {
-    lines.push(`   ${settings.footer_text}`);
+    lines.push(center(settings.footer_text));
   } else {
-    lines.push(`   Thank you! Visit again`);
+    lines.push(center("Thank you! Visit again."));
   }
-  lines.push(`================================`);
+  lines.push(center("Powered by AppIXEN"));
+  lines.push("=".repeat(W));
 
   return lines.filter(Boolean).join("\n");
 }

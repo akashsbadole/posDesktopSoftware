@@ -23,15 +23,45 @@ import {
 import { useSettingsStore, useStoresStore } from "@/lib/stores";
 import { Settings, Store as StoreType } from "@/lib/db";
 import { countryPresets, taxSystems } from "@/lib/countries";
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from "@tauri-apps/api/tauri";
 
 const industries = [
-  { id: "food", label: "Food & Beverage", icon: ChefHat, description: "Restaurants, cafes, bakeries" },
-  { id: "retail", label: "Retail", icon: ShoppingBag, description: "Clothing, grocery, general retail" },
-  { id: "pharmacy", label: "Pharmacy", icon: Pill, description: "Medical stores, healthcare" },
-  { id: "gift_shop", label: "Gift Shop", icon: Gift, description: "Gifts, toys, souvenirs" },
-  { id: "salon_spa", label: "Salon & Spa", icon: Scissors, description: "Hair salon, beauty spa" },
-  { id: "repair_shop", label: "Repair Shop", icon: Wrench, description: "Auto repair, electronics repair" },
+  {
+    id: "food",
+    label: "Food & Beverage",
+    icon: ChefHat,
+    description: "Restaurants, cafes, bakeries",
+  },
+  {
+    id: "retail",
+    label: "Retail",
+    icon: ShoppingBag,
+    description: "Clothing, grocery, general retail",
+  },
+  {
+    id: "pharmacy",
+    label: "Pharmacy",
+    icon: Pill,
+    description: "Medical stores, healthcare",
+  },
+  {
+    id: "gift_shop",
+    label: "Gift Shop",
+    icon: Gift,
+    description: "Gifts, toys, souvenirs",
+  },
+  {
+    id: "salon_spa",
+    label: "Salon & Spa",
+    icon: Scissors,
+    description: "Hair salon, beauty spa",
+  },
+  {
+    id: "repair_shop",
+    label: "Repair Shop",
+    icon: Wrench,
+    description: "Auto repair, electronics repair",
+  },
 ];
 
 export default function OnboardingModal() {
@@ -63,12 +93,12 @@ export default function OnboardingModal() {
       try {
         const arrayBuffer = await file.arrayBuffer();
         const data = Array.from(new Uint8Array(arrayBuffer));
-        const filename = `logo_${Date.now()}.${file.name.split('.').pop()}`;
-        const path = await invoke<string>('save_image', { data, filename });
+        const filename = `logo_${Date.now()}.${file.name.split(".").pop()}`;
+        const path = await invoke<string>("save_image", { data, filename });
         setFormData({ ...formData, logoUrl: path });
       } catch (error) {
-        console.error('Failed to upload image:', error);
-        alert('Failed to upload image. Please try again.');
+        console.error("Failed to upload image:", error);
+        alert("Failed to upload image. Please try again.");
       }
     }
   };
@@ -95,7 +125,7 @@ export default function OnboardingModal() {
     setLoading(true);
     try {
       // 1. Update current store info
-      const currentStore = stores.find(s => s.id === activeStoreId);
+      const currentStore = stores.find((s) => s.id === activeStoreId);
       if (currentStore) {
         await updateStore({
           ...currentStore,
@@ -137,7 +167,6 @@ export default function OnboardingModal() {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
       <div className="w-full max-w-2xl bg-surface border border-border rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
-
         {/* Progress Bar */}
         <div className="h-1.5 w-full bg-muted flex">
           {[1, 2, 3, 4, 5, 6].map((s) => (
@@ -159,32 +188,38 @@ export default function OnboardingModal() {
                   <ShieldCheck size={32} />
                 </div>
                 <h1 className="text-3xl font-bold mb-2">License Agreement</h1>
-                <p className="text-muted-foreground">Please review and accept the MIT License</p>
+                <p className="text-muted-foreground">
+                  Please review and accept the MIT License
+                </p>
               </div>
 
               <div className="bg-muted/50 border border-border rounded-xl p-6 h-64 overflow-y-auto text-xs font-mono space-y-4 leading-relaxed">
                 <p className="font-bold">MIT License</p>
-                <p>Copyright (c) 2025 akash badole</p>
+                <p>Copyright (c) 2025 Appixen</p>
                 <p>
-                  Permission is hereby granted, free of charge, to any person obtaining a copy
-                  of this software and associated documentation files (the "Software"), to deal
-                  in the Software without restriction, including without limitation the rights
-                  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-                  copies of the Software, and to permit persons to whom the Software is
-                  furnished to do so, subject to the following conditions:
+                  Permission is hereby granted, free of charge, to any person
+                  obtaining a copy of this software and associated documentation
+                  files (the "Software"), to deal in the Software without
+                  restriction, including without limitation the rights to use,
+                  copy, modify, merge, publish, distribute, sublicense, and/or
+                  sell copies of the Software, and to permit persons to whom the
+                  Software is furnished to do so, subject to the following
+                  conditions:
                 </p>
                 <p>
-                  The above copyright notice and this permission notice shall be included in all
-                  copies or substantial portions of the Software.
+                  The above copyright notice and this permission notice shall be
+                  included in all copies or substantial portions of the
+                  Software.
                 </p>
                 <p>
-                  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-                  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-                  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-                  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-                  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-                  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-                  SOFTWARE.
+                  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+                  KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+                  WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+                  PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+                  COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+                  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+                  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+                  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 </p>
               </div>
 
@@ -194,12 +229,18 @@ export default function OnboardingModal() {
               >
                 <div
                   className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                    agreedToLicense ? "bg-[#F5C842] border-[#F5C842]" : "border-muted-foreground group-hover:border-[#F5C842]"
+                    agreedToLicense
+                      ? "bg-[#F5C842] border-[#F5C842]"
+                      : "border-muted-foreground group-hover:border-[#F5C842]"
                   }`}
                 >
-                  {agreedToLicense && <Check size={16} className="text-[#0D0D0F]" />}
+                  {agreedToLicense && (
+                    <Check size={16} className="text-[#0D0D0F]" />
+                  )}
                 </div>
-                <span className="text-sm font-medium">I have read and agree to the license terms</span>
+                <span className="text-sm font-medium">
+                  I have read and agree to the license terms
+                </span>
               </label>
             </div>
           )}
@@ -210,15 +251,21 @@ export default function OnboardingModal() {
                 <div className="w-16 h-16 bg-[#F5C842]/10 rounded-2xl flex items-center justify-center text-[#F5C842] mx-auto mb-4">
                   <Store size={32} />
                 </div>
-                <h1 className="text-3xl font-bold mb-2">Welcome to POS Billing</h1>
-                <p className="text-muted-foreground">Select your industry to get started</p>
+                <h1 className="text-3xl font-bold mb-2">
+                  Welcome to POS Billing
+                </h1>
+                <p className="text-muted-foreground">
+                  Select your industry to get started
+                </p>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {industries.map((ind) => (
                   <button
                     key={ind.id}
-                    onClick={() => setFormData({ ...formData, industry: ind.id as any })}
+                    onClick={() =>
+                      setFormData({ ...formData, industry: ind.id as any })
+                    }
                     className={`p-4 rounded-2xl border-2 transition-all text-left group ${
                       formData.industry === ind.id
                         ? "border-[#F5C842] bg-[#F5C842]/5 shadow-lg shadow-[#F5C842]/10"
@@ -228,11 +275,15 @@ export default function OnboardingModal() {
                     <ind.icon
                       size={24}
                       className={`mb-3 transition-colors ${
-                        formData.industry === ind.id ? "text-[#F5C842]" : "text-muted-foreground group-hover:text-foreground"
+                        formData.industry === ind.id
+                          ? "text-[#F5C842]"
+                          : "text-muted-foreground group-hover:text-foreground"
                       }`}
                     />
                     <h3 className="font-bold text-sm mb-1">{ind.label}</h3>
-                    <p className="text-[10px] text-muted-foreground leading-tight">{ind.description}</p>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      {ind.description}
+                    </p>
                   </button>
                 ))}
               </div>
@@ -246,7 +297,9 @@ export default function OnboardingModal() {
                   <Building2 size={32} />
                 </div>
                 <h1 className="text-3xl font-bold mb-2">Store Identity</h1>
-                <p className="text-muted-foreground">Tell us about your business</p>
+                <p className="text-muted-foreground">
+                  Tell us about your business
+                </p>
               </div>
 
               <div className="space-y-4 max-w-md mx-auto">
@@ -258,7 +311,9 @@ export default function OnboardingModal() {
                     autoFocus
                     placeholder="e.g. Downtown Cafe"
                     value={formData.storeName}
-                    onChange={(e) => setFormData({ ...formData, storeName: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, storeName: e.target.value })
+                    }
                     className="w-full p-4 bg-muted border border-border rounded-xl focus:ring-2 focus:ring-[#F5C842]/50"
                   />
                 </div>
@@ -269,7 +324,9 @@ export default function OnboardingModal() {
                   <input
                     placeholder="123 Main St, City"
                     value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, address: e.target.value })
+                    }
                     className="w-full p-4 bg-muted border border-border rounded-xl focus:ring-2 focus:ring-[#F5C842]/50"
                   />
                 </div>
@@ -280,7 +337,9 @@ export default function OnboardingModal() {
                   <input
                     placeholder="+1 234 567 890"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone: e.target.value })
+                    }
                     className="w-full p-4 bg-muted border border-border rounded-xl focus:ring-2 focus:ring-[#F5C842]/50"
                   />
                 </div>
@@ -295,34 +354,48 @@ export default function OnboardingModal() {
                   <Globe size={32} />
                 </div>
                 <h1 className="text-3xl font-bold mb-2">Regional Settings</h1>
-                <p className="text-muted-foreground">Currency and location preferences</p>
+                <p className="text-muted-foreground">
+                  Currency and location preferences
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-6 max-w-md mx-auto">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-muted-foreground">Country</label>
+                  <label className="text-xs font-bold text-muted-foreground">
+                    Country
+                  </label>
                   <select
                     value={formData.country}
                     onChange={(e) => handleCountryChange(e.target.value)}
                     className="w-full p-4 bg-muted border border-border rounded-xl focus:ring-2 focus:ring-[#F5C842]/50 outline-none"
                   >
                     {Object.keys(countryPresets).map((c) => (
-                      <option key={c} value={c}>{c}</option>
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-muted-foreground">Currency</label>
+                  <label className="text-xs font-bold text-muted-foreground">
+                    Currency
+                  </label>
                   <div className="p-4 bg-muted/50 border border-border rounded-xl flex items-center justify-between">
                     <span className="font-bold">{formData.currency}</span>
-                    <span className="text-[#F5C842]">{formData.currencySymbol}</span>
+                    <span className="text-[#F5C842]">
+                      {formData.currencySymbol}
+                    </span>
                   </div>
                 </div>
                 <div className="col-span-2 space-y-1.5">
-                  <label className="text-xs font-bold text-muted-foreground">Timezone</label>
+                  <label className="text-xs font-bold text-muted-foreground">
+                    Timezone
+                  </label>
                   <input
                     value={formData.timezone}
-                    onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, timezone: e.target.value })
+                    }
                     className="w-full p-4 bg-muted border border-border rounded-xl focus:ring-2 focus:ring-[#F5C842]/50"
                   />
                 </div>
@@ -337,42 +410,64 @@ export default function OnboardingModal() {
                   <ShieldCheck size={32} />
                 </div>
                 <h1 className="text-3xl font-bold mb-2">Tax Configuration</h1>
-                <p className="text-muted-foreground">How should we handle taxes?</p>
+                <p className="text-muted-foreground">
+                  How should we handle taxes?
+                </p>
               </div>
 
               <div className="space-y-4 max-w-md mx-auto">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-muted-foreground">Tax System</label>
+                  <label className="text-xs font-bold text-muted-foreground">
+                    Tax System
+                  </label>
                   <select
                     value={formData.taxSystem}
                     onChange={(e) => {
                       const system = e.target.value;
-                      const systemLabel = taxSystems.find(s => s.id === system)?.label || "Tax";
-                      setFormData({ ...formData, taxSystem: system, taxName: systemLabel });
+                      const systemLabel =
+                        taxSystems.find((s) => s.id === system)?.label || "Tax";
+                      setFormData({
+                        ...formData,
+                        taxSystem: system,
+                        taxName: systemLabel,
+                      });
                     }}
                     className="w-full p-4 bg-muted border border-border rounded-xl focus:ring-2 focus:ring-[#F5C842]/50 outline-none"
                   >
                     {taxSystems.map((s) => (
-                      <option key={s.id} value={s.id}>{s.label}</option>
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-muted-foreground">Tax Name</label>
+                    <label className="text-xs font-bold text-muted-foreground">
+                      Tax Name
+                    </label>
                     <input
                       placeholder="e.g. VAT"
                       value={formData.taxName}
-                      onChange={(e) => setFormData({ ...formData, taxName: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, taxName: e.target.value })
+                      }
                       className="w-full p-4 bg-muted border border-border rounded-xl focus:ring-2 focus:ring-[#F5C842]/50"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-muted-foreground">Rate (%)</label>
+                    <label className="text-xs font-bold text-muted-foreground">
+                      Rate (%)
+                    </label>
                     <input
                       type="number"
                       value={formData.taxRate}
-                      onChange={(e) => setFormData({ ...formData, taxRate: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          taxRate: parseFloat(e.target.value) || 0,
+                        })
+                      }
                       className="w-full p-4 bg-muted border border-border rounded-xl focus:ring-2 focus:ring-[#F5C842]/50"
                     />
                   </div>
@@ -403,7 +498,9 @@ export default function OnboardingModal() {
                     className="w-full p-4 bg-muted border border-border rounded-xl focus:ring-2 focus:ring-[#F5C842]/50"
                   />
                   {formData.logoUrl && (
-                    <p className="text-xs text-muted-foreground">Logo uploaded: {formData.logoUrl.split('/').pop()}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Logo uploaded: {formData.logoUrl.split("/").pop()}
+                    </p>
                   )}
                 </div>
                 <div className="space-y-3">
@@ -411,12 +508,23 @@ export default function OnboardingModal() {
                     <Palette size={14} /> Brand Color
                   </label>
                   <div className="flex gap-3">
-                    {["#F5C842", "#3498DB", "#2ECC71", "#E74C3C", "#9B59B6", "#FF9F43"].map((color) => (
+                    {[
+                      "#F5C842",
+                      "#3498DB",
+                      "#2ECC71",
+                      "#E74C3C",
+                      "#9B59B6",
+                      "#FF9F43",
+                    ].map((color) => (
                       <button
                         key={color}
-                        onClick={() => setFormData({ ...formData, primaryColor: color })}
+                        onClick={() =>
+                          setFormData({ ...formData, primaryColor: color })
+                        }
                         className={`w-10 h-10 rounded-full border-2 transition-transform hover:scale-110 active:scale-95 ${
-                          formData.primaryColor === color ? "border-foreground scale-110" : "border-transparent"
+                          formData.primaryColor === color
+                            ? "border-foreground scale-110"
+                            : "border-transparent"
                         }`}
                         style={{ backgroundColor: color }}
                       />
@@ -424,7 +532,12 @@ export default function OnboardingModal() {
                     <input
                       type="color"
                       value={formData.primaryColor}
-                      onChange={(e) => setFormData({ ...formData, primaryColor: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          primaryColor: e.target.value,
+                        })
+                      }
                       className="w-10 h-10 bg-transparent p-0 border-0 cursor-pointer"
                     />
                   </div>
@@ -432,7 +545,10 @@ export default function OnboardingModal() {
 
                 <div className="pt-8 border-t border-border mt-8 text-center">
                   <h3 className="font-bold mb-2">Ready to launch?</h3>
-                  <p className="text-xs text-muted-foreground mb-6">You can always change these settings later in the Settings panel.</p>
+                  <p className="text-xs text-muted-foreground mb-6">
+                    You can always change these settings later in the Settings
+                    panel.
+                  </p>
                 </div>
               </div>
             </div>
@@ -466,7 +582,11 @@ export default function OnboardingModal() {
                 disabled={loading}
                 className="flex-[2] flex items-center justify-center gap-2 py-4 px-6 rounded-2xl bg-[#F5C842] text-[#0D0D0F] font-bold hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-[#F5C842]/20"
               >
-                {loading ? <div className="w-5 h-5 border-2 border-[#0D0D0F]/30 border-t-[#0D0D0F] rounded-full animate-spin" /> : <Check size={20} />}
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-[#0D0D0F]/30 border-t-[#0D0D0F] rounded-full animate-spin" />
+                ) : (
+                  <Check size={20} />
+                )}
                 Get Started
               </button>
             )}
