@@ -223,6 +223,19 @@ export interface StaffAttendance {
   date: string;
 }
 
+export interface StaffSalary {
+  id: string;
+  store_id: string;
+  staff_id: string;
+  staff_name: string;
+  amount: number;
+  total_hours: number;
+  period_start: string;
+  period_end: string;
+  status: string;
+  created_at: string;
+}
+
 export interface Customer {
   id: string;
   store_id: string;
@@ -843,6 +856,7 @@ export interface User {
   name: string;
   role: string;
   store_id?: string;
+  hourly_rate: number;
 }
 
 export async function verifyPin(pin: string): Promise<User | null> {
@@ -855,6 +869,34 @@ export async function changePin(userId: string, newPin: string): Promise<void> {
 
 export async function getUsers(): Promise<User[]> {
   return sql<User[]>("get_users");
+}
+
+export async function dbUpsertUser(user: User): Promise<void> {
+  return sql("upsert_user", { user });
+}
+
+export async function dbDeleteUser(id: string): Promise<void> {
+  return sql("delete_user", { id });
+}
+
+export async function dbGetAttendanceByRange(
+  storeId: string,
+  startDate: string,
+  endDate: string,
+): Promise<StaffAttendance[]> {
+  return sql<StaffAttendance[]>("get_attendance_by_range", {
+    store_id: storeId,
+    start_date: startDate,
+    end_date: endDate,
+  });
+}
+
+export async function dbSaveSalary(salary: StaffSalary): Promise<void> {
+  return sql("save_salary", { salary });
+}
+
+export async function dbGetSalaries(storeId: string): Promise<StaffSalary[]> {
+  return sql<StaffSalary[]>("get_salaries", { store_id: storeId });
 }
 
 // ─── Backup ─────────────────────────────────────────────────────────────────
@@ -2495,11 +2537,62 @@ async function browserFallback<T>(
       return [] as T;
     case "check_inventory_alerts":
       return [] as T;
-    case "get_users":
-      return [
-        { id: "admin", name: "Administrator", role: "admin" },
-        { id: "cashier", name: "Cashier", role: "cashier" },
-      ] as T;
+    case "get_users": {
+      const users = lsGet<User[]>("pos_users") || [
+        { id: "admin", name: "Administrator", role: "admin", hourly_rate: 0 },
+        { id: "cashier", name: "Cashier", role: "cashier", hourly_rate: 0 },
+      ];
+      return users as T;
+    }
+    case "upsert_user": {
+      const users = lsGet<User[]>("pos_users") || [
+        { id: "admin", name: "Administrator", role: "admin", hourly_rate: 0 },
+        { id: "cashier", name: "Cashier", role: "cashier", hourly_rate: 0 },
+      ];
+      const u = (args as any).user as User;
+      const idx = users.findIndex(x => x.id === u.id);
+      if (idx >= 0) users[idx] = u;
+      else users.push(u);
+      lsSet("pos_users", users);
+      return undefined as T;
+    }
+    case "delete_user": {
+      const users = lsGet<User[]>("pos_users") || [];
+      const filtered = users.filter(x => x.id !== (args as any).id);
+      lsSet("pos_users", filtered);
+      return undefined as T;
+    }
+    case "get_attendance_by_range": {
+      const items = lsGet<StaffAttendance[]>("pos_attendance") || [];
+      const { start_date, end_date } = args as any;
+      return items.filter(
+        (x) =>
+          x.store_id === storeId && x.date >= start_date && x.date <= end_date,
+      ) as T;
+    }
+    case "save_salary": {
+      const salaries = lsGet<StaffSalary[]>("pos_salaries") || [];
+      const s = (args as any).salary as StaffSalary;
+      salaries.push(s);
+      lsSet("pos_salaries", salaries);
+      // Also add to expenses
+      const expenses = lsGet<Expense[]>("pos_expenses") || [];
+      expenses.push({
+        id: Math.random().toString(36).substr(2, 9),
+        store_id: s.store_id,
+        category: "Salary",
+        amount: s.amount,
+        description: `Salary for ${s.staff_name} (${s.period_start} - ${s.period_end})`,
+        date: new Date().toISOString().split("T")[0],
+        payment_method: "cash"
+      });
+      lsSet("pos_expenses", expenses);
+      return undefined as T;
+    }
+    case "get_salaries": {
+      const salaries = lsGet<StaffSalary[]>("pos_salaries") || [];
+      return salaries.filter(x => x.store_id === storeId) as T;
+    }
     case "get_today_attendance": {
       const items = lsGet<StaffAttendance[]>("pos_attendance") || [];
       return items.filter((x) => x.store_id === storeId) as T;

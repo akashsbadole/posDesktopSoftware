@@ -78,10 +78,18 @@ test.describe('Comprehensive POS Features Verification', () => {
     await expect(page.locator('text=TEST50')).toBeVisible();
   });
 
-  test('Staff Attendance', async ({ page }) => {
+  test('Staff Attendance & Salary', async ({ page }) => {
     await page.click('button[role="menuitem"]:has-text("Staff")');
     // Use getByRole for the heading to avoid strict mode violation
-    await expect(page.getByRole('heading', { name: 'Staff Attendance' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Staff & Salary Management' })).toBeVisible();
+
+    // Verify tabs are present
+    await expect(page.locator('button:has-text("Staff Directory")')).toBeVisible();
+    await expect(page.locator('button:has-text("Calculate Salary")')).toBeVisible();
+    await expect(page.locator('button:has-text("Attendance")')).toBeVisible();
+
+    // Switch to Attendance tab
+    await page.click('button:has-text("Attendance")');
 
     // It should show at least the current admin as clocked in or the clock-in button
     const clockInBtn = page.getByRole('button', { name: 'Clock In' });
@@ -156,7 +164,7 @@ test.describe('Comprehensive POS Features Verification', () => {
       { name: 'Inventory', heading: 'Inventory Management' },
       { name: 'Alerts', heading: 'Inventory Alerts' },
       { name: 'Refunds', heading: 'Refund Requests' },
-      { name: 'Staff', heading: 'Staff Attendance' },
+      { name: 'Staff', heading: 'Staff & Salary' },
       { name: 'Reports', heading: 'Reports' },
       { name: 'TAX', heading: 'Tax Reports' },
       { name: 'Logs', heading: 'Activity Logs' },

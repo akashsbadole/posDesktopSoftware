@@ -24,12 +24,23 @@ export default function ReportsScreen() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [showEnhanced, setShowEnhanced] = useState(false);
+  const [salarySummary, setSalarySummary] = useState<{ total: number, count: number } | null>(null);
 
   const handleGenerateReport = async () => {
     setLoading(true);
     try {
       const r = await getSalesReport(startDate, endDate, activeStoreId);
       setReport(r);
+
+      // Calculate salaries in same range
+      const salaries = useStaffStore.getState().salaries.filter(s =>
+        s.store_id === activeStoreId &&
+        s.created_at.split('T')[0] >= startDate &&
+        s.created_at.split('T')[0] <= endDate
+      );
+      const totalSalary = salaries.reduce((sum, s) => sum + s.amount, 0);
+      setSalarySummary({ total: totalSalary, count: salaries.length });
+
     } catch (e) {
       setMessage("Error generating report");
     }
@@ -167,6 +178,21 @@ export default function ReportsScreen() {
                   <div style={{ fontSize: 18, fontWeight: 600 }}>{settings?.currency_symbol || '₹'}{report.avg_order.toFixed(2)}</div>
                 </div>
               </div>
+
+              {salarySummary && salarySummary.total > 0 && (
+                <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+                   <div style={{ fontSize: 12, color: "#666" }}>Staff Payouts</div>
+                   <div className="flex justify-between items-end">
+                      <div style={{ fontSize: 20, fontWeight: 700, color: "#E74C3C" }}>
+                        -{settings?.currency_symbol || '₹'}{salarySummary.total.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#9090A8" }}>{salarySummary.count} payments</div>
+                   </div>
+                   <div style={{ fontSize: 12, marginTop: 8, color: "#2ECC71", fontWeight: 600 }}>
+                      Net Income: {settings?.currency_symbol || '₹'}{(report.total_revenue - salarySummary.total).toFixed(2)}
+                   </div>
+                </div>
+              )}
             </div>
           )}
         </div>

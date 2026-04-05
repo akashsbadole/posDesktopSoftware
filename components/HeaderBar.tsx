@@ -189,7 +189,7 @@ function getScreenLabel(screen: string, taxName: string = "GST"): string {
     scheduling: "Staff Scheduling",
     reconciliation: "Day-End Reconciliation",
     expenses: "Expenses",
-    staff: "Staff Attendance",
+    staff: "Staff & Salary",
     reports: "Reports",
     gst: `${taxName} Reports`,
     logs: "Activity Logs",

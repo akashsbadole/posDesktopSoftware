@@ -16,6 +16,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import KDSScreen from "@/components/KDSScreen";
 import ExpenseScreen from "@/components/ExpenseScreen";
 import StaffAttendance from "@/components/StaffAttendance";
+import StaffManagementScreen from "@/components/StaffManagementScreen";
 import CustomerCRM from "@/components/CustomerCRM";
 import TableManager from "@/components/TableManager";
 import CouponsScreen from "@/components/CouponsScreen";
@@ -286,7 +287,7 @@ export default function Home() {
               {screen === "logs" && <ActivityLogsScreen />}
               {screen === "kds" && <KDSScreen />}
               {screen === "expenses" && <ExpenseScreen />}
-              {screen === "staff" && <StaffAttendance />}
+              {screen === "staff" && <StaffManagementScreen />}
               {screen === "customers" && <CustomerCRM />}
               {screen === "tables" && <TableManager />}
               {screen === "coupons" && <CouponsScreen />}
