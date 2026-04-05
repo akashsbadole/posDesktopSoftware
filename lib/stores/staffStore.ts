@@ -1,10 +1,25 @@
 import { create } from 'zustand';
-import { getUsers, dbClockIn, dbClockOut, dbGetTodayAttendance, dbIsClockedIn, User, StaffAttendance } from '@/lib/db';
+import {
+  getUsers,
+  dbClockIn,
+  dbClockOut,
+  dbGetTodayAttendance,
+  dbIsClockedIn,
+  dbUpsertUser,
+  dbDeleteUser,
+  dbGetSalaries,
+  dbSaveSalary,
+  dbGetAttendanceByRange,
+  User,
+  StaffAttendance,
+  StaffSalary
+} from '@/lib/db';
 import { useSettingsStore } from './settingsStore';
 
 interface StaffState {
   users: User[];
   todayAttendance: StaffAttendance[];
+  salaries: StaffSalary[];
   isLoading: boolean;
   error: string | null;
   currentUserClockedIn: boolean;
@@ -15,11 +30,17 @@ interface StaffState {
   checkClockedIn: (userId: string) => Promise<void>;
   getUserById: (id: string) => User | undefined;
   getClockedInUsers: () => StaffAttendance[];
+  upsertUser: (user: User) => Promise<void>;
+  deleteUser: (id: string) => Promise<void>;
+  fetchSalaries: () => Promise<void>;
+  saveSalary: (salary: StaffSalary) => Promise<void>;
+  getAttendanceByRange: (startDate: string, endDate: string) => Promise<StaffAttendance[]>;
 }
 
 export const useStaffStore = create<StaffState>((set, get) => ({
   users: [],
   todayAttendance: [],
+  salaries: [],
   isLoading: false,
   error: null,
   currentUserClockedIn: false,
@@ -67,4 +88,34 @@ export const useStaffStore = create<StaffState>((set, get) => ({
   getUserById: (id: string) => get().users.find((u) => u.id === id),
 
   getClockedInUsers: () => get().todayAttendance.filter((a) => !a.clock_out),
+
+  upsertUser: async (user: User) => {
+    await dbUpsertUser(user);
+    await get().fetchUsers();
+  },
+
+  deleteUser: async (id: string) => {
+    await dbDeleteUser(id);
+    await get().fetchUsers();
+  },
+
+  fetchSalaries: async () => {
+    const storeId = useSettingsStore.getState().activeStoreId;
+    try {
+      const salaries = await dbGetSalaries(storeId);
+      set({ salaries });
+    } catch (err) {
+      console.error('Failed to fetch salaries:', err);
+    }
+  },
+
+  saveSalary: async (salary: StaffSalary) => {
+    await dbSaveSalary(salary);
+    await get().fetchSalaries();
+  },
+
+  getAttendanceByRange: async (startDate: string, endDate: string) => {
+    const storeId = useSettingsStore.getState().activeStoreId;
+    return await dbGetAttendanceByRange(storeId, startDate, endDate);
+  },
 }));
