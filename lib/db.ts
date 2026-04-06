@@ -1362,6 +1362,17 @@ export async function syncFromNeon(
   }
 }
 
+export interface PremiumStatus {
+  enabled: bool;
+  source: "env" | "license" | "trial" | "none";
+  trial_days_left: number;
+  trial_expiry: string | null;
+}
+
+export async function getPremiumStatus(): Promise<PremiumStatus> {
+  return sql<PremiumStatus>("get_premium_status");
+}
+
 export async function isPremiumEnabled(): Promise<boolean> {
   return sql<boolean>("is_premium_enabled");
 }
@@ -2631,12 +2642,63 @@ async function browserFallback<T>(
         (x) => x.user_id === userId && !x.clock_out && x.store_id === storeId,
       ) as T;
     }
+    case "get_premium_status": {
+      const isEnv = process.env.NEXT_PUBLIC_ENABLE_PREMIUM === "true";
+      const allSettings = lsGet<Record<string, Settings>>(LS.settings) || {};
+      const hasLicense = Object.values(allSettings).some((s) =>
+        (s.license_key || "").startsWith("PREM-"),
+      );
+
+      if (isEnv)
+        return {
+          enabled: true,
+          source: "env",
+          trial_days_left: 0,
+          trial_expiry: null,
+        } as T;
+      if (hasLicense)
+        return {
+          enabled: true,
+          source: "license",
+          trial_days_left: 0,
+          trial_expiry: null,
+        } as T;
+
+      // Mock trial for browser fallback: 180 days from first access
+      let firstAccess = lsGet<string>("pos_first_access");
+      if (!firstAccess) {
+        firstAccess = new Date().toISOString();
+        lsSet("pos_first_access", firstAccess);
+      }
+      const expiry = new Date(firstAccess);
+      expiry.setDate(expiry.getDate() + 183);
+      const daysLeft = Math.ceil(
+        (expiry.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24),
+      );
+
+      return {
+        enabled: daysLeft > 0,
+        source: daysLeft > 0 ? "trial" : "none",
+        trial_days_left: Math.max(0, daysLeft),
+        trial_expiry: expiry.toISOString(),
+      } as T;
+    }
     case "is_premium_enabled": {
       if (process.env.NEXT_PUBLIC_ENABLE_PREMIUM === "true") return true as T;
       const allSettings = lsGet<Record<string, Settings>>(LS.settings) || {};
-      return Object.values(allSettings).some((s) =>
+      const hasLicense = Object.values(allSettings).some((s) =>
         (s.license_key || "").startsWith("PREM-"),
-      ) as T;
+      );
+      if (hasLicense) return true as T;
+
+      // Trial check
+      const firstAccess = lsGet<string>("pos_first_access");
+      if (firstAccess) {
+        const expiry = new Date(firstAccess);
+        expiry.setDate(expiry.getDate() + 183);
+        return (expiry.getTime() > new Date().getTime()) as T;
+      }
+      return false as T;
     }
     case "get_app_version":
       return "1.0.0" as any as T;

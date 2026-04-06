@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { dbGetSettings, dbSaveSettings, Settings, isPremiumEnabled } from '@/lib/db';
+import { dbGetSettings, dbSaveSettings, Settings, isPremiumEnabled, getPremiumStatus, PremiumStatus } from '@/lib/db';
 
 interface SettingsState {
   settings: Settings;
@@ -9,6 +9,7 @@ interface SettingsState {
   error: string | null;
   isDarkMode: boolean;
   premiumEnabled: boolean;
+  premiumStatus: PremiumStatus | null;
   fetchSettings: () => Promise<void>;
   saveSettings: (settings: Partial<Settings>) => Promise<void>;
   setDarkMode: (isDarkMode: boolean) => void;
@@ -70,26 +71,30 @@ export const useSettingsStore = create<SettingsState>()(
       error: null,
       isDarkMode: false,
       premiumEnabled: false,
+      premiumStatus: null,
 
       fetchSettings: async () => {
         set({ isLoading: true, error: null });
         try {
           const settings = await dbGetSettings(get().activeStoreId);
-          const premium =
-            (await isPremiumEnabled()) ||
-            (settings.license_key || "").startsWith("PREM-");
-          set({ settings, premiumEnabled: premium, isLoading: false });
+          const status = await getPremiumStatus();
+          set({
+            settings,
+            premiumEnabled: status.enabled,
+            premiumStatus: status,
+            isLoading: false
+          });
         } catch (err) {
           set({ error: (err as Error).message, isLoading: false });
         }
       },
 
       checkPremium: async () => {
-        const settings = await dbGetSettings(get().activeStoreId);
-        const premium =
-          (await isPremiumEnabled()) ||
-          (settings.license_key || "").startsWith("PREM-");
-        set({ premiumEnabled: premium });
+        const status = await getPremiumStatus();
+        set({
+          premiumEnabled: status.enabled,
+          premiumStatus: status
+        });
       },
 
       saveSettings: async (newSettings: Partial<Settings>) => {

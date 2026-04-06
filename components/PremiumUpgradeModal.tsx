@@ -10,7 +10,7 @@ interface PremiumUpgradeModalProps {
 }
 
 export default function PremiumUpgradeModal({ isOpen, onClose, featureName }: PremiumUpgradeModalProps) {
-  const { saveSettings, checkPremium } = useSettingsStore();
+  const { saveSettings, checkPremium, premiumStatus } = useSettingsStore();
   const [licenseKey, setLicenseKey] = useState("");
   const [activating, setActivating] = useState(false);
   const [showLicenseEntry, setShowLicenseEntry] = useState(false);
@@ -63,14 +63,20 @@ export default function PremiumUpgradeModal({ isOpen, onClose, featureName }: Pr
             <Key size={36} color="#0D0D0F" />
           </div>
 
-          <h2 className="text-3xl font-bold mb-2">Upgrade to Premium</h2>
+          <h2 className="text-3xl font-bold mb-2">
+            {premiumStatus?.source === "trial"
+              ? "Your Free Trial is Active!"
+              : "Upgrade to Premium"}
+          </h2>
           {featureName && (
             <p className="text-[#F5C842] font-semibold mb-4 uppercase tracking-widest text-xs">
               Access {featureName} & More
             </p>
           )}
           <p className="text-gray-400 max-w-md mx-auto mb-10">
-            Unlock the full power of POS Billing with professional features designed to help your business scale and stay organized.
+            {premiumStatus?.source === "trial"
+              ? `You have full access to all professional features for ${premiumStatus.trial_days_left} more days. Upgrade now to ensure uninterrupted service.`
+              : "Unlock the full power of POS Billing with professional features designed to help your business scale and stay organized."}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left mb-12">

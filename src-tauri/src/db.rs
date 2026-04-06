@@ -788,6 +788,12 @@ impl Database {
             self.set_version(5)?;
         }
 
+        // Migration to ensure default store exists for installation tracking
+        if current < 6 {
+            self.migration_v6()?;
+            self.set_version(6)?;
+        }
+
         Ok(())
     }
 
@@ -1550,6 +1556,14 @@ impl Database {
         let _ = self
             .conn
             .execute("ALTER TABLE order_items ADD COLUMN done_at TEXT", []);
+        Ok(())
+    }
+
+    fn migration_v6(&self) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO stores (id, name, industry) VALUES ('default', 'Main Store', 'food')",
+            [],
+        )?;
         Ok(())
     }
 
@@ -7224,6 +7238,18 @@ impl Database {
             }
             _ => Ok(0.0),
         }
+    }
+
+    pub fn get_installation_date(&self) -> Result<String> {
+        let date: String = self
+            .conn
+            .query_row(
+                "SELECT created_at FROM stores WHERE id = 'default'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or_else(|_| chrono::Utc::now().to_rfc3339());
+        Ok(date)
     }
 
     pub fn get_stock_counts(&self, store_id: &str) -> Result<Vec<StockCount>> {

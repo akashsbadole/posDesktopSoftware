@@ -54,13 +54,26 @@ fn reset_and_seed_database() -> Result<(), String> {
     db.seed_all().map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PremiumStatus {
+    pub enabled: bool,
+    pub source: String, // "env", "license", "trial", "none"
+    pub trial_days_left: i64,
+    pub trial_expiry: Option<String>,
+}
+
 #[tauri::command]
-fn is_premium_enabled() -> bool {
+fn get_premium_status() -> PremiumStatus {
     // 1. Check build-time environment variable
     const BUILD_PREMIUM: Option<&'static str> = option_env!("ENABLE_PREMIUM_FEATURES");
     if let Some(v) = BUILD_PREMIUM {
         if v == "true" || v == "1" {
-            return true;
+            return PremiumStatus {
+                enabled: true,
+                source: "env".into(),
+                trial_days_left: 0,
+                trial_expiry: None,
+            };
         }
     }
 
@@ -69,7 +82,12 @@ fn is_premium_enabled() -> bool {
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false)
     {
-        return true;
+        return PremiumStatus {
+            enabled: true,
+            source: "env".into(),
+            trial_days_left: 0,
+            trial_expiry: None,
+        };
     }
 
     // 3. Check license key in database for any store
@@ -78,14 +96,48 @@ fn is_premium_enabled() -> bool {
             for store in stores {
                 if let Ok(settings) = db.get_settings(&store.id) {
                     if settings.license_key.starts_with("PREM-") {
-                        return true;
+                        return PremiumStatus {
+                            enabled: true,
+                            source: "license".into(),
+                            trial_days_left: 0,
+                            trial_expiry: None,
+                        };
                     }
+                }
+            }
+        }
+
+        // 4. Check Trial (6 months from installation)
+        if let Ok(install_date_str) = db.get_installation_date() {
+            if let Ok(install_date) = chrono::DateTime::parse_from_rfc3339(&install_date_str) {
+                let now = chrono::Utc::now();
+                // 6 months is roughly 183 days
+                let expiry = install_date + chrono::Duration::days(183);
+                let days_left = (expiry - now).num_days();
+
+                if days_left > 0 {
+                    return PremiumStatus {
+                        enabled: true,
+                        source: "trial".into(),
+                        trial_days_left: days_left,
+                        trial_expiry: Some(expiry.to_rfc3339()),
+                    };
                 }
             }
         }
     }
 
-    false
+    PremiumStatus {
+        enabled: false,
+        source: "none".into(),
+        trial_days_left: 0,
+        trial_expiry: None,
+    }
+}
+
+#[tauri::command]
+fn is_premium_enabled() -> bool {
+    get_premium_status().enabled
 }
 
 #[tauri::command]
@@ -1588,6 +1640,7 @@ fn main() {
             seed_database,
             reset_database,
             reset_and_seed_database,
+            get_premium_status,
             is_premium_enabled,
             get_app_version,
         ])

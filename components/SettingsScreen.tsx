@@ -89,6 +89,7 @@ export default function SettingsScreen() {
     isDarkMode,
     setDarkMode,
     premiumEnabled,
+    premiumStatus,
   } = useSettingsStore();
   const [saved, setSaved] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -509,12 +510,18 @@ export default function SettingsScreen() {
               </div>
               <div>
                 <h2 className="text-lg font-bold">
-                  {premiumEnabled ? "Premium Plan Active" : "Free Plan"}
+                  {premiumStatus?.source === "trial"
+                    ? "Free Trial Active"
+                    : premiumEnabled
+                      ? "Premium Plan Active"
+                      : "Free Plan"}
                 </h2>
                 <p className="text-xs" style={{ color: "#4A4A5A" }}>
-                  {premiumEnabled
-                    ? "You have access to all professional features."
-                    : "Upgrade to unlock professional POS features."}
+                  {premiumStatus?.source === "trial"
+                    ? `Professional features unlocked! ${premiumStatus.trial_days_left} days remaining in trial.`
+                    : premiumEnabled
+                      ? "You have access to all professional features."
+                      : "Upgrade to unlock professional POS features."}
                 </p>
               </div>
             </div>
