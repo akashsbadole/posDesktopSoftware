@@ -58,6 +58,7 @@ const defaultSettings: Settings = {
   merchant_id: '',
   show_tax_breakdown: true,
   onboarding_completed: false,
+  license_key: '',
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -74,7 +75,9 @@ export const useSettingsStore = create<SettingsState>()(
         set({ isLoading: true, error: null });
         try {
           const settings = await dbGetSettings(get().activeStoreId);
-          const premium = await isPremiumEnabled();
+          const premium =
+            (await isPremiumEnabled()) ||
+            (settings.license_key || "").startsWith("PREM-");
           set({ settings, premiumEnabled: premium, isLoading: false });
         } catch (err) {
           set({ error: (err as Error).message, isLoading: false });
@@ -82,7 +85,10 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       checkPremium: async () => {
-        const premium = await isPremiumEnabled();
+        const settings = await dbGetSettings(get().activeStoreId);
+        const premium =
+          (await isPremiumEnabled()) ||
+          (settings.license_key || "").startsWith("PREM-");
         set({ premiumEnabled: premium });
       },
 

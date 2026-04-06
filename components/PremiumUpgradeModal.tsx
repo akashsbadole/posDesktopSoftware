@@ -1,6 +1,7 @@
 "use client";
-import React from "react";
-import { X, Check, Key, Zap, ShieldCheck, Database, LayoutGrid, Users, MessageSquare } from "lucide-react";
+import React, { useState } from "react";
+import { X, Check, Key, Zap, ShieldCheck, Database, LayoutGrid, Users, MessageSquare, ChevronRight, RefreshCw } from "lucide-react";
+import { useSettingsStore } from "@/lib/stores";
 
 interface PremiumUpgradeModalProps {
   isOpen: boolean;
@@ -9,7 +10,31 @@ interface PremiumUpgradeModalProps {
 }
 
 export default function PremiumUpgradeModal({ isOpen, onClose, featureName }: PremiumUpgradeModalProps) {
+  const { saveSettings, checkPremium } = useSettingsStore();
+  const [licenseKey, setLicenseKey] = useState("");
+  const [activating, setActivating] = useState(false);
+  const [showLicenseEntry, setShowLicenseEntry] = useState(false);
+
   if (!isOpen) return null;
+
+  const handleActivate = async () => {
+    if (!licenseKey.startsWith("PREM-")) {
+      alert("Invalid license key. Keys must start with 'PREM-'");
+      return;
+    }
+
+    setActivating(true);
+    try {
+      await saveSettings({ license_key: licenseKey });
+      await checkPremium();
+      onClose();
+      window.location.reload(); // Refresh to ensure all components reflect the new status
+    } catch (err) {
+      alert("Failed to activate license. Please try again.");
+    } finally {
+      setActivating(false);
+    }
+  };
 
   const benefits = [
     { icon: Database, label: "Cloud Sync (Neon)", desc: "Real-time backup & multi-device sync" },
@@ -62,20 +87,71 @@ export default function PremiumUpgradeModal({ isOpen, onClose, featureName }: Pr
             ))}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
-            <button
-              onClick={() => window.open("mailto:info@appixen.com?subject=Premium Features Upgrade")}
-              className="w-full sm:w-auto px-10 py-4 bg-[#F5C842] text-[#0D0D0F] font-black rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_rgba(245,200,66,0.2)]"
-            >
-              UPGRADE NOW
-            </button>
-            <button
-              onClick={onClose}
-              className="w-full sm:w-auto px-10 py-4 bg-white/5 text-white font-bold rounded-2xl hover:bg-white/10 transition-all"
-            >
-              Maybe Later
-            </button>
-          </div>
+          {!showLicenseEntry ? (
+            <div className="flex flex-col items-center">
+              <div className="flex flex-col sm:flex-row gap-4 items-center justify-center mb-6 w-full">
+                <button
+                  onClick={() =>
+                    window.open(
+                      "mailto:info@appixen.com?subject=Premium Features Upgrade",
+                    )
+                  }
+                  className="w-full sm:w-auto px-10 py-4 bg-[#F5C842] text-[#0D0D0F] font-black rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_rgba(245,200,66,0.2)]"
+                >
+                  UPGRADE NOW
+                </button>
+                <button
+                  onClick={onClose}
+                  className="w-full sm:w-auto px-10 py-4 bg-white/5 text-white font-bold rounded-2xl hover:bg-white/10 transition-all"
+                >
+                  Maybe Later
+                </button>
+              </div>
+              <button
+                onClick={() => setShowLicenseEntry(true)}
+                className="text-xs text-gray-500 hover:text-[#F5C842] transition-colors underline underline-offset-4"
+              >
+                Already have a license key? Click here to activate
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center w-full max-w-sm mx-auto animate-in slide-in-from-bottom-4 duration-300">
+              <div className="relative w-full mb-4">
+                <Key
+                  size={16}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"
+                />
+                <input
+                  autoFocus
+                  placeholder="Enter License Key (PREM-XXXX)"
+                  value={licenseKey}
+                  onChange={(e) => setLicenseKey(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 py-4 text-white focus:border-[#F5C842] transition-all"
+                  onKeyDown={(e) => e.key === "Enter" && handleActivate()}
+                />
+              </div>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setShowLicenseEntry(false)}
+                  className="flex-1 py-3 bg-white/5 text-white font-bold rounded-xl hover:bg-white/10 transition-all"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleActivate}
+                  disabled={activating || !licenseKey}
+                  className="flex-[2] py-3 bg-[#F5C842] text-[#0D0D0F] font-black rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                >
+                  {activating ? (
+                    <RefreshCw size={18} className="spin" />
+                  ) : (
+                    <ChevronRight size={18} />
+                  )}
+                  ACTIVATE LICENSE
+                </button>
+              </div>
+            </div>
+          )}
 
           <p className="mt-8 text-[10px] text-gray-600 uppercase tracking-tighter">
             Instant Activation • No Hidden Fees • Priority Support

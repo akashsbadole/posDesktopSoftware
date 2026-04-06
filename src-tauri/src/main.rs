@@ -56,9 +56,36 @@ fn reset_and_seed_database() -> Result<(), String> {
 
 #[tauri::command]
 fn is_premium_enabled() -> bool {
-    std::env::var("ENABLE_PREMIUM_FEATURES")
+    // 1. Check build-time environment variable
+    const BUILD_PREMIUM: Option<&'static str> = option_env!("ENABLE_PREMIUM_FEATURES");
+    if let Some(v) = BUILD_PREMIUM {
+        if v == "true" || v == "1" {
+            return true;
+        }
+    }
+
+    // 2. Check runtime environment variable
+    if std::env::var("ENABLE_PREMIUM_FEATURES")
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false)
+    {
+        return true;
+    }
+
+    // 3. Check license key in database for any store
+    if let Ok(db) = get_db().lock() {
+        if let Ok(stores) = db.get_stores() {
+            for store in stores {
+                if let Ok(settings) = db.get_settings(&store.id) {
+                    if settings.license_key.starts_with("PREM-") {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    false
 }
 
 #[tauri::command]

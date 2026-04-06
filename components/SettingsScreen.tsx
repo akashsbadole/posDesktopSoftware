@@ -1608,6 +1608,29 @@ export default function SettingsScreen() {
           )}
         </div>
 
+        {/* Subscription & License */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Key size={16} style={{ color: "#F5C842" }} />
+            <h2 className="font-semibold">Subscription & License</h2>
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+              License Key
+            </label>
+            <input
+              value={localSettings.license_key || ""}
+              onChange={(e) => updateLocal("license_key", e.target.value)}
+              placeholder="PREM-XXXX-XXXX"
+            />
+            <p className="text-[10px] mt-2" style={{ color: "#9090A8" }}>
+              Enter your professional license key to unlock premium features. Any
+              key starting with <code className="font-bold">PREM-</code> will
+              enable professional mode.
+            </p>
+          </div>
+        </div>
+
         <button
           className="btn-accent flex items-center gap-2 py-3 px-6 text-sm"
           onClick={handleSave}

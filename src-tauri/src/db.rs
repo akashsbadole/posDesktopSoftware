@@ -278,6 +278,8 @@ pub struct Settings {
     pub show_tax_breakdown: bool,
     #[serde(default)]
     pub onboarding_completed: bool,
+    #[serde(default)]
+    pub license_key: String,
 }
 
 #[allow(dead_code)]
@@ -5123,6 +5125,7 @@ impl Database {
             merchant_id: "".into(),
             show_tax_breakdown: true,
             onboarding_completed: false,
+            license_key: "".to_string(),
         }
     }
 

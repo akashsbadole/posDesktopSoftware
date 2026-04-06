@@ -367,6 +367,7 @@ export interface Settings {
   merchant_id: string;
   show_tax_breakdown: boolean;
   onboarding_completed: boolean;
+  license_key: string;
 }
 
 export interface TaxRate {
@@ -1710,6 +1711,7 @@ function defaultSettings(): Settings {
     merchant_id: "",
     show_tax_breakdown: true,
     onboarding_completed: false,
+    license_key: "",
   };
 }
 
@@ -2629,8 +2631,13 @@ async function browserFallback<T>(
         (x) => x.user_id === userId && !x.clock_out && x.store_id === storeId,
       ) as T;
     }
-    case "is_premium_enabled":
-      return (process.env.NEXT_PUBLIC_ENABLE_PREMIUM === "true") as T;
+    case "is_premium_enabled": {
+      if (process.env.NEXT_PUBLIC_ENABLE_PREMIUM === "true") return true as T;
+      const allSettings = lsGet<Record<string, Settings>>(LS.settings) || {};
+      return Object.values(allSettings).some((s) =>
+        (s.license_key || "").startsWith("PREM-"),
+      ) as T;
+    }
     case "get_app_version":
       return "1.0.0" as any as T;
     case "get_gstr1_report": {
