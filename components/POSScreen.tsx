@@ -74,6 +74,8 @@ import { useGridNavigation } from "@/lib/keyboard";
 import PinModal from "./PinModal";
 import { getIndustryLabels } from "@/lib/industry";
 import { v4 as uuid } from "uuid";
+import PremiumUpgradeModal from "./PremiumUpgradeModal";
+import { Lock } from "lucide-react";
 import { Order } from "@/lib/db";
 
 export default function POSScreen() {
@@ -140,7 +142,7 @@ export default function POSScreen() {
 
   const { combos, fetchCombos, getActiveCombos } = useCombosStore();
 
-  const { settings, fetchSettings } = useSettingsStore();
+  const { settings, fetchSettings, premiumEnabled } = useSettingsStore();
   const { user } = useAuthStore();
 
   const [receipt, setReceipt] = useState<string | null>(null);
@@ -198,6 +200,8 @@ export default function POSScreen() {
   const [activeCustomer, setActiveCustomer] = useState<Customer | null>(null);
   const [isEditingCustomer, setIsEditingCustomer] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [pendingFeature, setPendingFeature] = useState("");
 
   useEffect(() => {
     fetchProducts();
@@ -811,6 +815,11 @@ export default function POSScreen() {
 
   const handleWhatsAppShare = async () => {
     if (!receipt) return;
+    if (!premiumEnabled) {
+      setPendingFeature("WhatsApp Sharing");
+      setShowUpgradeModal(true);
+      return;
+    }
     try {
       await openWhatsAppShare(receipt);
     } catch {
@@ -1051,6 +1060,12 @@ export default function POSScreen() {
                 aria-label="Share receipt on WhatsApp"
               >
                 <MessageCircle size={16} aria-hidden="true" />
+                {!premiumEnabled && (
+                  <Lock
+                    size={8}
+                    className="absolute top-2 right-2 text-[#F5C842]"
+                  />
+                )}
               </button>
               <button
                 className="btn-ghost py-3 px-3 flex items-center gap-1.5"
@@ -1067,8 +1082,13 @@ export default function POSScreen() {
                 <Save size={16} aria-hidden="true" />
               </button>
               <button
-                className="btn-ghost py-3 px-3 flex items-center gap-1.5"
+                className={`btn-ghost py-3 px-3 flex items-center gap-1.5 relative ${!premiumEnabled ? "opacity-50" : ""}`}
                 onClick={async () => {
+                  if (!premiumEnabled) {
+                    setPendingFeature("SMS Notifications");
+                    setShowUpgradeModal(true);
+                    return;
+                  }
                   if (lastOrder?.delivery_phone) {
                     try {
                       await sendSmsNotification(
@@ -1087,6 +1107,12 @@ export default function POSScreen() {
                 aria-label="Share receipt via SMS"
               >
                 <Smartphone size={16} aria-hidden="true" />
+                {!premiumEnabled && (
+                  <Lock
+                    size={8}
+                    className="absolute top-2 right-2 text-[#F5C842]"
+                  />
+                )}
               </button>
             </div>
           </div>
@@ -2717,6 +2743,12 @@ export default function POSScreen() {
           </div>
         )}
       </div>
+
+      <PremiumUpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        featureName={pendingFeature}
+      />
     </>
   );
 }

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { dbGetSettings, dbSaveSettings, Settings } from '@/lib/db';
+import { dbGetSettings, dbSaveSettings, Settings, isPremiumEnabled } from '@/lib/db';
 
 interface SettingsState {
   settings: Settings;
@@ -8,11 +8,13 @@ interface SettingsState {
   isLoading: boolean;
   error: string | null;
   isDarkMode: boolean;
+  premiumEnabled: boolean;
   fetchSettings: () => Promise<void>;
   saveSettings: (settings: Partial<Settings>) => Promise<void>;
   setDarkMode: (isDarkMode: boolean) => void;
   updateCurrency: (currency: string, currencySymbol: string) => Promise<void>;
   setActiveStore: (id: string) => void;
+  checkPremium: () => Promise<void>;
 }
 
 const defaultSettings: Settings = {
@@ -66,15 +68,22 @@ export const useSettingsStore = create<SettingsState>()(
       isLoading: false,
       error: null,
       isDarkMode: false,
+      premiumEnabled: false,
 
       fetchSettings: async () => {
         set({ isLoading: true, error: null });
         try {
           const settings = await dbGetSettings(get().activeStoreId);
-          set({ settings, isLoading: false });
+          const premium = await isPremiumEnabled();
+          set({ settings, premiumEnabled: premium, isLoading: false });
         } catch (err) {
           set({ error: (err as Error).message, isLoading: false });
         }
+      },
+
+      checkPremium: async () => {
+        const premium = await isPremiumEnabled();
+        set({ premiumEnabled: premium });
       },
 
       saveSettings: async (newSettings: Partial<Settings>) => {
