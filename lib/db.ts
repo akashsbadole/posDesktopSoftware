@@ -1364,7 +1364,7 @@ export async function syncFromNeon(
 
 export interface PremiumStatus {
   enabled: bool;
-  source: "env" | "license" | "trial" | "none";
+  source: "env" | "license" | "license_file" | "trial" | "none";
   trial_days_left: number;
   trial_expiry: string | null;
 }

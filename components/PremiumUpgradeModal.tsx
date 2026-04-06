@@ -27,8 +27,17 @@ export default function PremiumUpgradeModal({ isOpen, onClose, featureName }: Pr
     try {
       await saveSettings({ license_key: licenseKey });
       await checkPremium();
-      onClose();
-      window.location.reload(); // Refresh to ensure all components reflect the new status
+
+      // We need to check if it actually enabled premium after saving
+      const { premiumEnabled: nowEnabled } = useSettingsStore.getState();
+
+      if (nowEnabled) {
+        alert("Success! Premium features activated.");
+        onClose();
+        window.location.reload();
+      } else {
+        alert("Invalid license key. Check for typos or contact support.");
+      }
     } catch (err) {
       alert("Failed to activate license. Please try again.");
     } finally {

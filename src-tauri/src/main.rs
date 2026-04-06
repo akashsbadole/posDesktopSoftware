@@ -8,6 +8,7 @@ mod neon;
 use db::Database;
 use once_cell::sync::Lazy;
 use rusqlite::Error;
+use sha2::{Digest, Sha256};
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -62,6 +63,37 @@ pub struct PremiumStatus {
     pub trial_expiry: Option<String>,
 }
 
+fn get_license_salt() -> String {
+    std::env::var("LICENSE_SECRET_SALT")
+        .unwrap_or_else(|_| "POS_BILLING_SECRET_SALT_2026".to_string())
+}
+
+fn get_license_file_path() -> std::path::PathBuf {
+    let app_dir = dirs::data_dir()
+        .map(|p| p.join("pos-tauri"))
+        .expect("Failed to get app data dir");
+    app_dir.join("license.txt")
+}
+
+fn verify_license_checksum(license: &str) -> bool {
+    if !license.starts_with("PREM-") {
+        return false;
+    }
+    let parts: Vec<&str> = license.split('-').collect();
+    if parts.len() != 3 {
+        return false;
+    }
+
+    let payload = format!("PREM-{}", parts[1]);
+    let mut hasher = Sha256::new();
+    hasher.update(payload.as_bytes());
+    hasher.update(get_license_salt().as_bytes());
+    let hash = format!("{:x}", hasher.finalize());
+
+    // Check if the provided checksum matches the calculated one
+    parts[2] == &hash[..8]
+}
+
 #[tauri::command]
 fn get_premium_status() -> PremiumStatus {
     // 1. Check build-time environment variable
@@ -90,12 +122,28 @@ fn get_premium_status() -> PremiumStatus {
         };
     }
 
-    // 3. Check license key in database for any store
+    // 3. Check license file
+    let license_path = get_license_file_path();
+    if license_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&license_path) {
+            let key = content.trim();
+            if verify_license_checksum(key) {
+                return PremiumStatus {
+                    enabled: true,
+                    source: "license_file".into(),
+                    trial_days_left: 0,
+                    trial_expiry: None,
+                };
+            }
+        }
+    }
+
+    // 4. Check license key in database for any store
     if let Ok(db) = get_db().lock() {
         if let Ok(stores) = db.get_stores() {
             for store in stores {
                 if let Ok(settings) = db.get_settings(&store.id) {
-                    if settings.license_key.starts_with("PREM-") {
+                    if verify_license_checksum(&settings.license_key) {
                         return PremiumStatus {
                             enabled: true,
                             source: "license".into(),
