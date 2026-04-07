@@ -204,7 +204,7 @@ export default function Home() {
     return <LoginScreen />;
   }
 
-  if (settings && !settings.onboarding_completed && user?.role === "admin") {
+  if (settings && (!settings.onboarding_completed || !settings.license_agreed) && user?.role === "admin") {
     return <OnboardingModal />;
   }
 

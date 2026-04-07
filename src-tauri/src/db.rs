@@ -21,6 +21,10 @@ fn get_encryption_key() -> [u8; 32] {
     key
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn encrypt_value(value: &str) -> String {
     if value.is_empty() {
         return String::new();
@@ -276,6 +280,10 @@ pub struct Settings {
     pub receipt_header_text: String,
     pub merchant_id: String,
     pub show_tax_breakdown: bool,
+    #[serde(default = "default_true")]
+    pub enable_round_off: bool,
+    #[serde(default)]
+    pub license_agreed: bool,
     #[serde(default)]
     pub onboarding_completed: bool,
 }
@@ -355,6 +363,20 @@ pub struct StaffAttendance {
     pub clock_in: String,
     pub clock_out: Option<String>,
     pub date: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StaffSalary {
+    pub id: String,
+    pub store_id: String,
+    pub staff_id: String,
+    pub staff_name: String,
+    pub amount: f64,
+    pub total_hours: f64,
+    pub period_start: String,
+    pub period_end: String,
+    pub status: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -979,6 +1001,19 @@ impl Database {
                 clock_in TEXT NOT NULL,
                 clock_out TEXT,
                 date TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS staff_salaries (
+                id TEXT PRIMARY KEY,
+                store_id TEXT NOT NULL DEFAULT 'default',
+                staff_id TEXT NOT NULL,
+                staff_name TEXT NOT NULL,
+                amount REAL NOT NULL DEFAULT 0,
+                total_hours REAL NOT NULL DEFAULT 0,
+                period_start TEXT NOT NULL,
+                period_end TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS customers (
@@ -5122,6 +5157,8 @@ impl Database {
             receipt_header_text: "".into(),
             merchant_id: "".into(),
             show_tax_breakdown: true,
+            enable_round_off: true,
+            license_agreed: false,
             onboarding_completed: false,
         }
     }
@@ -6038,6 +6075,56 @@ impl Database {
             |r| r.get(0),
         )?;
         Ok(count > 0)
+    }
+
+    pub fn get_salaries(&self, store_id: &str) -> Result<Vec<StaffSalary>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, store_id, staff_id, staff_name, amount, total_hours, period_start, period_end, status, created_at FROM staff_salaries WHERE store_id=?1 ORDER BY created_at DESC",
+        )?;
+        let items = stmt
+            .query_map(params![store_id], |row| {
+                Ok(StaffSalary {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    staff_id: row.get(2)?,
+                    staff_name: row.get(3)?,
+                    amount: row.get(4)?,
+                    total_hours: row.get(5)?,
+                    period_start: row.get(6)?,
+                    period_end: row.get(7)?,
+                    status: row.get(8)?,
+                    created_at: row.get(9)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    pub fn save_salary(&self, salary: &StaffSalary, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO staff_salaries (id, store_id, staff_id, staff_name, amount, total_hours, period_start, period_end, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                salary.id,
+                store_id,
+                salary.staff_id,
+                salary.staff_name,
+                salary.amount,
+                salary.total_hours,
+                salary.period_start,
+                salary.period_end,
+                salary.status,
+                salary.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_salary(&self, id: &str, store_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM staff_salaries WHERE id=?1 AND store_id=?2",
+            params![id, store_id],
+        )?;
+        Ok(())
     }
 
     pub fn get_activity_logs(&self, store_id: &str, limit: i64) -> Result<Vec<ActivityLog>> {

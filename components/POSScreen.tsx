@@ -27,7 +27,7 @@ import {
   DollarSign,
   Split,
 } from "lucide-react";
-import { OrderType, PaymentMethod } from '@/lib/stores/cartStore';
+import { OrderType, PaymentMethod } from "@/lib/stores/cartStore";
 import {
   dbSaveOrder,
   generateReceipt,
@@ -540,11 +540,22 @@ export default function POSScreen() {
     }
   };
 
+  const rawTotal = getTotal();
+  const rawSettings = useSettingsStore.getState().settings;
+  const displayTotal = rawSettings.enable_round_off
+    ? Math.round(rawTotal)
+    : rawTotal;
+  const roundingOff = rawSettings.enable_round_off
+    ? Math.round(rawTotal) - rawTotal
+    : 0;
+
   const totals = {
     subtotal: getSubtotal(),
     tax_amount: getTaxAmount(),
     discount_amount: getDiscountAmount(),
-    total: getTotal(),
+    total: rawTotal,
+    displayTotal,
+    rounding_off: roundingOff,
   };
 
   const couponDiscount = appliedCoupon
@@ -555,13 +566,13 @@ export default function POSScreen() {
 
   const walletDeduction =
     useWallet && walletCustomerId
-      ? Math.min(walletBalance, totals.total - couponDiscount)
+      ? Math.min(walletBalance, rawTotal - couponDiscount)
       : 0;
 
-  const finalTotal = Math.max(
-    0,
-    totals.total - couponDiscount - walletDeduction,
-  );
+  const finalPayable = rawTotal - couponDiscount - walletDeduction;
+  const finalTotal = rawSettings.enable_round_off
+    ? Math.round(finalPayable)
+    : finalPayable;
 
   const change = Math.max(0, amountPaid - finalTotal);
 
@@ -964,7 +975,8 @@ export default function POSScreen() {
                     try {
                       imgSrc =
                         typeof window !== "undefined" &&
-                        (window as unknown as { __TAURI_METADATA__: unknown }).__TAURI_METADATA__
+                        (window as unknown as { __TAURI_METADATA__: unknown })
+                          .__TAURI_METADATA__
                           ? convertFileSrc(path)
                           : path;
                     } catch (e) {}
@@ -1030,13 +1042,13 @@ export default function POSScreen() {
               aria-label="Receipt actions"
             >
               <button
-                className="btn-accent flex-1 flex items-center justify-center gap-2 py-3"
+                className="btn-accent flex-1 flex items-center justify-center gap py"
                 onClick={() => {
                   setReceipt(null);
                   setLastOrder(null);
                 }}
               >
-                <Plus size={16} aria-hidden="true" /> New Order
+                <Plus size={14} aria-hidden="true" /> New Order
               </button>
               <button
                 className="btn-ghost py-3 px-3 flex items-center gap-1.5"
@@ -2142,7 +2154,10 @@ export default function POSScreen() {
                             );
                             setSplitPayments([
                               ...others,
-                              { method: method as PaymentMethod | 'wallet', amount: amt },
+                              {
+                                method: method as PaymentMethod | "wallet",
+                                amount: amt,
+                              },
                             ]);
                           }}
                           className="flex-1 bg-transparent border-none px-3 py-2 text-white"

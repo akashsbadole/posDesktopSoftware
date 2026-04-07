@@ -148,6 +148,7 @@ export default function OnboardingModal() {
         tax_name: formData.taxName,
         logo_url: formData.logoUrl,
         primary_color: formData.primaryColor,
+        license_agreed: true,
         onboarding_completed: true,
       });
 

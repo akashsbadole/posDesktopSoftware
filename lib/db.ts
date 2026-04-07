@@ -366,6 +366,8 @@ export interface Settings {
   receipt_header_text: string;
   merchant_id: string;
   show_tax_breakdown: boolean;
+  enable_round_off: boolean;
+  license_agreed: boolean;
   onboarding_completed: boolean;
 }
 
@@ -896,7 +898,7 @@ export async function dbSaveSalary(salary: StaffSalary): Promise<void> {
 }
 
 export async function dbGetSalaries(storeId: string): Promise<StaffSalary[]> {
-  return sql<StaffSalary[]>("get_salaries", { store_id: storeId });
+  return sql<StaffSalary[]>("get_salaries", { storeId });
 }
 
 // ─── Backup ─────────────────────────────────────────────────────────────────
@@ -1403,70 +1405,118 @@ export function calcCart(
   }[],
   globalDiscount = 0,
   globalDiscountType: "percentage" | "fixed" = "percentage",
+  taxInclusive = false,
+  globalTaxRate?: number,
+  isGST = false,
 ) {
   let subtotal = 0;
   let taxAmount = 0;
   let discountAmount = 0;
 
-  items.forEach((item) => {
-    const price =
-      item.override_price !== undefined
-        ? item.override_price
-        : item.product.price;
-    const line = price * item.quantity;
-    const itemDisc =
-      item.discount_type === "fixed"
-        ? item.discount
-        : line * (item.discount / 100);
+  if (taxInclusive) {
+    // For inclusive tax, prices include tax, so calculate backwards
+    items.forEach((item) => {
+      const price =
+        item.override_price !== undefined
+          ? item.override_price
+          : item.product.price;
+      const line = price * item.quantity; // This includes tax
+      const rate = item.product.tax;
 
-    const afterDisc = Math.max(0, line - itemDisc);
-    subtotal += afterDisc;
-    discountAmount += itemDisc;
-  });
+      // For GST, use global tax rate split
+      const effectiveRate = isGST && globalTaxRate ? globalTaxRate : rate;
+      // Calculate tax and taxable from inclusive price
+      const itemTax = (line * effectiveRate) / (100 + effectiveRate);
+      const itemTaxable = line - itemTax;
 
-  const globalDisc =
-    globalDiscountType === "fixed"
-      ? globalDiscount
-      : subtotal * (globalDiscount / 100);
+      const itemDisc =
+        item.discount_type === "fixed"
+          ? item.discount
+          : itemTaxable * (item.discount / 100); // Discount on taxable amount
 
-  discountAmount += globalDisc;
-  const taxableSubtotal = Math.max(0, subtotal - globalDisc);
+      const afterDiscTaxable = Math.max(0, itemTaxable - itemDisc);
+      const afterDiscTax = (afterDiscTaxable * rate) / 100;
+      const afterDisc = afterDiscTaxable + afterDiscTax;
 
-  // Recalculate tax on the final taxable subtotal
-  // We assume items in the cart might have different tax rates.
-  // For simplicity if we want global accuracy, we can sum up individual tax proportions.
-  items.forEach((item) => {
-    const price =
-      item.override_price !== undefined
-        ? item.override_price
-        : item.product.price;
-    const line = price * item.quantity;
-    const itemDisc =
-      item.discount_type === "fixed"
-        ? item.discount
-        : line * (item.discount / 100);
-    const afterDisc = Math.max(0, line - itemDisc);
+      subtotal += afterDisc;
+      discountAmount += itemDisc;
+      taxAmount += afterDiscTax;
+    });
 
-    // Proportion of global discount to this item
-    const itemGlobalDisc =
-      subtotal > 0 ? (afterDisc / subtotal) * globalDisc : 0;
-    const itemTaxable = Math.max(0, afterDisc - itemGlobalDisc);
-    const tax = itemTaxable * (item.product.tax / 100);
-    taxAmount += tax;
-  });
+    // Global discount applied to subtotal (which includes tax)
+    const globalDisc =
+      globalDiscountType === "fixed"
+        ? globalDiscount
+        : subtotal * (globalDiscount / 100);
 
-  const total = Math.max(0, taxableSubtotal + taxAmount);
+    discountAmount += globalDisc;
+    const finalSubtotal = Math.max(0, subtotal - globalDisc);
 
-  return {
-    subtotal: r(subtotal),
-    tax_amount: r(taxAmount),
-    discount_amount: r(discountAmount),
-    total: r(total),
-  };
-}
+    return {
+      subtotal: finalSubtotal,
+      tax_amount: taxAmount,
+      discount_amount: discountAmount,
+      total: finalSubtotal,
+    };
+  } else {
+    // Exclusive tax (current logic)
+    items.forEach((item) => {
+      const price =
+        item.override_price !== undefined
+          ? item.override_price
+          : item.product.price;
+      const line = price * item.quantity;
+      const itemDisc =
+        item.discount_type === "fixed"
+          ? item.discount
+          : line * (item.discount / 100);
 
-function r(n: number) {
-  return Math.round(n * 100) / 100;
+      const afterDisc = Math.max(0, line - itemDisc);
+      subtotal += afterDisc;
+      discountAmount += itemDisc;
+    });
+
+    const globalDisc =
+      globalDiscountType === "fixed"
+        ? globalDiscount
+        : subtotal * (globalDiscount / 100);
+
+    discountAmount += globalDisc;
+    const taxableSubtotal = Math.max(0, subtotal - globalDisc);
+
+    // Calculate tax on taxable amounts
+    items.forEach((item) => {
+      const price =
+        item.override_price !== undefined
+          ? item.override_price
+          : item.product.price;
+      const line = price * item.quantity;
+      const itemDisc =
+        item.discount_type === "fixed"
+          ? item.discount
+          : line * (item.discount / 100);
+      const afterDisc = Math.max(0, line - itemDisc);
+
+      // Proportion of global discount to this item
+      const itemGlobalDisc =
+        subtotal > 0 ? (afterDisc / subtotal) * globalDisc : 0;
+      const itemTaxable = Math.max(0, afterDisc - itemGlobalDisc);
+      // For GST, use global tax rate
+      const effectiveRate =
+        isGST && globalTaxRate ? globalTaxRate : item.product.tax;
+      const tax = itemTaxable * (effectiveRate / 100);
+      taxAmount += tax;
+    });
+
+    const total = Math.max(0, taxableSubtotal + taxAmount);
+
+    return {
+      subtotal: taxableSubtotal,
+      tax_amount: taxAmount,
+      discount_amount: discountAmount,
+      total,
+    };
+  }
 }
 
 // ─── Receipt ──────────────────────────────────────────────────────────────────
@@ -1557,17 +1607,18 @@ export function generateReceipt(
   );
 
   if (order.tax_amount > 0) {
+    const taxRate = settings.tax_rate || 0;
     if (isIndia) {
       const split = order.tax_amount / 2;
+      const halfRate = taxRate / 2;
       lines.push(
-        `${"CGST (9%):".padEnd(L)}${c}${split.toFixed(2).padStart(V - 1)}`,
+        `${"CGST (" + halfRate + "%):".padEnd(L)}${c}${split.toFixed(2)}`,
       );
       lines.push(
-        `${"SGST (9%):".padEnd(L)}${c}${split.toFixed(2).padStart(V - 1)}`,
+        `${"SGST (" + halfRate + "%):".padEnd(L)}${c}${split.toFixed(2)}`,
       );
     } else {
       const taxName = settings.tax_name || "TAX";
-      const taxRate = settings.tax_rate || 0;
       lines.push(
         `${(taxName + " (" + taxRate + "%):").padEnd(L)}${c}${order.tax_amount.toFixed(2).padStart(V - 1)}`,
       );
@@ -1576,7 +1627,9 @@ export function generateReceipt(
 
   if (order.discount_amount > 0) {
     lines.push(
-      `${"DISCOUNT:".padEnd(L)}-${c}${order.discount_amount.toFixed(2).padStart(V - 2)}`,
+      `${"DISCOUNT:".padEnd(23)}-${c}${Math.abs(order.discount_amount)
+        .toFixed(2)
+        .padStart(V - 2)}`,
     );
   }
 
@@ -1588,51 +1641,29 @@ export function generateReceipt(
 
   lines.push("-".repeat(W));
 
-  if (isIndia) {
-    const rounded = Math.round(order.total);
+  if (settings.enable_round_off) {
+    const rounded = Math.round(order.total * 100) / 100;
     const roundingOff = rounded - order.total;
     lines.push(
-      `${"TOTAL AMOUNT:".padEnd(L)}${c}${order.total.toFixed(2).padStart(V - 1)}`,
+      `${"TOTAL AMOUNT:".padEnd(L)}${c} ${order.total.toFixed(2).padStart(14)}`,
     );
-    lines.push("-".repeat(W));
-    if (Math.abs(roundingOff) > 0.001) {
-      lines.push(
-        `${"Rounding Off:".padEnd(L)}${roundingOff >= 0 ? "+" : "-"}${c}${Math.abs(
-          roundingOff,
-        )
-          .toFixed(2)
-          .padStart(V - 2)}`,
-      );
-    }
-    lines.push(`${"NET PAYABLE:".padEnd(L)}${c}${rounded.toFixed(2)}`);
+    lines.push(
+      `${"ROUND OFF:".padEnd(L)}${roundingOff >= 0 ? "(+) " : "(-) "}${c} ${Math.abs(roundingOff).toFixed(2).padStart(14)}`,
+    );
+    lines.push(
+      `${"NET PAYABLE:".padEnd(L)}${c} ${rounded.toFixed(2).padStart(14)}`,
+    );
+    lines.push(center("Amount rounded to nearest paise"));
 
-    // 6.5 QR Code for India (Positioned here for maximum visibility)
-    if (settings.upi_id) {
+    // QR Code for India
+    if (isIndia && settings.upi_id) {
       const upiUrl = `upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${rounded.toFixed(2)}&cu=INR`;
       lines.push(`[QRCODE: ${upiUrl}]`);
     }
   } else {
     lines.push(
-      `${"GRAND TOTAL:".padEnd(L)}${c}${order.total.toFixed(2).padStart(V - 1)}`,
+      `${"GRAND TOTAL:".padEnd(L)}${c} ${order.total.toFixed(2).padStart(14)}`,
     );
-  }
-  lines.push("=".repeat(W));
-
-  // 6. Payment Info
-  if (!isPaymentRequest) {
-    const method = (order.payment_method || "CASH").toUpperCase();
-    lines.push(`${"PAYMENT METHOD:".padEnd(L)}${method.padStart(V)}`);
-    if (order.payment_method === "cash") {
-      lines.push(
-        `${"PAID:".padEnd(L)}${c}${(order.amount_paid || 0).toFixed(2).padStart(V - 1)}`,
-      );
-      lines.push(
-        `${"CHANGE:".padEnd(L)}${c}${(order.change_amount || 0).toFixed(2).padStart(V - 1)}`,
-      );
-    }
-  } else if (isIndia && settings.upi_id) {
-    lines.push(center("SCAN TO PAY UPI"));
-    lines.push(center(`UPI ID: ${settings.upi_id}`));
   }
 
   lines.push("-".repeat(W));
@@ -1709,6 +1740,8 @@ function defaultSettings(): Settings {
     receipt_header_text: "",
     merchant_id: "",
     show_tax_breakdown: true,
+    enable_round_off: true,
+    license_agreed: false,
     onboarding_completed: false,
   };
 }
@@ -2550,7 +2583,7 @@ async function browserFallback<T>(
         { id: "cashier", name: "Cashier", role: "cashier", hourly_rate: 0 },
       ];
       const u = (args as any).user as User;
-      const idx = users.findIndex(x => x.id === u.id);
+      const idx = users.findIndex((x) => x.id === u.id);
       if (idx >= 0) users[idx] = u;
       else users.push(u);
       lsSet("pos_users", users);
@@ -2558,7 +2591,7 @@ async function browserFallback<T>(
     }
     case "delete_user": {
       const users = lsGet<User[]>("pos_users") || [];
-      const filtered = users.filter(x => x.id !== (args as any).id);
+      const filtered = users.filter((x) => x.id !== (args as any).id);
       lsSet("pos_users", filtered);
       return undefined as T;
     }
@@ -2584,14 +2617,14 @@ async function browserFallback<T>(
         amount: s.amount,
         description: `Salary for ${s.staff_name} (${s.period_start} - ${s.period_end})`,
         date: new Date().toISOString().split("T")[0],
-        payment_method: "cash"
+        payment_method: "cash",
       });
       lsSet("pos_expenses", expenses);
       return undefined as T;
     }
     case "get_salaries": {
       const salaries = lsGet<StaffSalary[]>("pos_salaries") || [];
-      return salaries.filter(x => x.store_id === storeId) as T;
+      return salaries.filter((x) => x.store_id === storeId) as T;
     }
     case "get_today_attendance": {
       const items = lsGet<StaffAttendance[]>("pos_attendance") || [];

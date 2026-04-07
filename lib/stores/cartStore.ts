@@ -230,16 +230,41 @@ export const useCartStore = create<CartState>((set, get) => ({
       originalOrderId: null,
     }),
 
-  getSubtotal: () => calcCart(get().items, get().globalDiscount, get().globalDiscountType).subtotal,
-  getTaxAmount: () => calcCart(get().items, get().globalDiscount, get().globalDiscountType).tax_amount,
-  getDiscountAmount: () => calcCart(get().items, get().globalDiscount, get().globalDiscountType).discount_amount,
-  getTotal: () => calcCart(get().items, get().globalDiscount, get().globalDiscountType).total + get().tipAmount,
+  getSubtotal: () => {
+    const settings = useSettingsStore.getState().settings;
+    const isGST = settings.country === "IN" && settings.tax_system === "gst";
+    return calcCart(get().items, get().globalDiscount, get().globalDiscountType, settings.tax_inclusive, settings.tax_rate, isGST).subtotal;
+  },
+  getTaxAmount: () => {
+    const settings = useSettingsStore.getState().settings;
+    const isGST = settings.country === "IN" && settings.tax_system === "gst";
+    return calcCart(get().items, get().globalDiscount, get().globalDiscountType, settings.tax_inclusive, settings.tax_rate, isGST).tax_amount;
+  },
+  getDiscountAmount: () => {
+    const settings = useSettingsStore.getState().settings;
+    const isGST = settings.country === "IN" && settings.tax_system === "gst";
+    return calcCart(get().items, get().globalDiscount, get().globalDiscountType, settings.tax_inclusive, settings.tax_rate, isGST).discount_amount;
+  },
+  getTotal: () => {
+    const settings = useSettingsStore.getState().settings;
+    const isGST = settings.country === "IN" && settings.tax_system === "gst";
+    const rawTotal = calcCart(get().items, get().globalDiscount, get().globalDiscountType, settings.tax_inclusive, settings.tax_rate, isGST).total + get().tipAmount;
+    if (settings.enable_round_off) {
+      return Math.round(rawTotal * 100) / 100;
+    }
+    return rawTotal;
+  },
   getItemCount: () => get().items.reduce((sum, i) => sum + i.quantity, 0),
 
   toOrder: (orderId, userId, userName) => {
     const state = get();
-    const totals = calcCart(state.items, state.globalDiscount, state.globalDiscountType);
-    const finalTotal = totals.total + state.tipAmount;
+    const settings = useSettingsStore.getState().settings;
+    const isGST = settings.country === "IN" && settings.tax_system === "gst";
+    const totals = calcCart(state.items, state.globalDiscount, state.globalDiscountType, settings.tax_inclusive, settings.tax_rate, isGST);
+    let finalTotal = totals.total + state.tipAmount;
+    if (settings.enable_round_off) {
+      finalTotal = Math.round(finalTotal * 100) / 100;
+    }
     return {
       id: orderId,
       store_id: useSettingsStore.getState().activeStoreId,

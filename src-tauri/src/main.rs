@@ -460,6 +460,24 @@ fn is_clocked_in(user_id: String, store_id: String) -> Result<bool, String> {
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_salaries(storeId: String) -> Result<Vec<db::StaffSalary>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_salaries(&storeId).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_salary(salary: db::StaffSalary, storeId: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.save_salary(&salary, &storeId).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_salary(id: String, storeId: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.delete_salary(&id, &storeId).map_err(|e| e.to_string())
+}
+
 // ─── Customer Commands ─────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1458,6 +1476,9 @@ fn main() {
             clock_out,
             get_today_attendance,
             is_clocked_in,
+            get_salaries,
+            save_salary,
+            delete_salary,
             get_customers,
             save_customer,
             delete_customer,

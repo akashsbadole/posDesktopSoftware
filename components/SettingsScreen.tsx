@@ -164,6 +164,8 @@ export default function SettingsScreen() {
       receipt_header_text: "",
       merchant_id: "",
       show_tax_breakdown: true,
+      enable_round_off: true,
+      license_agreed: false,
       tax_inclusive: false,
       tax_breakdown: "[]",
       auto_print_kot: false,
@@ -747,6 +749,33 @@ export default function SettingsScreen() {
                 }
               />
             </div>
+            <div className="flex items-center justify-between">
+              <label
+                className="text-xs"
+                style={{ color: "#4A4A5A" }}
+              >
+                Tax Inclusive Pricing
+              </label>
+              <div
+                className="toggle"
+                onClick={() => updateLocal("tax_inclusive", !localSettings.tax_inclusive)}
+              >
+                <div
+                  className="toggle-slider"
+                  style={{
+                    background: localSettings.tax_inclusive ? "#2ECC71" : "#1E1E26",
+                  }}
+                >
+                  <div
+                    className="toggle-knob"
+                    style={{
+                      background: "#fff",
+                      left: localSettings.tax_inclusive ? 22 : 2,
+                    }}
+                  ></div>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="mt-3">
             <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
@@ -859,6 +888,36 @@ export default function SettingsScreen() {
                     position: "absolute",
                     top: 2,
                     left: localSettings.show_tax_breakdown ? 22 : 2,
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <label className="text-xs" style={{ color: "#4A4A5A" }}>
+                Enable Round Off
+              </label>
+              <button
+                onClick={() => updateLocal("enable_round_off", !localSettings.enable_round_off)}
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  background: localSettings.enable_round_off ? "#2ECC71" : "#1E1E26",
+                  border: "none",
+                  position: "relative",
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    background: "#fff",
+                    position: "absolute",
+                    top: 2,
+                    left: localSettings.enable_round_off ? 22 : 2,
                     transition: "left 0.2s",
                   }}
                 />
