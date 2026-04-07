@@ -8,6 +8,7 @@ mod neon;
 use db::Database;
 use once_cell::sync::Lazy;
 use rusqlite::Error;
+use sha2::{Digest, Sha256};
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -54,11 +55,137 @@ fn reset_and_seed_database() -> Result<(), String> {
     db.seed_all().map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PremiumStatus {
+    pub enabled: bool,
+    pub source: String, // "env", "license", "trial", "none"
+    pub trial_days_left: i64,
+    pub trial_expiry: Option<String>,
+}
+
+fn get_license_salt() -> String {
+    std::env::var("LICENSE_SECRET_SALT")
+        .unwrap_or_else(|_| "POS_BILLING_SECRET_SALT_2026".to_string())
+}
+
+fn get_license_file_path() -> std::path::PathBuf {
+    let app_dir = dirs::data_dir()
+        .map(|p| p.join("pos-tauri"))
+        .expect("Failed to get app data dir");
+    app_dir.join("license.txt")
+}
+
+fn verify_license_checksum(license: &str) -> bool {
+    if !license.starts_with("PREM-") {
+        return false;
+    }
+    let parts: Vec<&str> = license.split('-').collect();
+    if parts.len() != 3 {
+        return false;
+    }
+
+    let payload = format!("PREM-{}", parts[1]);
+    let mut hasher = Sha256::new();
+    hasher.update(payload.as_bytes());
+    hasher.update(get_license_salt().as_bytes());
+    let hash = format!("{:x}", hasher.finalize());
+
+    // Check if the provided checksum matches the calculated one
+    parts[2] == &hash[..8]
+}
+
 #[tauri::command]
-fn is_premium_enabled() -> bool {
-    std::env::var("ENABLE_PREMIUM_FEATURES")
+fn get_premium_status() -> PremiumStatus {
+    // 1. Check build-time environment variable
+    const BUILD_PREMIUM: Option<&'static str> = option_env!("ENABLE_PREMIUM_FEATURES");
+    if let Some(v) = BUILD_PREMIUM {
+        if v == "true" || v == "1" {
+            return PremiumStatus {
+                enabled: true,
+                source: "env".into(),
+                trial_days_left: 0,
+                trial_expiry: None,
+            };
+        }
+    }
+
+    // 2. Check runtime environment variable
+    if std::env::var("ENABLE_PREMIUM_FEATURES")
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false)
+    {
+        return PremiumStatus {
+            enabled: true,
+            source: "env".into(),
+            trial_days_left: 0,
+            trial_expiry: None,
+        };
+    }
+
+    // 3. Check license file
+    let license_path = get_license_file_path();
+    if license_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&license_path) {
+            let key = content.trim();
+            if verify_license_checksum(key) {
+                return PremiumStatus {
+                    enabled: true,
+                    source: "license_file".into(),
+                    trial_days_left: 0,
+                    trial_expiry: None,
+                };
+            }
+        }
+    }
+
+    // 4. Check license key in database for any store
+    if let Ok(db) = get_db().lock() {
+        if let Ok(stores) = db.get_stores() {
+            for store in stores {
+                if let Ok(settings) = db.get_settings(&store.id) {
+                    if verify_license_checksum(&settings.license_key) {
+                        return PremiumStatus {
+                            enabled: true,
+                            source: "license".into(),
+                            trial_days_left: 0,
+                            trial_expiry: None,
+                        };
+                    }
+                }
+            }
+        }
+
+        // 4. Check Trial (6 months from installation)
+        if let Ok(install_date_str) = db.get_installation_date() {
+            if let Ok(install_date) = chrono::DateTime::parse_from_rfc3339(&install_date_str) {
+                let now = chrono::Utc::now();
+                // 6 months is roughly 183 days
+                let expiry = install_date + chrono::Duration::days(183);
+                let days_left = (expiry - now).num_days();
+
+                if days_left > 0 {
+                    return PremiumStatus {
+                        enabled: true,
+                        source: "trial".into(),
+                        trial_days_left: days_left,
+                        trial_expiry: Some(expiry.to_rfc3339()),
+                    };
+                }
+            }
+        }
+    }
+
+    PremiumStatus {
+        enabled: false,
+        source: "none".into(),
+        trial_days_left: 0,
+        trial_expiry: None,
+    }
+}
+
+#[tauri::command]
+fn is_premium_enabled() -> bool {
+    get_premium_status().enabled
 }
 
 #[tauri::command]
@@ -1582,6 +1709,7 @@ fn main() {
             seed_database,
             reset_database,
             reset_and_seed_database,
+            get_premium_status,
             is_premium_enabled,
             get_app_version,
         ])

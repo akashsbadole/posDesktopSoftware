@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Key,
   Receipt,
+  Lock,
 } from "lucide-react";
 import {
   syncToNeon,
@@ -87,6 +88,8 @@ export default function SettingsScreen() {
     saveSettings,
     isDarkMode,
     setDarkMode,
+    premiumEnabled,
+    premiumStatus,
   } = useSettingsStore();
   const [saved, setSaved] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -126,7 +129,6 @@ export default function SettingsScreen() {
   const [changingPin, setChangingPin] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
     const restoreFileInputRef = useRef<HTMLInputElement>(null);
-    const [premiumEnabled, setPremiumEnabled] = useState(false);
     const [localSettings, setLocalSettings] = useState<Settings>(
     settings || {
       store_name: "My POS Store",
@@ -176,17 +178,7 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     fetchSettings();
-    checkPremium();
   }, [activeStoreId]);
-
-  const checkPremium = async () => {
-    try {
-      const enabled = await isPremiumEnabled();
-      setPremiumEnabled(enabled);
-    } catch (err) {
-      console.error("Failed to check premium status:", err);
-    }
-  };
 
   useEffect(() => {
     if (settings) setLocalSettings(settings);
@@ -500,6 +492,107 @@ export default function SettingsScreen() {
     <div className="h-full overflow-y-auto p-5">
       <h1 className="font-display text-xl font-bold mb-6">Settings</h1>
       <div className="space-y-4">
+        {/* Premium Plan Highlight */}
+        <div
+          className="card p-6 border-2 transition-all"
+          style={{
+            borderColor: premiumEnabled ? "#2ECC71" : "#F5C842",
+            background: premiumEnabled
+              ? "rgba(46,204,113,0.05)"
+              : "rgba(245,200,66,0.05)",
+          }}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                style={{ background: premiumEnabled ? "#2ECC71" : "#F5C842" }}
+              >
+                <Key size={24} color="#0D0D0F" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold">
+                  {premiumStatus?.source === "trial"
+                    ? "Free Trial Active"
+                    : premiumEnabled
+                      ? "Premium Plan Active"
+                      : "Free Plan"}
+                </h2>
+                <p className="text-xs" style={{ color: "#4A4A5A" }}>
+                  {premiumStatus?.source === "trial"
+                    ? `Professional features unlocked! ${premiumStatus.trial_days_left} days remaining in trial.`
+                    : premiumEnabled
+                      ? "You have access to all professional features."
+                      : "Upgrade to unlock professional POS features."}
+                </p>
+              </div>
+            </div>
+            {!premiumEnabled && (
+              <button
+                onClick={() =>
+                  window.open(
+                    "mailto:info@appixen.com?subject=Premium Features Upgrade",
+                  )
+                }
+                className="btn-warning px-6 py-2 font-bold"
+              >
+                Upgrade Now
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
+            {[
+              {
+                label: "Cloud Sync (Neon)",
+                desc: "Real-time backup & multi-device sync",
+                premium: true,
+              },
+              {
+                label: "Multi-Store",
+                desc: "Manage all branches from one app",
+                premium: true,
+              },
+              {
+                label: "Advanced Inventory",
+                desc: "Ingredients, POs & Suppliers",
+                premium: true,
+              },
+              {
+                label: "Loyalty & CRM",
+                desc: "Customer Wallet & Points system",
+                premium: true,
+              },
+              {
+                label: "Staff Payroll",
+                desc: "Salary calculations & scheduling",
+                premium: true,
+              },
+              {
+                label: "SMS & WhatsApp",
+                desc: "Automated digital receipts",
+                premium: true,
+              },
+            ].map((f, i) => (
+              <div key={i} className="flex gap-2">
+                <div className="mt-1">
+                  {premiumEnabled ? (
+                    <Check size={14} className="text-[#2ECC71]" />
+                  ) : (
+                    <Lock size={12} className="text-[#F5C842]" />
+                  )}
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold">{f.label}</div>
+                  <div className="text-[9px]" style={{ color: "#4A4A5A" }}>
+                    {f.desc}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Store Info */}
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
@@ -1579,6 +1672,29 @@ export default function SettingsScreen() {
               {pinMsg.text}
             </div>
           )}
+        </div>
+
+        {/* Subscription & License */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Key size={16} style={{ color: "#F5C842" }} />
+            <h2 className="font-semibold">Subscription & License</h2>
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+              License Key
+            </label>
+            <input
+              value={localSettings.license_key || ""}
+              onChange={(e) => updateLocal("license_key", e.target.value)}
+              placeholder="PREM-XXXX-XXXX"
+            />
+            <p className="text-[10px] mt-2" style={{ color: "#9090A8" }}>
+              Enter your professional license key to unlock premium features. Any
+              key starting with <code className="font-bold">PREM-</code> will
+              enable professional mode.
+            </p>
+          </div>
         </div>
 
         <button

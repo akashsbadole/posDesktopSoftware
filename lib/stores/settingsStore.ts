@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { dbGetSettings, dbSaveSettings, Settings } from '@/lib/db';
+import { dbGetSettings, dbSaveSettings, Settings, isPremiumEnabled, getPremiumStatus, PremiumStatus } from '@/lib/db';
 
 interface SettingsState {
   settings: Settings;
@@ -8,11 +8,14 @@ interface SettingsState {
   isLoading: boolean;
   error: string | null;
   isDarkMode: boolean;
+  premiumEnabled: boolean;
+  premiumStatus: PremiumStatus | null;
   fetchSettings: () => Promise<void>;
   saveSettings: (settings: Partial<Settings>) => Promise<void>;
   setDarkMode: (isDarkMode: boolean) => void;
   updateCurrency: (currency: string, currencySymbol: string) => Promise<void>;
   setActiveStore: (id: string) => void;
+  checkPremium: () => Promise<void>;
 }
 
 const defaultSettings: Settings = {
@@ -56,6 +59,7 @@ const defaultSettings: Settings = {
   merchant_id: '',
   show_tax_breakdown: true,
   onboarding_completed: false,
+  license_key: '',
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -66,15 +70,31 @@ export const useSettingsStore = create<SettingsState>()(
       isLoading: false,
       error: null,
       isDarkMode: false,
+      premiumEnabled: false,
+      premiumStatus: null,
 
       fetchSettings: async () => {
         set({ isLoading: true, error: null });
         try {
           const settings = await dbGetSettings(get().activeStoreId);
-          set({ settings, isLoading: false });
+          const status = await getPremiumStatus();
+          set({
+            settings,
+            premiumEnabled: status.enabled,
+            premiumStatus: status,
+            isLoading: false
+          });
         } catch (err) {
           set({ error: (err as Error).message, isLoading: false });
         }
+      },
+
+      checkPremium: async () => {
+        const status = await getPremiumStatus();
+        set({
+          premiumEnabled: status.enabled,
+          premiumStatus: status
+        });
       },
 
       saveSettings: async (newSettings: Partial<Settings>) => {

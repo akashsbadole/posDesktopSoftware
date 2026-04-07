@@ -22,139 +22,156 @@ import {
   Shield,
   Bell,
   Calculator,
-  GraduationCap,
   Lock,
-  ChevronDown,
   LayoutGrid,
-  Heart,
   LifeBuoy
 } from "lucide-react";
 import { Screen } from "@/app/page";
 import { User } from "@/lib/db";
 import { useAuthStore, useSettingsStore, useStoresStore } from "@/lib/stores";
 import { getIndustryLabels } from "@/lib/industry";
+import PremiumUpgradeModal from "./PremiumUpgradeModal";
 
 const allNavItems = [
-  { id: "pos" as Screen, label: "POS", icon: ShoppingCart, adminOnly: false },
+  { id: "pos" as Screen, label: "POS", icon: ShoppingCart, adminOnly: false, premium: false },
   {
     id: "dashboard" as Screen,
     label: "Dashboard",
     icon: BarChart2,
     adminOnly: false,
+    premium: false,
   },
   {
     id: "orders" as Screen,
     label: "Orders",
     icon: ClipboardList,
     adminOnly: false,
+    premium: false,
   },
   {
     id: "products" as Screen,
     label: "Products",
     icon: Package,
     adminOnly: false,
+    premium: false,
   },
   {
     id: "tables" as Screen,
     label: "Tables",
     icon: UsersRound,
     adminOnly: false,
+    premium: false,
   },
   {
     id: "reservations" as Screen,
     label: "Bookings",
     icon: CalendarDays,
     adminOnly: false,
+    premium: true,
   },
-  { id: "kds" as Screen, label: "Kitchen", icon: ChefHat, adminOnly: false },
+  { id: "kds" as Screen, label: "Kitchen", icon: ChefHat, adminOnly: false, premium: false },
   {
     id: "customers" as Screen,
     label: "Customers",
     icon: Users,
     adminOnly: false,
+    premium: false,
   },
   {
     id: "expenses" as Screen,
     label: "Expenses",
     icon: DollarSign,
     adminOnly: true,
+    premium: true,
   },
   {
     id: "ingredients" as Screen,
     label: "Ingredients",
     icon: Wheat,
     adminOnly: true,
+    premium: true,
   },
   {
     id: "suppliers" as Screen,
     label: "Suppliers",
     icon: Truck,
     adminOnly: true,
+    premium: true,
   },
   {
     id: "purchase_orders" as Screen,
     label: "PO",
     icon: ClipboardList,
     adminOnly: true,
+    premium: true,
   },
-  { id: "wallet" as Screen, label: "Wallet", icon: Wallet, adminOnly: true },
-  { id: "coupons" as Screen, label: "Coupons", icon: Tag, adminOnly: true },
+  { id: "wallet" as Screen, label: "Wallet", icon: Wallet, adminOnly: true, premium: true },
+  { id: "coupons" as Screen, label: "Coupons", icon: Tag, adminOnly: true, premium: true },
   {
     id: "inventory_alerts" as Screen,
     label: "Alerts",
     icon: Bell,
     adminOnly: true,
+    premium: true,
   },
   {
     id: "inventory" as Screen,
     label: "Inventory",
     icon: ClipboardList,
     adminOnly: true,
+    premium: true,
   },
   {
     id: "refund_requests" as Screen,
     label: "Refunds",
     icon: Shield,
     adminOnly: true,
+    premium: true,
   },
-  { id: "staff" as Screen, label: "Staff", icon: Users, adminOnly: true },
+  { id: "staff" as Screen, label: "Staff", icon: Users, adminOnly: true, premium: true },
   {
     id: "scheduling" as Screen,
     label: "Schedule",
     icon: CalendarDays,
     adminOnly: true,
+    premium: true,
   },
   {
     id: "reconciliation" as Screen,
     label: "Day End",
     icon: Calculator,
     adminOnly: true,
+    premium: true,
   },
   {
     id: "reports" as Screen,
     label: "Reports",
     icon: FileText,
     adminOnly: true,
+    premium: true,
   },
-  { id: "gst" as Screen, label: "GST", icon: FileText, adminOnly: true },
-  { id: "logs" as Screen, label: "Logs", icon: History, adminOnly: true },
+  { id: "gst" as Screen, label: "GST", icon: FileText, adminOnly: true, premium: true },
+  { id: "logs" as Screen, label: "Logs", icon: History, adminOnly: true, premium: true },
   {
     id: "stores" as Screen,
     label: "Stores",
     icon: LayoutGrid,
     adminOnly: true,
+    premium: true,
   },
   {
     id: "settings" as Screen,
     label: "Settings",
     icon: Settings,
     adminOnly: true,
+    premium: false,
   },
   {
     id: "support" as Screen,
     label: "Support",
     icon: LifeBuoy,
     adminOnly: false,
+    premium: false,
   },
 ];
 
@@ -170,11 +187,13 @@ export default function Sidebar({
   onLock?: () => void;
 }) {
   const { logout } = useAuthStore();
-  const { activeStoreId, setActiveStore, settings } = useSettingsStore();
+  const { activeStoreId, setActiveStore, settings, premiumEnabled } = useSettingsStore();
   const { stores, fetchStores } = useStoresStore();
   const isAdmin = user?.role === "admin";
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [showStoreSwitcher, setShowStoreSwitcher] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [pendingFeature, setPendingFeature] = useState("");
 
   useEffect(() => {
     fetchStores();
@@ -241,11 +260,20 @@ export default function Sidebar({
                   stores.map(s => (
                     <button
                       key={s.id}
-                      onClick={() => { setActiveStore(s.id); setShowStoreSwitcher(false); }}
+                      onClick={() => {
+                        if (!premiumEnabled && s.id !== 'default') {
+                           setPendingFeature("Multi-Store");
+                           setShowUpgradeModal(true);
+                           return;
+                        }
+                        setActiveStore(s.id);
+                        setShowStoreSwitcher(false);
+                      }}
                       className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-[#1E1E26]"
                       style={{ color: s.id === activeStoreId ? "#F5C842" : "#9090A8" }}
                     >
                       {s.name}
+                      {!premiumEnabled && s.id !== 'default' && <Lock size={8} className="inline ml-1" />}
                     </button>
                   ))
                ) : (
@@ -284,20 +312,31 @@ export default function Sidebar({
         role="menu"
         aria-label="Navigation menu"
       >
-        {nav.map(({ id, label, icon: Icon }) => {
+        {nav.map(({ id, label, icon: Icon, premium }) => {
           const active = activeScreen === id;
+          const isLocked = premium && !premiumEnabled;
+
+          const handleClick = () => {
+            if (isLocked) {
+              setPendingFeature(label);
+              setShowUpgradeModal(true);
+              return;
+            }
+            setScreen(id);
+          };
+
           return (
             <button
               key={id}
-              onClick={() => setScreen(id)}
-              title={label}
+              onClick={handleClick}
+              title={isLocked ? `${label} (Premium)` : label}
               role="menuitem"
               aria-current={active ? "page" : undefined}
               aria-label={label}
               className="relative flex flex-col items-center justify-center rounded-xl py-3 gap-1 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F5C842] focus-visible:ring-offset-2 focus-visible:ring-offset-[#141418]"
               style={{
                 background: active ? "rgba(245,200,66,0.1)" : "transparent",
-                color: active ? "#F5C842" : "#4A4A5A",
+                color: active ? "#F5C842" : isLocked ? "#2A2A36" : "#4A4A5A",
               }}
             >
               {active && (
@@ -306,8 +345,15 @@ export default function Sidebar({
                   style={{ background: "#F5C842" }}
                 />
               )}
-              <Icon size={18} aria-hidden="true" />
-              <span style={{ fontSize: 9, fontWeight: 600 }}>{label}</span>
+              <div className="relative">
+                <Icon size={18} aria-hidden="true" className={isLocked ? "opacity-40" : ""} />
+                {isLocked && (
+                  <div className="absolute -top-1 -right-1 rounded-full p-0.5 border" style={{ background: "#141418", borderColor: "rgba(245,200,66,0.2)" }}>
+                    <Lock size={8} style={{ color: "#F5C842" }} />
+                  </div>
+                )}
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 600 }} className={isLocked ? "opacity-40" : ""}>{label}</span>
             </button>
           );
         })}
@@ -334,6 +380,12 @@ export default function Sidebar({
           <span style={{ fontSize: 8, fontWeight: 600 }}>Logout</span>
         </button>
       </div>
+
+      <PremiumUpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        featureName={pendingFeature}
+      />
     </aside>
   );
 }
