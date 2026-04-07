@@ -58,6 +58,8 @@ const defaultSettings: Settings = {
   receipt_header_text: '',
   merchant_id: '',
   show_tax_breakdown: true,
+  enable_round_off: true,
+  license_agreed: false,
   onboarding_completed: false,
   license_key: '',
 };

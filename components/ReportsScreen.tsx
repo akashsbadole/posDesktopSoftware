@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { exportProductsCsv, exportOrdersCsv, importProductsCsv, getSalesReport, exportBackup, exportToTally, exportToQuickbooks } from "@/lib/db";
 import EnhancedReports from "@/components/EnhancedReports";
-import { useSettingsStore } from "@/lib/stores";
+import { useSettingsStore, useStaffStore } from "@/lib/stores";
 
 interface SalesReport {
   start_date: string;

@@ -41,7 +41,9 @@ export default function StaffManagementScreen() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userFormData, setUserFormData] = useState<User>({
     id: "",
+    organization_id: useAuthStore.getState().organization?.id || "",
     name: "",
+    email: "",
     role: "cashier",
     hourly_rate: 0,
     store_id: activeStoreId,
@@ -62,11 +64,25 @@ export default function StaffManagementScreen() {
 
   const handleSaveUser = async () => {
     if (!userFormData.name) return;
-    const user = { ...userFormData, id: userFormData.id || uuid(), store_id: activeStoreId };
+    const orgId = useAuthStore.getState().organization?.id || "";
+    const user = {
+      ...userFormData,
+      id: userFormData.id || uuid(),
+      organization_id: orgId,
+      store_id: activeStoreId
+    };
     await upsertUser(user);
     setShowAddUser(false);
     setEditingUser(null);
-    setUserFormData({ id: "", name: "", role: "cashier", hourly_rate: 0, store_id: activeStoreId });
+    setUserFormData({
+      id: "",
+      organization_id: orgId,
+      name: "",
+      email: "",
+      role: "cashier",
+      hourly_rate: 0,
+      store_id: activeStoreId
+    });
   };
 
   const handleDeleteUser = async (id: string) => {
@@ -146,7 +162,12 @@ export default function StaffManagementScreen() {
         <div className="flex gap-2">
           {activeTab === "staff" && (
             <button
-              onClick={() => { setEditingUser(null); setUserFormData({ id: "", name: "", role: "cashier", hourly_rate: 0, store_id: activeStoreId }); setShowAddUser(true); }}
+              onClick={() => {
+                const orgId = useAuthStore.getState().organization?.id || "";
+                setEditingUser(null);
+                setUserFormData({ id: "", organization_id: orgId, name: "", email: "", role: "cashier", hourly_rate: 0, store_id: activeStoreId });
+                setShowAddUser(true);
+              }}
               className="btn-accent flex items-center gap-2"
             >
               <UserPlus size={18} /> Add Staff
@@ -374,6 +395,27 @@ export default function StaffManagementScreen() {
                   placeholder="e.g. John Doe"
                   value={userFormData.name}
                   onChange={(e) => setUserFormData({ ...userFormData, name: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Email Address</label>
+                <input
+                  type="email"
+                  placeholder="name@example.com"
+                  value={userFormData.email}
+                  onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">PIN (4 digits)</label>
+                <input
+                  type="password"
+                  maxLength={4}
+                  placeholder="••••"
+                  value={userFormData.pin || ""}
+                  onChange={(e) => setUserFormData({ ...userFormData, pin: e.target.value })}
                 />
               </div>
 

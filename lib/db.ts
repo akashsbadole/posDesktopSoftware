@@ -4,8 +4,15 @@
 
 import { invoke } from "@tauri-apps/api/tauri";
 import pako from "pako";
+import { neon } from "@neondatabase/serverless";
 
 const IS_TAURI = typeof window !== "undefined" && "__TAURI__" in window;
+
+let currentOrganizationId: string | null = null;
+
+export function setOrganizationId(id: string | null) {
+  currentOrganizationId = id;
+}
 
 // ─── Seed Function ────────────────────────────────────────────────────────────────
 export async function seedDatabase(): Promise<void> {
@@ -21,9 +28,21 @@ export async function resetAndSeedDatabase(): Promise<void> {
   return sql("seed_database");
 }
 
+// ─── Multi-Tenancy Types ──────────────────────────────────────────────────────
+export interface Organization {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  created_at: string;
+  status: "active" | "suspended" | "trial";
+}
+
 // ─── Multi-Store Types ────────────────────────────────────────────────────────
 export interface Store {
   id: string;
+  organization_id?: string;
   name: string;
   industry:
     | "food"
@@ -38,12 +57,14 @@ export interface Store {
 
 export interface StoreConfig {
   store_id: string;
+  organization_id?: string;
   settings: string; // JSON string
 }
 
 // ─── Data Types ────────────────────────────────────────────────────────────────
 export interface Product {
   id: string;
+  organization_id?: string;
   store_id: string;
   name: string;
   price: number;
@@ -72,6 +93,7 @@ export interface Product {
 
 export interface Batch {
   id: string;
+  organization_id?: string;
   product_id: string;
   store_id: string;
   batch_number: string;
@@ -83,6 +105,7 @@ export interface Batch {
 
 export interface SerialNumber {
   id: string;
+  organization_id?: string;
   product_id: string;
   store_id: string;
   serial_number: string;
@@ -92,6 +115,7 @@ export interface SerialNumber {
 
 export interface InventoryTransaction {
   id: string;
+  organization_id?: string;
   product_id: string;
   store_id: string;
   transaction_type: "in" | "out" | "adjustment" | "transfer" | "return";
@@ -106,6 +130,7 @@ export interface InventoryTransaction {
 
 export interface StockCount {
   id: string;
+  organization_id?: string;
   store_id: string;
   status: "draft" | "completed" | "cancelled";
   created_by: string;
@@ -123,6 +148,7 @@ export interface StockCountItem {
 
 export interface ProductVariant {
   id: string;
+  organization_id?: string;
   product_id: string;
   store_id: string;
   name: string;
@@ -141,6 +167,7 @@ export interface ComboItem {
 
 export interface Combo {
   id: string;
+  organization_id?: string;
   store_id: string;
   name: string;
   description: string;
@@ -169,6 +196,7 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
+  organization_id?: string;
   store_id: string;
   items: OrderItem[];
   subtotal: number;
@@ -205,6 +233,7 @@ export interface Order {
 
 export interface Table {
   id: string;
+  organization_id?: string;
   store_id: string;
   name: string;
   capacity: number;
@@ -215,6 +244,7 @@ export interface Table {
 
 export interface StaffAttendance {
   id: string;
+  organization_id?: string;
   store_id: string;
   user_id: string;
   user_name: string;
@@ -225,6 +255,7 @@ export interface StaffAttendance {
 
 export interface StaffSalary {
   id: string;
+  organization_id?: string;
   store_id: string;
   staff_id: string;
   staff_name: string;
@@ -238,6 +269,7 @@ export interface StaffSalary {
 
 export interface Customer {
   id: string;
+  organization_id?: string;
   store_id: string;
   name: string;
   phone: string;
@@ -283,6 +315,7 @@ export interface OrderNote {
 
 export interface InventoryAlert {
   id: string;
+  organization_id?: string;
   store_id: string;
   product_id: string;
   product_name: string;
@@ -314,6 +347,7 @@ export interface SalesByItem {
 
 export interface RefundRequest {
   id: string;
+  organization_id?: string;
   store_id: string;
   order_id: string;
   amount: number;
@@ -383,6 +417,7 @@ export interface TaxRate {
 
 export interface Ingredient {
   id: string;
+  organization_id?: string;
   store_id: string;
   name: string;
   stock: number;
@@ -393,6 +428,7 @@ export interface Ingredient {
 
 export interface Recipe {
   id: string;
+  organization_id?: string;
   store_id: string;
   product_id: string;
   ingredient_id: string;
@@ -401,6 +437,7 @@ export interface Recipe {
 
 export interface Supplier {
   id: string;
+  organization_id?: string;
   store_id: string;
   name: string;
   phone: string;
@@ -419,6 +456,7 @@ export interface PurchaseOrderItem {
 
 export interface PurchaseOrder {
   id: string;
+  organization_id?: string;
   store_id: string;
   supplier_id: string;
   supplier_name: string;
@@ -431,6 +469,7 @@ export interface PurchaseOrder {
 
 export interface Reservation {
   id: string;
+  organization_id?: string;
   store_id: string;
   table_id: string;
   table_name: string;
@@ -470,6 +509,7 @@ export interface LanServerStatus {
 
 export interface Shift {
   id: string;
+  organization_id?: string;
   store_id: string;
   staff_id: string;
   staff_name: string;
@@ -483,6 +523,7 @@ export interface Shift {
 
 export interface Expense {
   id: string;
+  organization_id?: string;
   store_id: string;
   category: string;
   amount: number;
@@ -494,6 +535,7 @@ export interface Expense {
 
 export interface ExpenseCategory {
   id: string;
+  organization_id?: string;
   store_id: string;
   name: string;
   icon: string;
@@ -518,6 +560,7 @@ export interface WalletTransaction {
 
 export interface Coupon {
   id: string;
+  organization_id?: string;
   store_id: string;
   code: string;
   discount_type: string;
@@ -532,6 +575,7 @@ export interface Coupon {
 
 export interface DayEndReconciliation {
   id: string;
+  organization_id?: string;
   store_id: string;
   date: string;
   opening_cash: number;
@@ -562,6 +606,7 @@ export interface GstReport {
 
 export interface ActivityLogEntry {
   id: string;
+  organization_id?: string;
   store_id: string;
   order_id: string;
   action: string;
@@ -573,13 +618,99 @@ export interface ActivityLogEntry {
   created_at: string;
 }
 
+// ─── Neon Client ──────────────────────────────────────────────────────────────
+const getNeonClient = () => {
+  const url = process.env.NEXT_PUBLIC_NEON_URL;
+  if (!url) return null;
+  return neon(url);
+};
+
+export async function dbInitNeon(): Promise<void> {
+  const sql = getNeonClient();
+  if (!sql) return;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS organizations (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      status TEXT DEFAULT 'trial'
+    );
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT REFERENCES organizations(id),
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      pin TEXT,
+      role TEXT DEFAULT 'cashier',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS stores (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT REFERENCES organizations(id),
+      name TEXT NOT NULL,
+      industry TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+}
+
 // ─── Invoke wrapper ────────────────────────────────────────────────────────────
 async function sql<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const enhancedArgs = currentOrganizationId
+    ? { organizationId: currentOrganizationId, ...args }
+    : args;
+
   if (IS_TAURI) {
-    return invoke<T>(cmd, args);
+    return invoke<T>(cmd, enhancedArgs);
   }
+
+  // Neon Web Fallback (If URL is provided, use Neon, otherwise use localStorage)
+  const neonClient = getNeonClient();
+  if (neonClient && !cmd.startsWith("get_premium")) {
+    try {
+      if (cmd === "register") {
+        const { orgName, email, password } = enhancedArgs as any;
+        const orgId = Math.random().toString(36).substr(2, 9);
+        const userId = Math.random().toString(36).substr(2, 9);
+
+        await neonClient`INSERT INTO organizations (id, name, email) VALUES (${orgId}, ${orgName}, ${email})`;
+        await neonClient`INSERT INTO users (id, organization_id, name, email, password_hash, role, pin)
+                         VALUES (${userId}, ${orgId}, 'Admin', ${email}, ${password}, 'admin', '1234')`;
+        await neonClient`INSERT INTO stores (id, organization_id, name, industry) VALUES ('default', ${orgId}, 'Main Store', 'food')`;
+
+        return (await browserFallback(cmd, enhancedArgs)) as T;
+      }
+
+      if (cmd === "login") {
+        const { email, password } = enhancedArgs as any;
+        const rows = await neonClient`SELECT u.*, o.name as org_name FROM users u
+                                      JOIN organizations o ON u.organization_id = o.id
+                                      WHERE u.email = ${email} AND u.password_hash = ${password}`;
+        if (rows.length > 0) {
+           return (await browserFallback(cmd, enhancedArgs)) as T;
+        }
+      }
+
+      console.log(`[Neon] Scaffolding for ${cmd}`, enhancedArgs);
+    } catch (e) {
+      console.error("Neon execution failed", e);
+    }
+  }
+
   // Browser fallback (dev without Tauri)
-  return browserFallback<T>(cmd, args);
+  return browserFallback<T>(
+    enhancedArgs ? (enhancedArgs as any).cmd || cmd : cmd,
+    enhancedArgs,
+  );
 }
 
 // ─── Stores ───────────────────────────────────────────────────────────────────
@@ -856,14 +987,60 @@ export async function getSalesReport(
 // ─── Users ─────────────────────────────────────────────────────────────────
 export interface User {
   id: string;
+  organization_id?: string;
   name: string;
+  email: string;
   role: string;
   store_id?: string;
   hourly_rate: number;
+  pin?: string;
+  password?: string; // Only used for browser fallback/internal logic
+  created_at?: string;
 }
 
-export async function verifyPin(pin: string): Promise<User | null> {
-  return sql<User | null>("verify_pin", { pin });
+export async function dbRegister(
+  orgName: string,
+  email: string,
+  password: string,
+): Promise<{ user: User; organization: Organization }> {
+  return sql<{ user: User; organization: Organization }>("register", {
+    orgName,
+    email,
+    password,
+  });
+}
+
+export async function dbLogin(
+  email: string,
+  password: string,
+): Promise<{ user: User; organization: Organization } | null> {
+  return sql<{ user: User; organization: Organization } | null>("login", {
+    email,
+    password,
+  });
+}
+
+export async function dbForgotPassword(email: string): Promise<boolean> {
+  return sql<boolean>("forgot_password", { email });
+}
+
+export async function dbResetPassword(
+  email: string,
+  code: string,
+  newPassword: string,
+): Promise<boolean> {
+  return sql<boolean>("reset_password", { email, code, newPassword });
+}
+
+export async function dbForgotUser(email: string): Promise<boolean> {
+  return sql<boolean>("forgot_user", { email });
+}
+
+export async function verifyPin(
+  pin: string,
+  organizationId: string,
+): Promise<User | null> {
+  return sql<User | null>("verify_pin", { pin, organizationId });
 }
 
 export async function changePin(userId: string, newPin: string): Promise<void> {
@@ -936,6 +1113,7 @@ export async function importBackup(
 // ─── Activity Logs ─────────────────────────────────────────────────────────
 export interface ActivityLog {
   id: string;
+  organization_id?: string;
   store_id: string;
   order_id: string;
   action: string;
@@ -1365,7 +1543,7 @@ export async function syncFromNeon(
 }
 
 export interface PremiumStatus {
-  enabled: bool;
+  enabled: boolean;
   source: "env" | "license" | "license_file" | "trial" | "none";
   trial_days_left: number;
   trial_expiry: string | null;
@@ -1936,8 +2114,11 @@ async function browserFallback<T>(
       lsSet("pos_purchase_orders", []);
       lsSet("pos_suppliers", []);
       return undefined as T;
-    case "get_stores":
-      return (lsGet<Store[]>(LS.stores) || []) as T;
+    case "get_stores": {
+      const orgId = (args as any).organizationId;
+      const s = lsGet<Store[]>(LS.stores) || [];
+      return s.filter((x) => !orgId || x.organization_id === orgId) as T;
+    }
     case "upsert_store": {
       const stores = lsGet<Store[]>(LS.stores) || [];
       const s = (args as any).store as Store;
@@ -1948,16 +2129,24 @@ async function browserFallback<T>(
       return undefined as T;
     }
     case "get_products": {
+      const orgId = (args as any).organizationId;
       const p = lsGet<Product[]>(LS.products) || [];
-      return p.filter((x) => x.store_id === storeId) as T;
+      return p.filter(
+        (x) => x.store_id === storeId && (!orgId || x.organization_id === orgId),
+      ) as T;
     }
     case "upsert_product": {
+      const orgId = (args as any).organizationId;
       const products = lsGet<Product[]>(LS.products) || [];
       const p = (args as any).product as Product;
       p.store_id = storeId;
+      if (orgId) p.organization_id = orgId;
       // Scoped findIndex
       const idx = products.findIndex(
-        (x) => x.id === p.id && x.store_id === storeId,
+        (x) =>
+          x.id === p.id &&
+          x.store_id === storeId &&
+          (!orgId || x.organization_id === orgId),
       );
       if (idx >= 0) products[idx] = p;
       else products.push(p);
@@ -1986,12 +2175,18 @@ async function browserFallback<T>(
       return undefined as T;
     }
     case "get_orders": {
+      const orgId = (args as any).organizationId;
       const orders = lsGet<Order[]>(LS.orders) || [];
-      return orders.filter((o) => o.store_id === storeId) as T;
+      return orders.filter(
+        (o) =>
+          o.store_id === storeId && (!orgId || o.organization_id === orgId),
+      ) as T;
     }
     case "save_order": {
+      const orgId = (args as any).organizationId;
       const o = (args as any).order as Order;
       o.store_id = storeId;
+      if (orgId) o.organization_id = orgId;
       const orders = lsGet<Order[]>(LS.orders) || [];
       orders.unshift(o);
       lsSet(LS.orders, orders);
@@ -2035,13 +2230,100 @@ async function browserFallback<T>(
       lsSet("pos_tables", tables);
       return undefined as T;
     }
+    case "register": {
+      const { orgName, email, password } = args as any;
+      const orgId = Math.random().toString(36).substr(2, 9);
+      const userId = Math.random().toString(36).substr(2, 9);
+      const organization: Organization = {
+        id: orgId,
+        name: orgName,
+        email,
+        created_at: new Date().toISOString(),
+        status: "trial",
+      };
+      const user: User = {
+        id: userId,
+        organization_id: orgId,
+        name: "Admin",
+        email,
+        role: "admin",
+        hourly_rate: 0,
+        pin: "1234",
+        password,
+        created_at: new Date().toISOString(),
+      };
+      // Seed a default store for the new organization
+      const storeId = "default";
+      const store: Store = {
+        id: storeId,
+        organization_id: orgId,
+        name: "Main Store",
+        industry: "food",
+        is_active: true,
+        created_at: new Date().toISOString(),
+      };
+      const stores = lsGet<Store[]>(LS.stores) || [];
+      stores.push(store);
+      lsSet(LS.stores, stores);
+      const orgs = lsGet<Organization[]>("pos_organizations") || [];
+      const users = lsGet<User[]>("pos_users") || [];
+      orgs.push(organization);
+      users.push(user);
+      lsSet("pos_organizations", orgs);
+      lsSet("pos_users", users);
+      return { user, organization } as T;
+    }
+    case "login": {
+      const { email, password } = args as any;
+      const users = lsGet<User[]>("pos_users") || [];
+      const user = users.find((u) => u.email === email && u.password === password);
+      if (user) {
+        const orgs = lsGet<Organization[]>("pos_organizations") || [];
+        const organization = orgs.find((o) => o.id === user.organization_id);
+        return { user, organization } as T;
+      }
+      return null as T;
+    }
+    case "forgot_password": {
+      const { email } = args as any;
+      const users = lsGet<User[]>("pos_users") || [];
+      const user = users.find((u) => u.email === email);
+      if (user) {
+        console.log(`[SIMULATION] Recovery code '123456' sent to ${email}`);
+        return true as T;
+      }
+      return false as T;
+    }
+    case "reset_password": {
+      const { email, code, newPassword } = args as any;
+      if (code !== "123456") return false as T;
+      const users = lsGet<User[]>("pos_users") || [];
+      const idx = users.findIndex((u) => u.email === email);
+      if (idx >= 0) {
+        users[idx].password = newPassword;
+        lsSet("pos_users", users);
+        return true as T;
+      }
+      return false as T;
+    }
+    case "forgot_user": {
+      const { email } = args as any;
+      const users = lsGet<User[]>("pos_users") || [];
+      const user = users.find((u) => u.email === email);
+      if (user) {
+        console.log(`[SIMULATION] Username info sent to ${email}. Your name is: ${user.name}`);
+        return true as T;
+      }
+      return false as T;
+    }
     case "verify_pin": {
       const pin = (args as any).pin;
-      if (pin === "1234")
-        return { id: "admin", name: "Administrator", role: "admin" } as T;
-      if (pin === "0000")
-        return { id: "cashier", name: "Cashier", role: "cashier" } as T;
-      return null as T;
+      const orgId = (args as any).organizationId;
+      const users = lsGet<User[]>("pos_users") || [];
+      const user = users.find(
+        (u) => u.pin === pin && u.organization_id === orgId,
+      );
+      return (user || null) as T;
     }
     case "get_daily_summary": {
       const orders = lsGet<Order[]>(LS.orders) || [];
@@ -2584,11 +2866,28 @@ async function browserFallback<T>(
     case "check_inventory_alerts":
       return [] as T;
     case "get_users": {
+      const orgId = (args as any).organizationId;
       const users = lsGet<User[]>("pos_users") || [
-        { id: "admin", name: "Administrator", role: "admin", hourly_rate: 0 },
-        { id: "cashier", name: "Cashier", role: "cashier", hourly_rate: 0 },
+        {
+          id: "admin",
+          organization_id: "default",
+          name: "Administrator",
+          email: "admin@example.com",
+          role: "admin",
+          hourly_rate: 0,
+        },
+        {
+          id: "cashier",
+          organization_id: "default",
+          name: "Cashier",
+          email: "cashier@example.com",
+          role: "cashier",
+          hourly_rate: 0,
+        },
       ];
-      return users as T;
+      return users.filter(
+        (x) => !orgId || x.organization_id === orgId,
+      ) as T;
     }
     case "upsert_user": {
       const users = lsGet<User[]>("pos_users") || [
