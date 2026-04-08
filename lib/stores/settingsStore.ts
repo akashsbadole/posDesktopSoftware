@@ -61,6 +61,7 @@ const defaultSettings: Settings = {
   enable_round_off: true,
   auto_reminders_enabled: false,
   auto_reminder_days: 30,
+  license_agreed: false,
   onboarding_completed: false,
   license_key: '',
 };

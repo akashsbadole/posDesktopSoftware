@@ -34,7 +34,7 @@ import InventoryManagementScreen from "@/components/InventoryManagementScreen";
 import SupportScreen from "@/components/SupportScreen";
 import StoresScreen from "@/components/StoresScreen";
 import OnboardingModal from "@/components/OnboardingModal";
-import { dbGetPendingOrdersCount } from "@/lib/db";
+import { dbGetPendingOrdersCount, setOrganizationId } from "@/lib/db";
 import { useAuthStore, useSettingsStore } from "@/lib/stores";
 import { PREMIUM_SCREENS } from "@/lib/constants";
 import PremiumUpgradeModal from "@/components/PremiumUpgradeModal";
@@ -108,15 +108,18 @@ export default function Home() {
   const [isLocked, setIsLocked] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const { user, organization, isAuthenticated, logout } = useAuthStore();
   const { activeStoreId, settings, fetchSettings, premiumEnabled } = useSettingsStore();
 
   useEffect(() => {
     setMounted(true);
-    if (isAuthenticated) {
+    if (isAuthenticated && organization) {
+      setOrganizationId(organization.id);
       fetchSettings();
+      // Initialize Neon if possible (non-blocking)
+      import("@/lib/db").then((m) => m.dbInitNeon().catch(console.error));
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, organization]);
 
   useEffect(() => {
     if (mounted) {

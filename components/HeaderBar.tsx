@@ -142,6 +142,16 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
           <span>Lock</span>
         </button>
 
+        <button
+          onClick={() => useAuthStore.getState().logout()}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors hover:bg-red-500/10 text-[#9090A8] hover:text-red-400"
+          style={{ background: "#1E1E26" }}
+          title="Sign Out"
+        >
+          <LogOut size={14} />
+          <span>Sign Out</span>
+        </button>
+
         {user && (
           <div 
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
@@ -156,12 +166,14 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
             >
               {user.name.charAt(0).toUpperCase()}
             </div>
-            <span className="text-xs font-medium" style={{ color: "#E8E8F0" }}>
-              {user.name}
-            </span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "#2A2A32", color: "#9090A8" }}>
-              {user.role}
-            </span>
+            <div className="flex flex-col items-start leading-none">
+              <span className="text-xs font-medium" style={{ color: "#E8E8F0" }}>
+                {user.name}
+              </span>
+              <span className="text-[10px] text-[#9090A8] mt-0.5">
+                {user.role}
+              </span>
+            </div>
           </div>
         )}
       </div>
