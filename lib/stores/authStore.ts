@@ -58,10 +58,17 @@ export const useAuthStore = create<AuthState>()(
         }
 
         try {
+          console.log("[authStore.login] Calling verifyPin with pin:", pin, "orgId:", orgId);
           const user = await verifyPin(pin, orgId);
+          console.log("[authStore.login] verifyPin returned:", user ? "user found" : "null");
           if (user) {
             // Successful login - reset rate limiter
             authRateLimiter.recordAttempt(rateLimitKey, true);
+
+            // Set active store from user
+            if (user.store_id) {
+              useSettingsStore.getState().setActiveStore(user.store_id);
+            }
 
             set({
               user,
@@ -89,7 +96,9 @@ export const useAuthStore = create<AuthState>()(
         }
       },
       loginWithCredentials: async (email: string, pass: string) => {
+        console.log("[authStore.loginWithCredentials] Calling dbLogin with email:", email);
         const res = await dbLogin(email, pass);
+        console.log("[authStore.loginWithCredentials] dbLogin returned:", res ? "data" : "null");
         if (res) {
           setOrganizationId(res.organization.id);
           if (res.user.store_id) {

@@ -76,16 +76,57 @@ test.describe('Authentication - Login and Registration', () => {
     // Should reach the main POS interface
     await page.waitForSelector('text=POS', { timeout: 20000 });
 
-    // Check if onboarding modal appears (for new organizations)
-    const onboardingVisible = await page.locator('text=Welcome to POS Billing').isVisible().catch(() => false);
-    if (onboardingVisible) {
-      // Complete onboarding quickly
-      await page.click('button:has-text("I Agree & Continue")');
-      await page.click('button:has-text("Next Step")');
-      await page.click('button:has-text("Next Step")');
-      await page.click('button:has-text("Next Step")');
-      await page.click('button:has-text("Next Step")');
-      await page.click('button:has-text("Complete Setup")');
+    // Check for license agreement screen (shown for new admin users)
+    const licenseVisible = await page.locator('text=License Agreement').isVisible().catch(() => false);
+    if (licenseVisible) {
+      // Click the checkbox to agree to license
+      await page.click('text=I have read and agree to the license terms');
+      // Then click Continue
+      await page.click('button:has-text("Continue")');
+      
+      // Wait for next screen and fill in necessary fields
+      await page.waitForTimeout(1500);
+      
+      // Handle Store Identity step - fill in store name
+      // Force fill all text inputs on the page
+      const inputs = page.locator('input[type="text"]');
+      const inputCount = await inputs.count();
+      
+      for (let i = 0; i < inputCount; i++) {
+        const input = inputs.nth(i);
+        const isVisible = await input.isVisible();
+        if (isVisible) {
+          // Use fill to replace any existing value
+          if (i === 0) {
+            await input.fill('Test Store');
+          } else if (i === 1) {
+            await input.fill('123 Test Street');
+          } else if (i === 2) {
+            await input.fill('+1 123 456 789');
+          }
+        }
+      }
+      
+      // Wait a moment for the form to recognize the changes
+      await page.waitForTimeout(500);
+      
+      // Keep clicking Continue/Complete until done
+      for (let i = 0; i < 10; i++) {
+        const continueBtn = page.locator('button:has-text("Continue")').first();
+        const completeBtn = page.locator('button:has-text("Complete Setup")').first();
+        
+        if (await completeBtn.isVisible()) {
+          await completeBtn.click();
+          break;
+        }
+        
+        if (await continueBtn.isVisible() && await continueBtn.isEnabled()) {
+          await continueBtn.click();
+          await page.waitForTimeout(500);
+        } else {
+          break;
+        }
+      }
     }
 
     // Verify we're logged in (should see POS interface elements)
