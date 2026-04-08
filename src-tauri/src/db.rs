@@ -4962,28 +4962,52 @@ impl Database {
     }
 
     fn load_order_items_for_orders(&self, orders: &[Order]) -> Result<Vec<Order>> {
-        let mut result = orders.to_vec();
-        for order in &mut result {
-            let mut item_stmt = self.conn.prepare(
-                "SELECT product_id, product_name, price, quantity, discount, tax, metadata, discount_type FROM order_items WHERE order_id=?1"
-            )?;
-            order.items = item_stmt
-                .query_map(params![order.id], |row| {
-                    let metadata_str: Option<String> = row.get(6)?;
-                    let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
-                    Ok(OrderItem {
-                        product_id: row.get(0)?,
-                        product_name: row.get(1)?,
-                        price: row.get(2)?,
-                        quantity: row.get(3)?,
-                        discount: row.get(4)?,
-                        tax: row.get(5)?,
-                        metadata,
-                        discount_type: row.get(7)?,
-                    })
-                })?
-                .collect::<Result<Vec<_>>>()?;
+        if orders.is_empty() {
+            return Ok(vec![]);
         }
+
+        let mut result = orders.to_vec();
+        let ids: Vec<String> = orders.iter().map(|o| o.id.clone()).collect();
+        let placeholders: String = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT order_id, product_id, product_name, price, quantity, discount, tax, metadata, discount_type
+             FROM order_items WHERE order_id IN ({})",
+            placeholders
+        );
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+            let order_id: String = row.get(0)?;
+            let metadata_str: Option<String> = row.get(7)?;
+            let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
+            Ok((
+                order_id,
+                OrderItem {
+                    product_id: row.get(1)?,
+                    product_name: row.get(2)?,
+                    price: row.get(3)?,
+                    quantity: row.get(4)?,
+                    discount: row.get(5)?,
+                    tax: row.get(6)?,
+                    metadata,
+                    discount_type: row.get(8)?,
+                },
+            ))
+        })?;
+
+        let mut items_map: std::collections::HashMap<String, Vec<OrderItem>> =
+            std::collections::HashMap::new();
+        for row in rows {
+            let (order_id, item) = row?;
+            items_map.entry(order_id).or_default().push(item);
+        }
+
+        for order in &mut result {
+            if let Some(items) = items_map.remove(&order.id) {
+                order.items = items;
+            }
+        }
+
         Ok(result)
     }
 
@@ -7358,6 +7382,28 @@ impl Database {
         let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, transaction_type, qty_delta, batch_id, serial_number_id, reference_type, reference_id, user_id, created_at FROM inventory_transactions WHERE product_id=?1 AND store_id=?2 ORDER BY created_at DESC")?;
         let txs = stmt
             .query_map(params![product_id, store_id], |row| {
+                Ok(InventoryTransaction {
+                    id: row.get(0)?,
+                    product_id: row.get(1)?,
+                    store_id: row.get(2)?,
+                    transaction_type: row.get(3)?,
+                    qty_delta: row.get(4)?,
+                    batch_id: row.get(5)?,
+                    serial_number_id: row.get(6)?,
+                    reference_type: row.get(7)?,
+                    reference_id: row.get(8)?,
+                    user_id: row.get(9)?,
+                    created_at: row.get(10)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(txs)
+    }
+
+    pub fn get_all_inventory_transactions(&self, store_id: &str) -> Result<Vec<InventoryTransaction>> {
+        let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, transaction_type, qty_delta, batch_id, serial_number_id, reference_type, reference_id, user_id, created_at FROM inventory_transactions WHERE store_id=?1 ORDER BY created_at DESC LIMIT 1000")?;
+        let txs = stmt
+            .query_map(params![store_id], |row| {
                 Ok(InventoryTransaction {
                     id: row.get(0)?,
                     product_id: row.get(1)?,

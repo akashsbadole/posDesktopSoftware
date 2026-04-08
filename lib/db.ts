@@ -820,6 +820,14 @@ export async function dbGetInventoryTransactions(
   });
 }
 
+export async function dbGetAllInventoryTransactions(
+  storeId: string,
+): Promise<InventoryTransaction[]> {
+  return sql<InventoryTransaction[]>("get_all_inventory_transactions", {
+    storeId,
+  });
+}
+
 export async function dbCalculateValuation(
   storeId: string,
   method: "AVG" | "FIFO" | "LIFO",
@@ -2297,6 +2305,12 @@ async function browserFallback<T>(
       users.push(user);
       lsSet("pos_organizations", orgs);
       lsSet("pos_users", users);
+
+      // Seed products for the new organization
+      const products = lsGet<Product[]>(LS.products) || [];
+      const newProducts = seedProducts(storeId).map(p => ({ ...p, organization_id: orgId }));
+      lsSet(LS.products, [...products, ...newProducts]);
+
       return { user, organization } as T;
     }
     case "login": {
