@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { dbGetOrders, dbSaveOrder, dbRefundOrder, updateDeliveryStatus, dbGetDailySummary, dbGetWeeklyRevenue, dbGetTopProducts, dbGetLowStock, Order } from '@/lib/db';
 import { useSettingsStore } from './settingsStore';
+import { uiLogger } from '@/lib/logger';
 
 interface DashboardData {
   revenue: number;
@@ -140,7 +141,7 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
         isLoading: false,
       });
     } catch (err) {
-      console.error("Dashboard fetch error:", err);
+      uiLogger.error("Dashboard fetch error", err);
       set({ error: (err as Error).message, isLoading: false });
     }
   },

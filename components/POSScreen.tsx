@@ -72,6 +72,7 @@ import {
   useTablesStore,
 } from "@/lib/stores";
 import { useGridNavigation } from "@/lib/keyboard";
+import { uiLogger } from "@/lib/logger";
 import PinModal from "./PinModal";
 import { getIndustryLabels } from "@/lib/industry";
 import { v4 as uuid } from "uuid";
@@ -349,7 +350,7 @@ export default function POSScreen() {
           return;
         }
       } catch (err) {
-        console.error("Failed to fetch batches:", err);
+        uiLogger.error("Failed to fetch batches", err);
       }
     }
 
@@ -536,7 +537,7 @@ export default function POSScreen() {
         setCustomerAddresses([]);
       }
     } catch (error) {
-      console.error("Failed to lookup customer:", error);
+      uiLogger.error("Failed to lookup customer", error);
       alert("Failed to lookup customer by phone number");
       setActiveCustomer(null);
       setWalletBalance(0);
@@ -638,7 +639,7 @@ export default function POSScreen() {
         try {
           await useCoupon(appliedCoupon.code, activeStoreId);
         } catch (e) {
-          console.error("Failed to mark coupon used:", e);
+          uiLogger.error("Failed to mark coupon used", e);
         }
       }
       if (useWallet && walletCustomerId && walletDeduction > 0) {
@@ -649,7 +650,7 @@ export default function POSScreen() {
             order.id,
           );
         } catch (e) {
-          console.error("Failed to deduct wallet:", e);
+          uiLogger.error("Failed to deduct wallet", e);
         }
       }
 
@@ -658,7 +659,7 @@ export default function POSScreen() {
           // Khata sale is essentially a negative wallet balance entry (Udhar)
           await deductWalletBalance(walletCustomerId, finalTotal, order.id);
         } catch (e) {
-          console.error("Failed to record credit sale in wallet:", e);
+          uiLogger.error("Failed to record credit sale in wallet", e);
         }
       }
 
@@ -670,7 +671,7 @@ export default function POSScreen() {
       try {
         await openCashDrawer();
       } catch (e) {
-        console.log("Cash drawer not available");
+        uiLogger.info("Cash drawer not available");
       }
 
       const rec = generateReceipt(order, settings);
@@ -690,7 +691,7 @@ export default function POSScreen() {
       setSelectedAddressId(null);
       await Promise.all([fetchProducts(), loadHeldOrders()]);
     } catch (err) {
-      console.error("Checkout failed:", err);
+      uiLogger.error("Checkout failed", err);
       alert("Failed to complete order. Please try again.");
     } finally {
       setProcessing(false);
@@ -717,7 +718,7 @@ export default function POSScreen() {
       clearCart();
       await loadHeldOrders();
     } catch (err) {
-      console.error("Failed to hold order:", err);
+      uiLogger.error("Failed to hold order", err);
       alert("Failed to hold order. Please try again.");
     }
     setProcessing(false);
@@ -744,7 +745,7 @@ export default function POSScreen() {
       alert("KOT sent to printer!");
       clearCart();
     } catch (err) {
-      console.error("Failed to print KOT:", err);
+      uiLogger.error("Failed to print KOT", err);
       alert("Failed to print KOT - Order not saved");
     }
     setProcessing(false);
@@ -822,7 +823,7 @@ export default function POSScreen() {
       await dbDeletePendingOrder(id, activeStoreId);
       await loadHeldOrders();
     } catch (err) {
-      console.error("Failed to delete held order:", err);
+      uiLogger.error("Failed to delete held order", err);
     }
   };
 
@@ -873,7 +874,7 @@ export default function POSScreen() {
       const path = await saveReceiptToFile(receipt, fileName);
       alert(`Receipt saved to: ${path}`);
     } catch (err) {
-      console.error("Failed to save receipt:", err);
+      uiLogger.error("Failed to save receipt", err);
     }
   };
 
@@ -923,7 +924,7 @@ export default function POSScreen() {
           try {
             setQrBase64(canvas.toDataURL("image/png", 1.0));
           } catch (e) {
-            console.error("Failed to capture QR as image:", e);
+            uiLogger.error("Failed to capture QR as image", e);
           }
         }
       }, 1500);

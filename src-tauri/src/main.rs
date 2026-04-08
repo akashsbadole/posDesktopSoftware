@@ -524,6 +524,24 @@ fn get_users() -> Result<Vec<db::User>, String> {
 }
 
 #[tauri::command]
+fn upsert_user(user: db::User) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.upsert_user(&user).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn register(org_name: String, email: String, password: String) -> Result<(db::User, db::Organization), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.register(&org_name, &email, &password).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn login(email: String, _password: String) -> Result<Option<(db::User, db::Organization)>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.login(&email).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn export_backup(store_id: String) -> Result<String, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.export_backup(&store_id).map_err(|e| e.to_string())
@@ -1613,6 +1631,9 @@ fn main() {
             verify_pin,
             change_pin,
             get_users,
+            upsert_user,
+            register,
+            login,
             export_backup,
             import_backup,
             add_activity_log,

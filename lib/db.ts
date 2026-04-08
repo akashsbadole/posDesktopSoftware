@@ -5,6 +5,7 @@
 import { invoke } from "@tauri-apps/api/tauri";
 import pako from "pako";
 import { neon } from "@neondatabase/serverless";
+import { dbLogger } from "@/lib/logger";
 
 const IS_TAURI = typeof window !== "undefined" && "__TAURI__" in window;
 
@@ -703,9 +704,9 @@ async function sql<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
         }
       }
 
-      console.log(`[Neon] Scaffolding for ${cmd}`, enhancedArgs);
+      dbLogger.debug(`Scaffolding for ${cmd}`, enhancedArgs);
     } catch (e) {
-      console.error("Neon execution failed", e);
+      dbLogger.error("Neon execution failed", e);
     }
   }
 
@@ -1551,7 +1552,7 @@ export async function syncToNeon(
     return await retryWithBackoff(() => sql("sync_to_neon", { storeId }));
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("Neon sync failed after retries:", errorMsg);
+    dbLogger.error("Neon sync failed after retries", errorMsg);
     return {
       synced: 0,
       error: `Sync failed: ${errorMsg}. Please check your connection and try again.`,
@@ -1566,7 +1567,7 @@ export async function syncFromNeon(
     return await retryWithBackoff(() => sql("sync_from_neon", { storeId }));
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("Neon import failed after retries:", errorMsg);
+    dbLogger.error("Neon import failed after retries", errorMsg);
     return {
       synced: 0,
       error: `Import failed: ${errorMsg}. Please check your connection and try again.`,
@@ -2329,7 +2330,7 @@ async function browserFallback<T>(
       const users = lsGet<User[]>("pos_users") || [];
       const user = users.find((u) => u.email === email);
       if (user) {
-        console.log(`[SIMULATION] Recovery code '123456' sent to ${email}`);
+        dbLogger.info(`Recovery code sent to ${email}`, { simulation: true });
         return true as T;
       }
       return false as T;
@@ -2351,7 +2352,7 @@ async function browserFallback<T>(
       const users = lsGet<User[]>("pos_users") || [];
       const user = users.find((u) => u.email === email);
       if (user) {
-        console.log(`[SIMULATION] Username info sent to ${email}. Your name is: ${user.name}`);
+        dbLogger.info(`Username info sent to ${email}`, { name: user.name, simulation: true });
         return true as T;
       }
       return false as T;
@@ -3613,8 +3614,9 @@ async function browserFallback<T>(
       return undefined as T;
     }
     default:
-      console.warn(
+      dbLogger.warn(
         `Browser fallback: Command ${cmd} not fully implemented for store ${storeId}`,
+        { cmd, storeId }
       );
       return null as any as T;
   }

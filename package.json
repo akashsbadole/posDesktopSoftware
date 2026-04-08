@@ -15,7 +15,13 @@
     "tauri:build:linux64": "tauri build --target x86_64-unknown-linux-gnu",
     "tauri:build:all": "npm run tauri:build:win64 && npm run tauri:build:win32",
     "tauri:build:free": "cross-env NEXT_PUBLIC_ENABLE_PREMIUM=false ENABLE_PREMIUM_FEATURES=false tauri build",
-    "tauri:build:paid": "cross-env NEXT_PUBLIC_ENABLE_PREMIUM=true ENABLE_PREMIUM_FEATURES=true tauri build"
+    "tauri:build:paid": "cross-env NEXT_PUBLIC_ENABLE_PREMIUM=true ENABLE_PREMIUM_FEATURES=true tauri build",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:auth": "playwright test verification/auth_flow.spec.ts",
+    "test:auth:runner": "node run-auth-tests.js",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.9.3",
@@ -27,6 +33,7 @@
     "react": "^18",
     "react-dom": "^18",
     "uuid": "^9.0.1",
+    "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

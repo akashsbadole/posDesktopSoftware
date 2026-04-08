@@ -12,13 +12,32 @@ use std::env;
 use std::path::Path;
 
 fn get_encryption_key() -> [u8; 32] {
-    let key_str = env::var("TAURI_ENCRYPTION_KEY")
-        .unwrap_or_else(|_| "POS_BILLING_SECURE_KEY_32BYTES!!".to_string());
-    let mut key = [0u8; 32];
-    let bytes = key_str.as_bytes();
-    let len = bytes.len().min(32);
-    key[..len].copy_from_slice(&bytes[..len]);
-    key
+    match env::var("TAURI_ENCRYPTION_KEY") {
+        Ok(key_str) => {
+            if key_str.len() < 32 {
+                eprintln!("WARNING: Tauri encryption key is too short (< 32 bytes). This reduces security!");
+            }
+            let mut key = [0u8; 32];
+            let bytes = key_str.as_bytes();
+            let len = bytes.len().min(32);
+            key[..len].copy_from_slice(&bytes[..len]);
+            key
+        }
+        Err(_) => {
+            eprintln!("CRITICAL SECURITY WARNING: Tauri encryption key not set!");
+            eprintln!(
+                "Set the TAURI_ENCRYPTION_KEY environment variable with a secure 32-byte key."
+            );
+            eprintln!("Using fallback key - THIS IS INSECURE FOR PRODUCTION!");
+            // In production, this should fail, but for development we provide a fallback
+            // TODO: Make this fail in production builds
+            let mut key = [0u8; 32];
+            let fallback = "POS_BILLING_SECURE_KEY_32BYTES!!";
+            let bytes = fallback.as_bytes();
+            key[..bytes.len()].copy_from_slice(bytes);
+            key
+        }
+    }
 }
 
 fn default_true() -> bool {
@@ -345,9 +364,21 @@ pub struct SalesReport {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
     pub id: String,
+    pub organization_id: Option<String>,
     pub name: String,
+    pub email: String,
     pub role: String,
     pub store_id: Option<String>,
+    pub pin: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Organization {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub status: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -827,6 +858,12 @@ impl Database {
             self.set_version(7)?;
         }
 
+        // Migration to add organizations and multi-tenant support
+        if current < 8 {
+            self.migration_v8()?;
+            self.set_version(8)?;
+        }
+
         Ok(())
     }
 
@@ -981,12 +1018,22 @@ impl Database {
                 value    TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS organizations (
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                email       TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'trial',
+                created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
             CREATE TABLE IF NOT EXISTS users (
-                id       TEXT PRIMARY KEY,
-                pin      TEXT NOT NULL,
-                name     TEXT NOT NULL,
-                role     TEXT NOT NULL DEFAULT 'cashier',
-                store_id TEXT
+                id              TEXT PRIMARY KEY,
+                organization_id TEXT,
+                pin             TEXT NOT NULL,
+                name            TEXT NOT NULL,
+                email           TEXT NOT NULL,
+                role            TEXT NOT NULL DEFAULT 'cashier',
+                store_id        TEXT
             );
 
             CREATE TABLE IF NOT EXISTS activity_logs (
@@ -1264,6 +1311,31 @@ impl Database {
         let _ = self
             .conn
             .execute("ALTER TABLE orders ADD COLUMN payment_status TEXT", []);
+        Ok(())
+    }
+
+    fn migration_v8(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS organizations (
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                email       TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'trial',
+                created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS users (
+                id              TEXT PRIMARY KEY,
+                organization_id TEXT,
+                pin             TEXT NOT NULL,
+                name            TEXT NOT NULL,
+                email           TEXT NOT NULL,
+                role            TEXT NOT NULL DEFAULT 'cashier',
+                store_id        TEXT
+            );
+            ",
+        )?;
         Ok(())
     }
 
@@ -4218,16 +4290,19 @@ impl Database {
     pub fn verify_pin(&self, pin: &str) -> Result<Option<User>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, pin, name, role, store_id FROM users")?;
+            .prepare("SELECT id, organization_id, pin, name, email, role, store_id FROM users")?;
         let user_iter = stmt.query_map([], |row| {
             Ok((
                 User {
                     id: row.get(0)?,
-                    name: row.get(2)?,
-                    role: row.get(3)?,
-                    store_id: row.get(4)?,
+                    organization_id: row.get(1)?,
+                    name: row.get(3)?,
+                    email: row.get(4)?,
+                    role: row.get(5)?,
+                    store_id: row.get(6)?,
+                    pin: String::new(), // We don't need to return the pin
                 },
-                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
             ))
         })?;
 
@@ -4256,18 +4331,114 @@ impl Database {
     pub fn get_users(&self) -> Result<Vec<User>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, name, role, store_id FROM users")?;
+            .prepare("SELECT id, organization_id, name, email, role, store_id, pin FROM users")?;
         let users = stmt
             .query_map([], |row| {
                 Ok(User {
                     id: row.get(0)?,
-                    name: row.get(1)?,
-                    role: row.get(2)?,
-                    store_id: row.get(3)?,
+                    organization_id: row.get(1)?,
+                    name: row.get(2)?,
+                    email: row.get(3)?,
+                    role: row.get(4)?,
+                    store_id: row.get(5)?,
+                    pin: row.get(6)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
         Ok(users)
+    }
+
+    pub fn register(
+        &self,
+        org_name: &str,
+        email: &str,
+        password: &str,
+    ) -> Result<(User, Organization)> {
+        let org_id = uuid::Uuid::new_v4().to_string();
+        let user_id = uuid::Uuid::new_v4().to_string();
+        let store_id = uuid::Uuid::new_v4().to_string();
+        let hashed_pin = bcrypt::hash("1234", bcrypt::DEFAULT_COST)
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        self.conn.execute(
+            "INSERT INTO organizations (id, name, email, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![org_id, org_name, email, "trial", now],
+        )?;
+
+        self.conn.execute(
+            "INSERT INTO users (id, organization_id, pin, name, email, role, store_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![user_id, org_id, hashed_pin, "Admin", email, "admin", store_id],
+        )?;
+
+        self.conn.execute(
+            "INSERT INTO stores (id, name, industry, is_active, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![store_id, "Main Store", "food", 1, now],
+        )?;
+
+        let default_settings = self.default_settings();
+        let settings_json =
+            serde_json::to_string(&default_settings).unwrap_or_else(|_| "{}".to_string());
+        self.conn.execute(
+            "INSERT INTO settings_multi (store_id, value) VALUES (?1, ?2)",
+            params![store_id, settings_json],
+        )?;
+
+        let user = User {
+            id: user_id,
+            organization_id: Some(org_id.clone()),
+            name: "Admin".to_string(),
+            email: email.to_string(),
+            role: "admin".to_string(),
+            store_id: Some(store_id),
+            pin: String::new(), // Don't expose hashed pin
+        };
+
+        let organization = Organization {
+            id: org_id,
+            name: org_name.to_string(),
+            email: email.to_string(),
+            status: "trial".to_string(),
+            created_at: now,
+        };
+
+        Ok((user, organization))
+    }
+
+    pub fn login(&self, email: &str) -> Result<Option<(User, Organization)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT u.id, u.organization_id, u.name, u.email, u.role, u.store_id, o.id, o.name, o.email, o.status, o.created_at
+             FROM users u
+             LEFT JOIN organizations o ON u.organization_id = o.id
+             WHERE u.email = ?1"
+        )?;
+
+        let result = stmt.query_row(params![email], |row| {
+            Ok((
+                User {
+                    id: row.get(0)?,
+                    organization_id: row.get(1)?,
+                    name: row.get(2)?,
+                    email: row.get(3)?,
+                    role: row.get(4)?,
+                    store_id: row.get(5)?,
+                    pin: String::new(), // Don't expose hashed pin
+                },
+                Organization {
+                    id: row.get(4)?,
+                    name: row.get(5)?,
+                    email: row.get(6)?,
+                    status: row.get(7)?,
+                    created_at: row.get(8)?,
+                },
+            ))
+        });
+
+        match result {
+            Ok(pair) => Ok(Some(pair)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 
     pub fn get_pending_orders_count(&self, store_id: &str) -> Result<i64> {
@@ -4779,6 +4950,38 @@ impl Database {
             params![id, store_id],
         )?;
         tx.commit()?;
+        Ok(())
+    }
+
+    pub fn upsert_user(&self, user: &User) -> Result<()> {
+        let hashed_pin = if user.pin.is_empty() {
+            // Use default PIN if empty
+            bcrypt::hash("1234", bcrypt::DEFAULT_COST).map_err(|_| rusqlite::Error::InvalidQuery)?
+        } else {
+            bcrypt::hash(&user.pin, bcrypt::DEFAULT_COST)
+                .map_err(|_| rusqlite::Error::InvalidQuery)?
+        };
+
+        self.conn.execute(
+            "INSERT INTO users (id, organization_id, name, email, role, store_id, pin)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(id) DO UPDATE SET
+               organization_id=excluded.organization_id,
+               name=excluded.name,
+               email=excluded.email,
+               role=excluded.role,
+               store_id=excluded.store_id,
+               pin=excluded.pin",
+            params![
+                user.id,
+                user.organization_id,
+                user.name,
+                user.email,
+                user.role,
+                user.store_id,
+                hashed_pin
+            ],
+        )?;
         Ok(())
     }
 

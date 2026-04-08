@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 import {
   getUsers,
   dbClockIn,
@@ -8,13 +8,15 @@ import {
   dbUpsertUser,
   dbDeleteUser,
   dbGetSalaries,
-  dbSaveSalary,
-  dbGetAttendanceByRange,
   User,
   StaffAttendance,
-  StaffSalary
-} from '@/lib/db';
-import { useSettingsStore } from './settingsStore';
+  StaffSalary,
+  dbSaveSalary,
+  dbGetAttendanceByRange,
+} from "@/lib/db";
+import { uiLogger } from "@/lib/logger";
+
+import { useSettingsStore } from "./settingsStore";
 
 interface StaffState {
   users: User[];
@@ -34,7 +36,10 @@ interface StaffState {
   deleteUser: (id: string) => Promise<void>;
   fetchSalaries: () => Promise<void>;
   saveSalary: (salary: StaffSalary) => Promise<void>;
-  getAttendanceByRange: (startDate: string, endDate: string) => Promise<StaffAttendance[]>;
+  getAttendanceByRange: (
+    startDate: string,
+    endDate: string,
+  ) => Promise<StaffAttendance[]>;
 }
 
 export const useStaffStore = create<StaffState>((set, get) => ({
@@ -61,7 +66,7 @@ export const useStaffStore = create<StaffState>((set, get) => ({
       const todayAttendance = await dbGetTodayAttendance(storeId);
       set({ todayAttendance });
     } catch (err) {
-      console.error('Failed to fetch attendance:', err);
+      uiLogger.error("Failed to fetch attendance", err);
     }
   },
 
@@ -105,7 +110,7 @@ export const useStaffStore = create<StaffState>((set, get) => ({
       const salaries = await dbGetSalaries(storeId);
       set({ salaries });
     } catch (err) {
-      console.error('Failed to fetch salaries:', err);
+      uiLogger.error("Failed to fetch salaries", err);
     }
   },
 

@@ -12,6 +12,9 @@ import {
   dbForgotUser,
   setOrganizationId,
 } from "@/lib/db";
+import { authRateLimiter } from "@/lib/rateLimiter";
+import { authLogger } from "@/lib/logger";
+import { useSettingsStore } from "./settingsStore";
 
 interface AuthState {
   user: User | null;
@@ -36,22 +39,62 @@ export const useAuthStore = create<AuthState>()(
       sessionStart: null,
       login: async (pin: string) => {
         const orgId = get().organization?.id;
-        if (!orgId) return false;
-        const user = await verifyPin(pin, orgId);
-        if (user) {
-          set({
-            user,
-            isAuthenticated: true,
-            sessionStart: new Date().toISOString(),
-          });
-          return true;
+        if (!orgId) {
+          authLogger.warn("Login attempted without organization context");
+          return false;
         }
-        return false;
+
+        // Check rate limiting
+        const rateLimitKey = `pin_${orgId}`;
+        const rateLimitResult = authRateLimiter.recordAttempt(rateLimitKey, false);
+
+        if (!rateLimitResult.allowed) {
+          authLogger.warn("PIN login blocked due to rate limiting", {
+            orgId,
+            blockedUntil: rateLimitResult.blockedUntil,
+            remainingTime: authRateLimiter.getRemainingTime(rateLimitKey)
+          });
+          return false;
+        }
+
+        try {
+          const user = await verifyPin(pin, orgId);
+          if (user) {
+            // Successful login - reset rate limiter
+            authRateLimiter.recordAttempt(rateLimitKey, true);
+
+            set({
+              user,
+              isAuthenticated: true,
+              sessionStart: new Date().toISOString(),
+            });
+
+            authLogger.info("User logged in successfully", {
+              userId: user.id,
+              role: user.role,
+              orgId
+            });
+
+            return true;
+          } else {
+            authLogger.warn("Invalid PIN attempt", {
+              orgId,
+              remainingAttempts: rateLimitResult.remainingAttempts
+            });
+            return false;
+          }
+        } catch (error) {
+          authLogger.error("PIN verification failed", error);
+          return false;
+        }
       },
       loginWithCredentials: async (email: string, pass: string) => {
         const res = await dbLogin(email, pass);
         if (res) {
           setOrganizationId(res.organization.id);
+          if (res.user.store_id) {
+            useSettingsStore.getState().setActiveStore(res.user.store_id);
+          }
           set({
             user: res.user,
             organization: res.organization,
@@ -65,6 +108,9 @@ export const useAuthStore = create<AuthState>()(
         const res = await dbRegister(orgName, email, pass);
         if (res) {
           setOrganizationId(res.organization.id);
+          if (res.user.store_id) {
+            useSettingsStore.getState().setActiveStore(res.user.store_id);
+          }
           set({
             user: res.user,
             organization: res.organization,
