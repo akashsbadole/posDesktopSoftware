@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { X, ShieldCheck, RefreshCw } from "lucide-react";
 import { verifyPin } from "@/lib/db";
+import { useAuthStore } from "@/lib/stores";
 
 interface PinModalProps {
   title: string;
@@ -44,10 +45,16 @@ export default function PinModal({ title, description, onSuccess, onCancel, requ
     e?.preventDefault();
     if (pin.length < 4) return;
 
+    const orgId = useAuthStore.getState().organization?.id;
+    if (!orgId) {
+      setError("No organization selected");
+      return;
+    }
+
     setLoading(true);
     setError("");
     try {
-      const user = await verifyPin(pin);
+      const user = await verifyPin(pin, orgId);
       if (user && (requiredRole === "cashier" || user.role === requiredRole)) {
         onSuccess();
       } else {
