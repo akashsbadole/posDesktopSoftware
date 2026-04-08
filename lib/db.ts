@@ -203,10 +203,11 @@ export interface Order {
   tax_amount: number;
   discount_amount: number;
   total: number;
-  payment_method: "cash" | "card" | "upi" | "wallet";
+  payment_method: "cash" | "card" | "upi" | "wallet" | "store_credit";
   amount_paid: number;
   change_amount: number;
   customer_name: string;
+  payment_status?: "paid" | "unpaid" | "partial";
   status:
     | "completed"
     | "refunded"
@@ -401,6 +402,8 @@ export interface Settings {
   merchant_id: string;
   show_tax_breakdown: boolean;
   enable_round_off: boolean;
+  auto_reminders_enabled: boolean;
+  auto_reminder_days: number;
   license_agreed: boolean;
   onboarding_completed: boolean;
   license_key: string;
@@ -1297,6 +1300,27 @@ export async function dbGetCustomerOrders(
   return sql<Order[]>("get_customer_orders", { phone, storeId });
 }
 
+export async function dbGetCustomerUnpaidOrders(
+  customerId: string,
+  storeId: string,
+): Promise<Order[]> {
+  return sql<Order[]>("get_customer_unpaid_orders", { customerId, storeId });
+}
+
+export async function dbSettleOrderPayment(
+  orderId: string,
+  amount: number,
+  paymentMethod: string,
+  storeId: string,
+): Promise<void> {
+  return sql("settle_order_payment", {
+    orderId,
+    amount,
+    paymentMethod,
+    storeId,
+  });
+}
+
 // ─── Order Notes ────────────────────────────────────────────────────────────
 export async function dbAddOrderNote(
   orderId: string,
@@ -1915,6 +1939,8 @@ function defaultSettings(): Settings {
     whatsapp_enabled: false,
     whatsapp_api_url: process.env.NEXT_PUBLIC_WHATSAPP_API || "",
     offline_mode: false,
+    auto_reminders_enabled: false,
+    auto_reminder_days: 30,
     logo_url: "",
     primary_color: "#F5C842",
     secondary_color: "#1E1E26",
@@ -2367,15 +2393,76 @@ async function browserFallback<T>(
     }
     case "get_customer_wallet": {
       const customerId = (args as any).customerId;
-      // Mock wallet from customer lifetime spend
-      const customers = lsGet<Customer[]>("pos_customers") || [];
-      const c = customers.find((x) => x.id === customerId);
-      return {
-        customerId: customerId,
-        balance: (c?.total_spent || 0) * 0.05,
-        total_loaded: 0,
-        total_spent: 0,
-      } as T;
+      const wallets = lsGet<CustomerWallet[]>("pos_wallets") || [];
+      let w = wallets.find((x) => x.customer_id === customerId);
+      if (!w) {
+        w = {
+          customer_id: customerId,
+          balance: 0,
+          total_loaded: 0,
+          total_spent: 0,
+        };
+      }
+      return w as T;
+    }
+    case "add_wallet_balance": {
+      const { customerId, amount, notes } = args as any;
+      const wallets = lsGet<CustomerWallet[]>("pos_wallets") || [];
+      let idx = wallets.findIndex((x) => x.customer_id === customerId);
+      if (idx >= 0) {
+        wallets[idx].balance += amount;
+        wallets[idx].total_loaded += amount > 0 ? amount : 0;
+      } else {
+        wallets.push({
+          customer_id: customerId,
+          balance: amount,
+          total_loaded: amount > 0 ? amount : 0,
+          total_spent: 0,
+        });
+      }
+      lsSet("pos_wallets", wallets);
+
+      const txs = lsGet<WalletTransaction[]>("pos_wallet_transactions") || [];
+      txs.push({
+        id: Math.random().toString(36).substr(2, 9),
+        customer_id: customerId,
+        amount,
+        transaction_type: amount > 0 ? "credit" : "debit",
+        notes,
+        created_at: new Date().toISOString(),
+      });
+      lsSet("pos_wallet_transactions", txs);
+      return undefined as T;
+    }
+    case "deduct_wallet_balance": {
+      const { customerId, amount, orderId } = args as any;
+      const wallets = lsGet<CustomerWallet[]>("pos_wallets") || [];
+      let idx = wallets.findIndex((x) => x.customer_id === customerId);
+      if (idx >= 0) {
+        wallets[idx].balance -= amount;
+        wallets[idx].total_spent += amount;
+      } else {
+        wallets.push({
+          customer_id: customerId,
+          balance: -amount,
+          total_loaded: 0,
+          total_spent: amount,
+        });
+      }
+      lsSet("pos_wallets", wallets);
+
+      const txs = lsGet<WalletTransaction[]>("pos_wallet_transactions") || [];
+      txs.push({
+        id: Math.random().toString(36).substr(2, 9),
+        customer_id: customerId,
+        amount: -amount,
+        transaction_type: "debit",
+        order_id: orderId,
+        notes: `Order ${orderId}`,
+        created_at: new Date().toISOString(),
+      });
+      lsSet("pos_wallet_transactions", txs);
+      return undefined as T;
     }
     case "get_customers": {
       const c = lsGet<Customer[]>("pos_customers") || [];
@@ -2655,6 +2742,48 @@ async function browserFallback<T>(
         (x) => x.phone === phone && x.store_id === storeId,
       );
       return (c || null) as T;
+    }
+    case "get_customer_orders": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const { phone } = args as any;
+      return orders.filter(
+        (o) =>
+          (o.delivery_phone === phone || o.customer_name === phone) &&
+          o.store_id === storeId,
+      ) as T;
+    }
+    case "get_customer_unpaid_orders": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const { customerId } = args as any;
+      const customers = lsGet<Customer[]>("pos_customers") || [];
+      const customer = customers.find((c) => c.id === customerId);
+      if (!customer) return [] as T;
+
+      return orders.filter(
+        (o) =>
+          o.store_id === storeId &&
+          (o.customer_name === customer.name ||
+            o.delivery_phone === customer.phone) &&
+          o.payment_status === "unpaid" &&
+          o.status !== "cancelled",
+      ) as T;
+    }
+    case "settle_order_payment": {
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const { orderId, amount, paymentMethod } = args as any;
+      const idx = orders.findIndex(
+        (o) => o.id === orderId && o.store_id === storeId,
+      );
+      if (idx >= 0) {
+        orders[idx].amount_paid += amount;
+        if (orders[idx].amount_paid >= orders[idx].total) {
+          orders[idx].payment_status = "paid";
+        } else {
+          orders[idx].payment_status = "partial";
+        }
+        lsSet(LS.orders, orders);
+      }
+      return undefined as T;
     }
     case "get_ingredients": {
       const items = lsGet<Ingredient[]>("pos_ingredients") || [];

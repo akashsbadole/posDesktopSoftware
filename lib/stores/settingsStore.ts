@@ -59,6 +59,8 @@ const defaultSettings: Settings = {
   merchant_id: '',
   show_tax_breakdown: true,
   enable_round_off: true,
+  auto_reminders_enabled: false,
+  auto_reminder_days: 30,
   license_agreed: false,
   onboarding_completed: false,
   license_key: '',

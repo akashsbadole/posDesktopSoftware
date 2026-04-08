@@ -694,6 +694,18 @@ fn get_customer_orders(phone: String, store_id: String) -> Result<Vec<db::Order>
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_customer_unpaid_orders(customer_id: String, store_id: String) -> Result<Vec<db::Order>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_customer_unpaid_orders(&customer_id, &store_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn settle_order_payment(order_id: String, amount: f64, payment_method: String, store_id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.settle_order_payment(&order_id, amount, &payment_method, &store_id).map_err(|e| e.to_string())
+}
+
 // ─── Order Notes Commands ─────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1618,6 +1630,8 @@ fn main() {
             get_customer_by_phone,
             add_loyalty_points,
             get_customer_orders,
+            get_customer_unpaid_orders,
+            settle_order_payment,
             add_order_note,
             get_order_notes,
             get_inventory_alerts,

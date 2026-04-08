@@ -171,6 +171,8 @@ export default function SettingsScreen() {
       tax_inclusive: false,
       tax_breakdown: "[]",
       auto_print_kot: false,
+      auto_reminders_enabled: false,
+      auto_reminder_days: 30,
     },
   );
 
@@ -1324,6 +1326,77 @@ export default function SettingsScreen() {
               {seedMsg.text}
             </div>
           )}
+        </div>
+
+        {/* Khata / Ledger Reminders */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <AlertCircle size={16} style={{ color: "#F5C842" }} />
+            <h2 className="font-semibold">Udhar / Khata Reminders</h2>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium text-sm">Automated Reminders</div>
+                <div className="text-xs" style={{ color: "#4A4A5A" }}>
+                  Visually flag overdue bills in Digital Ledger
+                </div>
+              </div>
+              <button
+                onClick={() =>
+                  updateLocal(
+                    "auto_reminders_enabled",
+                    !localSettings.auto_reminders_enabled,
+                  )
+                }
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  background: localSettings.auto_reminders_enabled
+                    ? "#2ECC71"
+                    : "#1E1E26",
+                  border: "none",
+                  position: "relative",
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    background: "#fff",
+                    position: "absolute",
+                    top: 2,
+                    left: localSettings.auto_reminders_enabled ? 22 : 2,
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+            </div>
+            {localSettings.auto_reminders_enabled && (
+              <div>
+                <label
+                  className="text-xs mb-1 block"
+                  style={{ color: "#4A4A5A" }}
+                >
+                  Mark as Overdue after (Days)
+                </label>
+                <input
+                  type="number"
+                  value={localSettings.auto_reminder_days}
+                  onChange={(e) =>
+                    updateLocal(
+                      "auto_reminder_days",
+                      parseInt(e.target.value) || 0,
+                    )
+                  }
+                  min={1}
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* SMS & WhatsApp */}
