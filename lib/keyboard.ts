@@ -31,6 +31,11 @@ export const POS_SHORTCUTS: KeyboardShortcut[] = [
   { key: "1", description: "Dine In order type", category: "pos" },
   { key: "2", description: "Takeaway order type", category: "pos" },
   { key: "3", description: "Delivery order type", category: "pos" },
+  { key: "Alt+1-5", description: "Switch Payment Method", category: "pos" },
+  { key: "Alt+Q", description: "Toggle Price Tier", category: "pos" },
+  { key: "F9", description: "Print KOT", category: "pos" },
+  { key: "F10", description: "Hold Order", category: "pos" },
+  { key: "F12", description: "Process Charge / Checkout", category: "pos" },
   { key: "Tab", description: "Switch between search and categories", category: "pos" },
 ];
 
