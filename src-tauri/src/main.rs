@@ -43,6 +43,17 @@ fn seed_database() -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn get_all_inventory_transactions(
+    store_id: String,
+    db: State<'_, Arc<Mutex<Database>>>,
+) -> Result<Vec<InventoryTransaction>, String> {
+    db.lock()
+        .map_err(|e| e.to_string())?
+        .get_all_inventory_transactions(&store_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn reset_database() -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.reset_all().map_err(|e| e.to_string())
@@ -1643,6 +1654,7 @@ fn main() {
             get_serial_numbers,
             save_serial_number,
             get_inventory_transactions,
+            get_all_inventory_transactions,
             calculate_inventory_valuation,
             get_stock_counts,
             save_stock_count,

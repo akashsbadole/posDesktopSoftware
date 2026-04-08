@@ -30,7 +30,7 @@ import {
 import { useSettingsStore, useProductsStore, useAuthStore, useStoresStore } from "@/lib/stores";
 import {
   dbGetProducts, Product, dbUpdateStock, dbTransferStock,
-  dbGetInventoryTransactions, InventoryTransaction,
+  dbGetInventoryTransactions, dbGetAllInventoryTransactions, InventoryTransaction,
   dbCalculateValuation, dbGetStockCounts, StockCount, dbSaveStockCount,
   Batch, dbGetBatches, dbSaveBatch,
   SerialNumber, dbGetSerialNumbers, dbSaveSerialNumber
@@ -81,13 +81,8 @@ export default function InventoryManagementScreen() {
         ]);
         setValuation({ AVG: avg, FIFO: fifo, LIFO: lifo });
       } else if (activeTab === 'audit') {
-        // Correct logic: Get all products and fetch their transactions
-        const productIds = products.map(p => p.id);
-        const txPromises = productIds.map(id => dbGetInventoryTransactions(id, activeStoreId));
-        const txResults = await Promise.all(txPromises);
-        const allTxs = txResults.flat();
-
-        setTransactions(allTxs.sort((a, b) => b.created_at.localeCompare(a.created_at)));
+        const allTxs = await dbGetAllInventoryTransactions(activeStoreId);
+        setTransactions(allTxs);
       } else if (activeTab === 'counts') {
         const counts = await dbGetStockCounts(activeStoreId);
         setStockCounts(counts);

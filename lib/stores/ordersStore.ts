@@ -54,7 +54,10 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
   topProducts: [],
   lowStock: [],
 
-  fetchOrders: async () => {
+  fetchOrders: async (force = false) => {
+    const { orders, isLoading } = get();
+    if (!force && orders.length > 0 && !isLoading) return;
+
     const storeId = useSettingsStore.getState().activeStoreId;
     set({ isLoading: true, error: null });
     try {
@@ -115,17 +118,27 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
     }
   },
 
-  fetchDashboardData: async () => {
+  fetchDashboardData: async (force = false) => {
+    const { dashboardData, isLoading } = get();
+    if (!force && dashboardData.revenue > 0 && !isLoading) return;
+
     const storeId = useSettingsStore.getState().activeStoreId;
     set({ isLoading: true, error: null });
     try {
-      const [dashboardData, weeklyRevenue, topProducts, lowStock] = await Promise.all([
-        dbGetDailySummary(storeId),
-        dbGetWeeklyRevenue(storeId),
-        dbGetTopProducts(storeId),
-        dbGetLowStock(storeId)
-      ]);
-      set({ dashboardData, weeklyRevenue, topProducts, lowStock, isLoading: false });
+      const [dashboardData, weeklyRevenue, topProducts, lowStock] =
+        await Promise.all([
+          dbGetDailySummary(storeId),
+          dbGetWeeklyRevenue(storeId),
+          dbGetTopProducts(storeId),
+          dbGetLowStock(storeId),
+        ]);
+      set({
+        dashboardData,
+        weeklyRevenue,
+        topProducts,
+        lowStock,
+        isLoading: false,
+      });
     } catch (err) {
       console.error("Dashboard fetch error:", err);
       set({ error: (err as Error).message, isLoading: false });
