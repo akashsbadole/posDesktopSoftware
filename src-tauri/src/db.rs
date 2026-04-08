@@ -4902,6 +4902,7 @@ impl Database {
                                 amount_paid: row.get(7)?,
                                 change_amount: row.get(8)?,
                                 customer_name: row.get(9)?,
+                                payment_status: None,
                                 status: row.get(10)?,
                                 order_type: row.get(11)?,
                                 delivery_status: row.get(12)?,
@@ -4941,6 +4942,7 @@ impl Database {
                             amount_paid: row.get(7)?,
                             change_amount: row.get(8)?,
                             customer_name: row.get(9)?,
+                            payment_status: None,
                             status: row.get(10)?,
                             order_type: row.get(11)?,
                             delivery_status: row.get(12)?,
@@ -6092,7 +6094,11 @@ impl Database {
         )
     }
 
-    pub fn get_customer_unpaid_orders(&self, customer_id: &str, store_id: &str) -> Result<Vec<Order>> {
+    pub fn get_customer_unpaid_orders(
+        &self,
+        customer_id: &str,
+        store_id: &str,
+    ) -> Result<Vec<Order>> {
         let customer: Customer = self.conn.query_row(
             "SELECT id, name, phone FROM customers WHERE id = ?1 AND store_id = ?2",
             params![customer_id, store_id],
@@ -6116,14 +6122,16 @@ impl Database {
                     tax_id: None,
                     created_at: "".to_string(),
                 })
-            }
+            },
         )?;
 
         let mut stmt = self.conn.prepare(
             "SELECT id FROM orders WHERE store_id = ?1 AND (customer_name = ?2 OR delivery_phone = ?3) AND payment_status = 'unpaid' AND status != 'cancelled' ORDER BY created_at ASC"
         )?;
         let ids: Vec<String> = stmt
-            .query_map(params![store_id, customer.name, customer.phone], |r| r.get(0))?
+            .query_map(params![store_id, customer.name, customer.phone], |r| {
+                r.get(0)
+            })?
             .collect::<Result<Vec<_>>>()?;
 
         let mut res = Vec::new();
@@ -6135,7 +6143,13 @@ impl Database {
         Ok(res)
     }
 
-    pub fn settle_order_payment(&self, order_id: &str, amount: f64, _payment_method: &str, store_id: &str) -> Result<()> {
+    pub fn settle_order_payment(
+        &self,
+        order_id: &str,
+        amount: f64,
+        _payment_method: &str,
+        store_id: &str,
+    ) -> Result<()> {
         let mut order = self.get_order_by_id(order_id, store_id)?;
         order.amount_paid += amount;
         if order.amount_paid >= order.total {
@@ -7400,7 +7414,10 @@ impl Database {
         Ok(txs)
     }
 
-    pub fn get_all_inventory_transactions(&self, store_id: &str) -> Result<Vec<InventoryTransaction>> {
+    pub fn get_all_inventory_transactions(
+        &self,
+        store_id: &str,
+    ) -> Result<Vec<InventoryTransaction>> {
         let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, transaction_type, qty_delta, batch_id, serial_number_id, reference_type, reference_id, user_id, created_at FROM inventory_transactions WHERE store_id=?1 ORDER BY created_at DESC LIMIT 1000")?;
         let txs = stmt
             .query_map(params![store_id], |row| {

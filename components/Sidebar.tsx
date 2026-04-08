@@ -312,7 +312,14 @@ export default function Sidebar({
         role="menu"
         aria-label="Navigation menu"
       >
-        {nav.map(({ id, label, icon: Icon, premium }) => {
+        {nav
+          .filter(item => {
+            if (item.id === "stores") {
+              return stores.length > 1;
+            }
+            return true;
+          })
+          .map(({ id, label, icon: Icon, premium }) => {
           const active = activeScreen === id;
           const isLocked = premium && !premiumEnabled;
 

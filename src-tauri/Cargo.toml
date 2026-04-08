@@ -7,10 +7,10 @@ edition = "2021"
 rust-version = "1.65"
 
 [build-dependencies]
-tauri-build = { version = "1.5", features = [] }
+tauri-build = { version = "1.5.1", features = [] }
 
 [dependencies]
-tauri = { version = "1.6", features = [ "protocol-asset", "http-all",
+tauri = { version = "1.7.1", features = [ "protocol-asset", "http-all",
   "shell-open",
   "dialog-all",
   "fs-all",

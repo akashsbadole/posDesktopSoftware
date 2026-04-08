@@ -5,12 +5,13 @@ mod db;
 mod lan_sync;
 mod neon;
 
-use db::Database;
+use db::{Database, InventoryTransaction};
 use once_cell::sync::Lazy;
 use rusqlite::Error;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::sync::Mutex;
-use tauri::Manager;
+use std::sync::{Arc, Mutex};
+use tauri::{Manager, State};
 
 static DB: Lazy<Mutex<Database>> = Lazy::new(|| {
     let db_path = std::env::var("DATABASE_PATH")
@@ -48,9 +49,9 @@ async fn get_all_inventory_transactions(
     db: State<'_, Arc<Mutex<Database>>>,
 ) -> Result<Vec<InventoryTransaction>, String> {
     db.lock()
-        .map_err(|e| e.to_string())?
+        .map_err(|e: std::sync::PoisonError<std::sync::MutexGuard<'_, Database>>| e.to_string())?
         .get_all_inventory_transactions(&store_id)
-        .map_err(|e| e.to_string())
+        .map_err(|e: rusqlite::Error| e.to_string())
 }
 
 #[tauri::command]
@@ -172,7 +173,7 @@ fn get_premium_status() -> PremiumStatus {
                 let now = chrono::Utc::now();
                 // 6 months is roughly 183 days
                 let expiry = install_date + chrono::Duration::days(183);
-                let days_left = (expiry - now).num_days();
+                let days_left = (expiry.with_timezone(&chrono::Utc) - now).num_days();
 
                 if days_left > 0 {
                     return PremiumStatus {

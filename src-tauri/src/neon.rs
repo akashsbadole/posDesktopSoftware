@@ -237,6 +237,7 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                         amount_paid,
                         change_amount,
                         customer_name: customer_name.to_string(),
+                        payment_status: None,
                         status: status.to_string(),
                         order_type: order_type.to_string(),
                         delivery_status: delivery_status.to_string(),
