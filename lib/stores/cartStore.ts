@@ -4,7 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { useSettingsStore } from './settingsStore';
 
 export type OrderType = 'dine_in' | 'takeaway' | 'delivery';
-export type PaymentMethod = 'cash' | 'card' | 'upi';
+export type PaymentMethod = 'cash' | 'card' | 'upi' | 'store_credit';
 export type PriceTier = 'retail' | 'wholesale';
 
 export interface CartItem {
@@ -268,6 +268,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     return {
       id: orderId,
       store_id: useSettingsStore.getState().activeStoreId,
+      payment_status: state.paymentMethod === 'store_credit' ? 'unpaid' : 'paid',
       items: state.items.map((i): OrderItem => ({
         product_id: i.product.id,
         product_name: i.product.name,

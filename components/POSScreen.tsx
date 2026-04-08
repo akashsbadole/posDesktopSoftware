@@ -37,6 +37,7 @@ import {
   useCoupon,
   getCustomerWallet,
   deductWalletBalance,
+  dbGetCustomerUnpaidOrders,
   dbGetCustomerByPhone,
   dbGetCustomerAddresses,
   Coupon,
@@ -647,12 +648,23 @@ export default function POSScreen() {
             walletDeduction,
             order.id,
           );
-          // Refresh wallet balance after deduction
-          const updatedWallet = await getCustomerWallet(walletCustomerId);
-          setWalletBalance(updatedWallet.balance);
         } catch (e) {
           console.error("Failed to deduct wallet:", e);
         }
+      }
+
+      if (paymentMethod === "store_credit" && walletCustomerId) {
+        try {
+          // Khata sale is essentially a negative wallet balance entry (Udhar)
+          await deductWalletBalance(walletCustomerId, finalTotal, order.id);
+        } catch (e) {
+          console.error("Failed to record credit sale in wallet:", e);
+        }
+      }
+
+      if (walletCustomerId) {
+        const updatedWallet = await getCustomerWallet(walletCustomerId);
+        setWalletBalance(updatedWallet.balance);
       }
 
       try {
@@ -1844,22 +1856,49 @@ export default function POSScreen() {
               )}
 
               <div
-                className="grid grid-cols-4 gap-1"
+                className="grid grid-cols-5 gap-1"
                 role="group"
                 aria-label="Payment method"
               >
-                {(["cash", "card", "upi", "split"] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => {
-                      setPaymentMethod(m);
-                      if (m === "split") setShowSplitPaymentModal(true);
-                    }}
-                    className={`py-1.5 rounded-sm text-[8px] font-bold uppercase tracking-wider border transition-all ${paymentMethod === m ? "bg-[#F5C842] border-[#F5C842] text-[#0D0D0F]" : "bg-[#141418] border-[#1E1E26] text-[#4A4A5A] hover:border-[#F5C842]/50"}`}
-                  >
-                    {m}
-                  </button>
-                ))}
+                {(["cash", "card", "upi", "store_credit", "split"] as const).map(
+                  (m) => (
+                    <button
+                      key={m}
+                      onClick={() => {
+                        if (
+                          m === "store_credit" &&
+                          (!activeCustomer || !walletCustomerId)
+                        ) {
+                          alert(
+                            "Please select a registered customer for Store Credit / Khata sales.",
+                          );
+                          setIsEditingCustomer(true);
+                          return;
+                        }
+
+                        if (m === "store_credit" && activeCustomer) {
+                          const limit = activeCustomer.credit_limit || 0;
+                          const currentDebt = Math.abs(
+                            Math.min(0, walletBalance),
+                          );
+                          if (limit > 0 && currentDebt + finalTotal > limit) {
+                            alert(
+                              `Credit limit exceeded! Limit: ${curr}${limit}, Current Debt: ${curr}${currentDebt.toFixed(2)}, This Order: ${curr}${finalTotal.toFixed(2)}`,
+                            );
+                            return;
+                          }
+                        }
+
+                        setPaymentMethod(m);
+                        if (m === "split") setShowSplitPaymentModal(true);
+                      }}
+                      className={`py-1.5 rounded-sm text-[8px] font-bold uppercase tracking-wider border transition-all ${paymentMethod === m ? "bg-[#F5C842] border-[#F5C842] text-[#0D0D0F]" : "bg-[#141418] border-[#1E1E26] text-[#4A4A5A] hover:border-[#F5C842]/50"}`}
+                      title={m === "store_credit" ? "Udhar / Khata" : ""}
+                    >
+                      {m === "store_credit" ? "Credit" : m}
+                    </button>
+                  ),
+                )}
               </div>
 
               {paymentMethod === "cash" && (
@@ -1957,6 +1996,7 @@ export default function POSScreen() {
                     (orderType === "dine_in" && !tableId)
                   }
                   className="flex-[3] py-2 text-[11px] font-bold uppercase bg-[#F5C842] text-[#0D0D0F] rounded hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                  data-testid="checkout-button"
                   data-checkout-button
                 >
                   {processing ? (

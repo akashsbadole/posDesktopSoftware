@@ -221,6 +221,7 @@ pub struct Order {
     pub amount_paid: f64,
     pub change_amount: f64,
     pub customer_name: String,
+    pub payment_status: Option<String>,
     pub status: String,
     pub order_type: String,
     pub delivery_status: String,
@@ -282,6 +283,10 @@ pub struct Settings {
     pub show_tax_breakdown: bool,
     #[serde(default = "default_true")]
     pub enable_round_off: bool,
+    #[serde(default)]
+    pub auto_reminders_enabled: bool,
+    #[serde(default)]
+    pub auto_reminder_days: i32,
     #[serde(default)]
     pub license_agreed: bool,
     #[serde(default)]
@@ -816,6 +821,12 @@ impl Database {
             self.set_version(6)?;
         }
 
+        // Migration to add payment_status to orders
+        if current < 7 {
+            self.migration_v7()?;
+            self.set_version(7)?;
+        }
+
         Ok(())
     }
 
@@ -1246,6 +1257,13 @@ impl Database {
             );
         ",
         )?;
+        Ok(())
+    }
+
+    fn migration_v7(&self) -> Result<()> {
+        let _ = self
+            .conn
+            .execute("ALTER TABLE orders ADD COLUMN payment_status TEXT", []);
         Ok(())
     }
 
@@ -4991,13 +5009,13 @@ impl Database {
 
         tx.execute(
             "INSERT OR REPLACE INTO orders
-             (id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at)
-              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,0,?18,?19,?20,?21)",
+             (id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, payment_status, created_at)
+              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,0,?18,?19,?20,?21,?22)",
             params![
                 o.id, store_id, o.subtotal, o.tax_amount, o.discount_amount, o.total,
                 o.payment_method, o.amount_paid, o.change_amount,
                 o.customer_name, o.status, o.order_type, o.delivery_status,
-                o.delivery_address, o.delivery_phone, o.user_id, o.user_name, metadata_str, o.tip_amount, o.discount_type, o.created_at
+                o.delivery_address, o.delivery_phone, o.user_id, o.user_name, metadata_str, o.tip_amount, o.discount_type, o.payment_status, o.created_at
             ],
         )?;
 
@@ -5174,6 +5192,8 @@ impl Database {
             merchant_id: "".into(),
             show_tax_breakdown: true,
             enable_round_off: true,
+            auto_reminders_enabled: false,
+            auto_reminder_days: 30,
             license_agreed: false,
             onboarding_completed: false,
             license_key: "".to_string(),
@@ -6012,7 +6032,7 @@ impl Database {
 
     fn get_order_by_id(&self, id: &str, store_id: &str) -> Result<Order> {
         self.conn.query_row(
-            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at
+            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, payment_status, created_at
              FROM orders WHERE id=?1 AND store_id=?2",
             params![id, store_id],
             |row| {
@@ -6041,10 +6061,70 @@ impl Database {
                     metadata,
                     tip_amount: row.get(19)?,
                     discount_type: row.get(20)?,
-                    created_at: row.get(21)?,
+                    payment_status: row.get(21)?,
+                    created_at: row.get(22)?,
                 })
             }
         )
+    }
+
+    pub fn get_customer_unpaid_orders(&self, customer_id: &str, store_id: &str) -> Result<Vec<Order>> {
+        let customer: Customer = self.conn.query_row(
+            "SELECT id, name, phone FROM customers WHERE id = ?1 AND store_id = ?2",
+            params![customer_id, store_id],
+            |row| {
+                Ok(Customer {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    phone: row.get(2)?,
+                    store_id: store_id.to_string(),
+                    email: "".to_string(),
+                    loyalty_points: 0,
+                    total_spent: 0.0,
+                    visits: 0,
+                    group_name: None,
+                    notes: None,
+                    birthday: None,
+                    anniversary: None,
+                    credit_limit: None,
+                    price_tier: None,
+                    loyalty_tier: None,
+                    tax_id: None,
+                    created_at: "".to_string(),
+                })
+            }
+        )?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id FROM orders WHERE store_id = ?1 AND (customer_name = ?2 OR delivery_phone = ?3) AND payment_status = 'unpaid' AND status != 'cancelled' ORDER BY created_at ASC"
+        )?;
+        let ids: Vec<String> = stmt
+            .query_map(params![store_id, customer.name, customer.phone], |r| r.get(0))?
+            .collect::<Result<Vec<_>>>()?;
+
+        let mut res = Vec::new();
+        for id in ids {
+            if let Ok(o) = self.get_order_by_id(&id, store_id) {
+                res.push(o);
+            }
+        }
+        Ok(res)
+    }
+
+    pub fn settle_order_payment(&self, order_id: &str, amount: f64, _payment_method: &str, store_id: &str) -> Result<()> {
+        let mut order = self.get_order_by_id(order_id, store_id)?;
+        order.amount_paid += amount;
+        if order.amount_paid >= order.total {
+            order.payment_status = Some("paid".to_string());
+        } else {
+            order.payment_status = Some("partial".to_string());
+        }
+
+        self.conn.execute(
+            "UPDATE orders SET amount_paid = ?1, payment_status = ?2 WHERE id = ?3 AND store_id = ?4",
+            params![order.amount_paid, order.payment_status, order_id, store_id],
+        )?;
+        Ok(())
     }
 
     pub fn clock_in(&self, user_id: &str, user_name: &str, store_id: &str) -> Result<()> {

@@ -4,6 +4,8 @@ import {
   dbGetCustomers, dbSaveCustomer, dbDeleteCustomer, dbGetCustomerOrders,
   dbGetCustomerAddresses, dbSaveCustomerAddress, dbDeleteCustomerAddress,
   exportCustomersCsv, importCustomersCsv, dbGetCustomerStatistics,
+  dbGetCustomerUnpaidOrders, dbSettleOrderPayment,
+  addWalletBalance, sendWhatsAppMessage, sendSmsNotification,
   Customer, Order, CustomerAddress, CustomerStatistics
 } from "@/lib/db";
 import { useSettingsStore } from "@/lib/stores";
@@ -11,7 +13,7 @@ import { v4 as uuid } from "uuid";
 import {
   X, Users, Star, History, Plus, Search, Phone, Mail, Edit2, Trash2,
   MapPin, Download, Upload, BarChart2, Wallet, Calendar, Tag, CreditCard,
-  ChevronRight, Save, User as UserIcon
+  ChevronRight, Save, User as UserIcon, AlertCircle
 } from "lucide-react";
 
 interface CustomerCRMProps {
@@ -19,7 +21,7 @@ interface CustomerCRMProps {
   isOpen?: boolean;
 }
 
-type TabType = "profile" | "addresses" | "history" | "stats" | "wallet";
+type TabType = "profile" | "addresses" | "history" | "stats" | "ledger";
 
 export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps) {
   const { settings, activeStoreId } = useSettingsStore();
@@ -34,6 +36,10 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [showModal, setShowModal] = useState(isOpen);
   const [activeTab, setActiveTab] = useState<TabType>("profile");
+  const [unpaidOrders, setUnpaidOrders] = useState<Order[]>([]);
+  const [settling, setSettling] = useState(false);
+  const [showBulkSettle, setShowBulkSettle] = useState(false);
+  const [bulkSettleAmount, setBulkSettleAmount] = useState("");
 
   const [newCustomer, setNewCustomer] = useState<Partial<Customer>>({
     name: "", phone: "", email: "", group_name: "retail",
@@ -75,14 +81,16 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
     setSelectedCustomer(customer);
     setLoading(true);
     try {
-      const [orders, addrs, statistics] = await Promise.all([
+      const [orders, addrs, statistics, unpaid] = await Promise.all([
         dbGetCustomerOrders(customer.phone, activeStoreId),
         dbGetCustomerAddresses(customer.id),
-        dbGetCustomerStatistics(customer.id)
+        dbGetCustomerStatistics(customer.id),
+        dbGetCustomerUnpaidOrders(customer.id, activeStoreId)
       ]);
       setCustomerOrders(orders);
       setAddresses(addrs);
       setStats(statistics);
+      setUnpaidOrders(unpaid);
     } catch (err) {
       console.error("Failed to load customer details:", err);
     }
@@ -199,6 +207,99 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
     reader.readAsText(file);
   };
 
+  const handleSettleOrder = async (orderId: string, amount: number) => {
+    if (!selectedCustomer) return;
+    setSettling(true);
+    try {
+      await dbSettleOrderPayment(orderId, amount, "cash", activeStoreId);
+      await addWalletBalance(selectedCustomer.id, amount, `Settlement for bill #${orderId.slice(-6).toUpperCase()}`);
+      const unpaid = await dbGetCustomerUnpaidOrders(selectedCustomer.id, activeStoreId);
+      setUnpaidOrders(unpaid);
+    } catch (err) {
+      console.error("Failed to settle order:", err);
+    }
+    setSettling(false);
+  };
+
+  const handleBulkSettle = async () => {
+    if (!selectedCustomer || !bulkSettleAmount) return;
+    setSettling(true);
+    let remaining = parseFloat(bulkSettleAmount);
+    const sortedUnpaid = [...unpaidOrders].sort((a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+    let totalSettled = 0;
+    for (const order of sortedUnpaid) {
+      if (remaining >= order.total) {
+        await dbSettleOrderPayment(order.id, order.total, "cash", activeStoreId);
+        remaining -= order.total;
+        totalSettled += order.total;
+      } else break;
+    }
+    if (totalSettled > 0) {
+      await addWalletBalance(selectedCustomer.id, totalSettled, `Bulk settlement (Jama)`);
+    }
+    const unpaid = await dbGetCustomerUnpaidOrders(selectedCustomer.id, activeStoreId);
+    setUnpaidOrders(unpaid);
+    setShowBulkSettle(false);
+    setBulkSettleAmount("");
+    setSettling(false);
+  };
+
+  const isOverdue = (createdAt: string) => {
+    if (!settings.auto_reminders_enabled) return false;
+    const createdDate = new Date(createdAt);
+    const now = new Date();
+    const diffDays = Math.ceil((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays > settings.auto_reminder_days;
+  };
+
+  const handleSendReminder = async () => {
+    if (!selectedCustomer || unpaidOrders.length === 0) return;
+    const totalDue = unpaidOrders.reduce((sum, o) => sum + o.total, 0);
+    const upiUrl = settings.upi_id
+      ? `upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${totalDue.toFixed(2)}&cu=INR`
+      : "";
+    const message = `Hello ${selectedCustomer.name}, this is a friendly reminder from ${settings.store_name} regarding your outstanding balance of ${curr}${totalDue.toFixed(2)}. ${upiUrl ? `You can pay via UPI: ${upiUrl}` : ""}`;
+    try {
+      if (settings.whatsapp_enabled) {
+        await sendWhatsAppMessage(selectedCustomer.phone, message, activeStoreId);
+        alert("WhatsApp reminder sent!");
+      } else {
+        await sendSmsNotification(selectedCustomer.phone, message, activeStoreId);
+        alert("SMS reminder sent!");
+      }
+    } catch (err) {
+      alert("Failed to send reminder");
+    }
+  };
+
+  const generateStatement = () => {
+    if (!selectedCustomer) return;
+    const totalDue = unpaidOrders.reduce((sum, o) => sum + o.total, 0);
+    const content = `
+      CUSTOMER LEDGER STATEMENT
+      -------------------------
+      Store: ${settings.store_name}
+      Date: ${new Date().toLocaleDateString()}
+
+      Customer: ${selectedCustomer.name}
+      Phone: ${selectedCustomer.phone}
+
+      TOTAL OUTSTANDING: ${curr}${totalDue.toFixed(2)}
+
+      TRANSACTION HISTORY
+      -------------------------
+      ${customerOrders.map(o => `[${new Date(o.created_at).toLocaleDateString()}] ${o.payment_method.toUpperCase()} - ${curr}${o.total.toFixed(2)} (${o.payment_status || 'paid'})`).join('\n      ')}
+    `;
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write(`<pre>${content}</pre>`);
+      win.document.close();
+      win.print();
+    }
+  };
+
   const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.phone.includes(searchQuery) ||
@@ -252,7 +353,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                   price_tier: "standard", loyalty_tier: "bronze"
                 });
                 setShowAddForm(true);
-              }} className="btn-accent p-2.5">
+              }} className="btn-accent p-2.5" data-testid="add-customer-btn" aria-label="Add New Customer">
                 <Plus size={18} />
               </button>
             </div>
@@ -329,10 +430,11 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                     { id: "addresses", icon: MapPin, label: "Addresses" },
                     { id: "history", icon: History, label: "History" },
                     { id: "stats", icon: BarChart2, label: "Stats" },
-                    { id: "wallet", icon: Wallet, label: "Wallet" },
+                    { id: "ledger", icon: Wallet, label: "Digital Ledger" },
                   ].map(tab => (
                     <button
                       key={tab.id}
+                      data-testid={`tab-${tab.id}`}
                       onClick={() => setActiveTab(tab.id as TabType)}
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                         activeTab === tab.id ? "bg-[#1E1E26] text-[#F5C842] shadow-sm" : "text-gray-500 hover:text-gray-300"
@@ -504,31 +606,66 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                     </div>
                   )}
 
-                  {activeTab === "wallet" && (
+                  {activeTab === "ledger" && (
                     <div className="space-y-6">
-                       <div className="card p-8 bg-gradient-to-br from-[#1E1E26] to-[#141418] border-[#F5C842]/20 flex flex-col items-center text-center">
-                          <Wallet size={48} className="text-[#F5C842] mb-4 opacity-50" />
-                          <div className="text-gray-400 text-sm mb-1 uppercase font-bold tracking-widest">Available Balance</div>
-                          <div className="text-5xl font-bold font-display text-white mb-6">
-                            {curr}{(selectedCustomer.total_spent * 0.05).toFixed(2)}
-                            <span className="text-xs text-gray-500 ml-2">estimated</span>
-                          </div>
-                          <p className="text-xs text-gray-500 max-w-sm">
-                             This customer has earned points and credits based on their purchase history. Wallet balances can be managed from the dedicated Wallet screen.
-                          </p>
+                       <div className="grid grid-cols-2 gap-4">
+                         <div className="card p-6 bg-gradient-to-br from-[#1E1E26] to-[#141418] border-red-500/20 flex flex-col items-center text-center">
+                            <CreditCard size={32} className="text-red-500 mb-2" />
+                            <div className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">Total Udhar (Due)</div>
+                            <div className="text-3xl font-bold font-display text-red-500" data-testid="total-due">
+                              {curr}{unpaidOrders.reduce((sum, o) => sum + o.total, 0).toFixed(2)}
+                            </div>
+                            <button onClick={handleSendReminder} disabled={unpaidOrders.length === 0} className="mt-4 btn-accent py-1.5 px-4 text-[10px] uppercase font-bold flex items-center gap-2 disabled:opacity-50">
+                              <Phone size={12} /> Send Reminder
+                            </button>
+                         </div>
+                         <div className="card p-6 bg-gradient-to-br from-[#1E1E26] to-[#141418] border-[#2ECC71]/20 flex flex-col items-center text-center">
+                            <Wallet size={32} className="text-[#2ECC71] mb-2" />
+                            <div className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">Credit Limit</div>
+                            <div className="text-3xl font-bold font-display text-white" data-testid="credit-limit">
+                              {curr}{selectedCustomer.credit_limit?.toFixed(2) || "0.00"}
+                            </div>
+                            <button onClick={generateStatement} className="mt-4 btn-ghost py-1.5 px-4 text-[10px] uppercase font-bold flex items-center gap-2 border border-border">
+                              <Download size={12} /> Get Statement
+                            </button>
+                         </div>
                        </div>
-                       <div className="card bg-[#141418] p-4">
-                          <h4 className="text-xs font-bold uppercase text-gray-600 mb-4">Debt & Outstanding</h4>
-                          <div className="flex items-center justify-between">
-                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500"><CreditCard size={18}/></div>
-                                <div>
-                                   <div className="text-sm font-bold">Unpaid Invoices</div>
-                                   <div className="text-xs text-gray-600">Total amount owed on credit sales</div>
-                                </div>
-                             </div>
-                             <div className="text-lg font-bold text-red-500">{curr}0.00</div>
+                       <div className="space-y-3">
+                          <div className="flex items-center justify-between px-1">
+                            <h4 className="text-xs font-bold uppercase text-gray-500">Unpaid Bills (Udhar)</h4>
+                            {unpaidOrders.length > 0 && (
+                              <button onClick={() => setShowBulkSettle(true)} className="text-[10px] font-bold text-[#F5C842] hover:underline">
+                                Bulk Settle (Jama)
+                              </button>
+                            )}
                           </div>
+                          {unpaidOrders.length === 0 ? (
+                            <div className="py-8 text-center text-gray-500 bg-[#141418] rounded-2xl italic text-sm">No outstanding dues for this customer.</div>
+                          ) : (
+                            unpaidOrders.map(order => (
+                              <div key={order.id} className="flex items-center justify-between p-4 rounded-2xl bg-red-500/5 border border-red-500/10 hover:bg-red-500/10 transition-colors">
+                                <div className="flex items-center gap-4">
+                                   <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                                      <Calendar size={16} className="text-red-500" />
+                                   </div>
+                                   <div>
+                                      <div className="text-sm font-bold">Bill #{order.id.slice(-6).toUpperCase()}</div>
+                                      <div className="text-[11px] text-gray-500">{new Date(order.created_at).toLocaleDateString()} • {order.items.length} items</div>
+                                   </div>
+                                </div>
+                                <div className="flex items-center gap-6">
+                                   <div className="text-right">
+                                      <div className="text-sm font-bold text-red-500">{curr}{order.total.toFixed(2)}</div>
+                                      <div className="text-[10px] uppercase font-bold flex items-center gap-1 justify-end">
+                                        {isOverdue(order.created_at) && <span className="text-red-500 flex items-center gap-0.5 animate-pulse"><AlertCircle size={10} /> Overdue</span>}
+                                        <span className="text-gray-500">Unpaid</span>
+                                      </div>
+                                   </div>
+                                   <button onClick={() => handleSettleOrder(order.id, order.total)} disabled={settling} data-testid={`settle-btn-${order.id.slice(-6)}`} className="btn-accent py-1.5 px-3 text-[10px] uppercase font-bold">Jama (Settle)</button>
+                                </div>
+                              </div>
+                            ))
+                          )}
                        </div>
                     </div>
                   )}
@@ -729,6 +866,27 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                 <div className="flex gap-2 pt-4">
                   <button onClick={handleSaveAddress} className="btn-accent flex-1 py-3 font-bold">Save Address</button>
                   <button onClick={() => setShowAddressForm(false)} className="btn-ghost px-6 font-bold">Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showBulkSettle && (
+          <div className="fixed inset-0 flex items-center justify-center z-[70] bg-black/80 backdrop-blur-sm p-4">
+            <div className="card p-6 w-[400px] shadow-2xl fade-in">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <CreditCard size={20} className="text-[#2ECC71]" /> Bulk Settlement
+              </h3>
+              <p className="text-xs text-gray-400 mb-6">Enter the amount received from the customer. Oldest unpaid bills settled first.</p>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Amount Received ({curr})</label>
+                  <input type="number" value={bulkSettleAmount} onChange={(e) => setBulkSettleAmount(e.target.value)} placeholder="0.00" autoFocus />
+                </div>
+                <div className="flex gap-2 pt-4">
+                  <button disabled={settling || !bulkSettleAmount} onClick={handleBulkSettle} className="btn-accent flex-1 py-3 font-bold">Confirm Jama</button>
+                  <button onClick={() => setShowBulkSettle(false)} className="btn-ghost px-6 font-bold">Cancel</button>
                 </div>
               </div>
             </div>
