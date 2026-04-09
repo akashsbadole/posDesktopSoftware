@@ -506,9 +506,9 @@ fn get_sales_report(
 // ─── User Commands ───────────────────────────────────────────────────────────
 
 #[tauri::command]
-fn verify_pin(pin: String) -> Result<Option<db::User>, String> {
+fn verify_pin(pin: String, organization_id: String) -> Result<Option<db::User>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.verify_pin(&pin).map_err(|e| e.to_string())
+    db.verify_pin(&pin, &organization_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -536,9 +536,9 @@ fn register(org_name: String, email: String, password: String) -> Result<(db::Us
 }
 
 #[tauri::command]
-fn login(email: String, _password: String) -> Result<Option<(db::User, db::Organization)>, String> {
+fn login(email: String, password: String) -> Result<Option<(db::User, db::Organization)>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.login(&email).map_err(|e| e.to_string())
+    db.login(&email, &password).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
