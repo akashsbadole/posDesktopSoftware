@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import {
   Search,
   Plus,
@@ -129,18 +129,18 @@ export default function POSScreen() {
 
   const { tables, fetchTables } = useTablesStore();
 
-  const {
-    products,
-    categories,
-    isLoading: productsLoading,
-    fetchProducts,
-    getFilteredProducts,
-    setSelectedCategory,
-    setSearchQuery,
-    selectedCategory,
-    searchQuery,
-    fetchVariants,
-  } = useProductsStore();
+  const products = useProductsStore((s) => s.products);
+  const categories = useProductsStore((s) => s.categories);
+  const productsLoading = useProductsStore((s) => s.isLoading);
+  const fetchProducts = useProductsStore((s) => s.fetchProducts);
+  const getFilteredProducts = useProductsStore((s) => s.getFilteredProducts);
+  const setSelectedCategory = useProductsStore((s) => s.setSelectedCategory);
+  const setSearchQuery = useProductsStore((s) => s.setSearchQuery);
+  const selectedCategory = useProductsStore((s) => s.selectedCategory);
+  const searchQuery = useProductsStore((s) => s.searchQuery);
+  const fetchVariants = useProductsStore((s) => s.fetchVariants);
+  const sortBy = useProductsStore((s) => s.sortBy);
+  const sortOrder = useProductsStore((s) => s.sortOrder);
 
   const { combos, fetchCombos, getActiveCombos } = useCombosStore();
 
@@ -201,9 +201,17 @@ export default function POSScreen() {
   );
   const [activeCustomer, setActiveCustomer] = useState<Customer | null>(null);
   const [isEditingCustomer, setIsEditingCustomer] = useState(false);
+  const [localSearch, setLocalSearch] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [pendingFeature, setPendingFeature] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(localSearch);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [localSearch, setSearchQuery]);
 
   useEffect(() => {
     fetchProducts();
@@ -220,11 +228,18 @@ export default function POSScreen() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (
+      const isInputFocused =
         e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      )
+        e.target instanceof HTMLTextAreaElement;
+
+      if (isInputFocused) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          (e.target as HTMLElement).blur();
+          setIsGridFocused(true);
+        }
         return;
+      }
 
       if (e.key === "c" || e.key === "C") {
         if (cart.length > 0) {
@@ -240,25 +255,71 @@ export default function POSScreen() {
         }
       }
       if (e.key === "f" || e.key === "F" || e.key === "/") {
-        if (
-          e.target instanceof HTMLInputElement ||
-          e.target instanceof HTMLTextAreaElement
-        )
-          return;
         e.preventDefault();
         searchInputRef.current?.focus();
+        setLocalSearch("");
         setSearchQuery("");
       }
       if (e.key === "1") setOrderType("dine_in");
       if (e.key === "2") setOrderType("takeaway");
       if (e.key === "3") setOrderType("delivery");
+
+      // Payment Methods
+      if (e.altKey && e.key === "1") setPaymentMethod("cash");
+      if (e.altKey && e.key === "2") setPaymentMethod("card");
+      if (e.altKey && e.key === "3") setPaymentMethod("upi");
+      if (e.altKey && e.key === "4") {
+        if (activeCustomer && walletCustomerId) {
+          setPaymentMethod("store_credit");
+        } else {
+          alert(
+            "Please select a registered customer for Store Credit / Khata sales.",
+          );
+          setIsEditingCustomer(true);
+        }
+      }
+      if (e.altKey && e.key === "5") {
+        setPaymentMethod("split");
+        setShowSplitPaymentModal(true);
+      }
+
+      // Cart Actions
+      if (e.key === "F9") {
+        e.preventDefault();
+        handlePrintKOT();
+      }
+      if (e.key === "F10") {
+        e.preventDefault();
+        handleHoldOrder();
+      }
+      if (e.key === "F12") {
+        e.preventDefault();
+        handleCheckout();
+      }
+
+      // Price Tier
+      if (e.altKey && (e.key === "q" || e.key === "Q")) {
+        setPriceTier(priceTier === "retail" ? "wholesale" : "retail");
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cart.length, clearCart, setOrderType]);
+  }, [
+    cart.length,
+    clearCart,
+    setOrderType,
+    setPaymentMethod,
+    setPriceTier,
+    priceTier,
+    activeCustomer,
+    walletCustomerId,
+  ]);
 
-  const filtered = getFilteredProducts();
+  const filtered = useMemo(
+    () => getFilteredProducts(),
+    [products, selectedCategory, searchQuery, sortBy, sortOrder],
+  );
 
   const getGridColumns = useCallback(() => {
     if (productGridRef.current) {
@@ -275,14 +336,16 @@ export default function POSScreen() {
   );
 
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && searchQuery.trim()) {
-      const exactMatch = products.find((p) => p.barcode === searchQuery.trim());
+    if (e.key === "Enter" && localSearch.trim()) {
+      const exactMatch = products.find((p) => p.barcode === localSearch.trim());
       if (exactMatch) {
         addItem(exactMatch);
+        setLocalSearch("");
         setSearchQuery("");
       }
     }
     if (e.key === "Escape") {
+      setLocalSearch("");
       setSearchQuery("");
       (e.target as HTMLInputElement).blur();
       setIsGridFocused(true);
@@ -1170,9 +1233,14 @@ export default function POSScreen() {
                 id="product-search"
                 ref={searchInputRef}
                 placeholder="Search or scan barcode..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={handleSearchKeyDown}
+                value={localSearch}
+                onChange={(e) => setLocalSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    setSearchQuery(localSearch);
+                  }
+                  handleSearchKeyDown(e);
+                }}
                 style={{ paddingLeft: 36 }}
                 aria-describedby="search-hint"
               />
@@ -1465,7 +1533,10 @@ export default function POSScreen() {
           <div className="p-3 border-b border-border bg-[#0D0D0F]/50">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <span className="font-display font-bold text-sm uppercase tracking-tight text-[#F5C842]">
+                <span
+                  className="font-display font-bold text-sm uppercase tracking-tight text-[#F5C842]"
+                  aria-live="polite"
+                >
                   Cart ({itemCount})
                 </span>
                 <div
@@ -1476,12 +1547,14 @@ export default function POSScreen() {
                   <button
                     onClick={() => setPriceTier("retail")}
                     className={`px-2 py-0.5 text-[9px] font-bold rounded-sm transition-all ${priceTier === "retail" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
+                    aria-label="Retail Price Tier (Alt+Q)"
                   >
                     RETAIL
                   </button>
                   <button
                     onClick={() => setPriceTier("wholesale")}
                     className={`px-2 py-0.5 text-[9px] font-bold rounded-sm transition-all ${priceTier === "wholesale" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
+                    aria-label="Wholesale Price Tier (Alt+Q)"
                   >
                     WHOL.
                   </button>
@@ -1518,19 +1591,21 @@ export default function POSScreen() {
 
             <div className="flex gap-1" role="group" aria-label="Order type">
               {[
-                { id: "dine_in", label: labels.dine_in },
+                { id: "dine_in", label: labels.dine_in, key: "1" },
                 {
                   id: "takeaway",
                   label: labels.takeaway.split("/")[1] || "Takeaway",
+                  key: "2"
                 },
-                { id: "delivery", label: "Delivery" },
+                { id: "delivery", label: "Delivery", key: "3" },
               ].map((type) => (
                 <button
                   key={type.id}
                   onClick={() => setOrderType(type.id as OrderType)}
+                  aria-label={`${type.label} order type (${type.key})`}
                   className={`flex-1 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-all border ${orderType === type.id ? "bg-[#F5C842] border-[#F5C842] text-[#0D0D0F]" : "bg-[#141418] border-[#1E1E26] text-[#4A4A5A] hover:border-[#F5C842]/50"}`}
                 >
-                  {type.label}
+                  {type.label} <span className="text-[7px] opacity-40 ml-0.5">{type.key}</span>
                 </button>
               ))}
             </div>
@@ -1560,6 +1635,7 @@ export default function POSScreen() {
                 <button
                   onClick={() => setIsEditingCustomer(!isEditingCustomer)}
                   data-testid="edit-customer-btn"
+                  aria-label={`Customer: ${customerInfo?.name || activeCustomer?.name || "Walk-in"}. Click to edit.`}
                   className="text-[10px] font-bold text-white flex items-center justify-between hover:text-[#F5C842] transition-colors"
                 >
                   <span className="truncate">
@@ -1692,11 +1768,15 @@ export default function POSScreen() {
                         updateQuantity(item.cartItemId, item.quantity - 1)
                       }
                       className="px-1 h-full hover:bg-[#F5C842] hover:text-[#0D0D0F] transition-colors"
-                      aria-label="Decrease"
+                      aria-label={`Decrease quantity of ${item.product.name}`}
                     >
                       <Minus size={8} />
                     </button>
-                    <span className="w-5 text-center text-[9px] font-bold leading-none">
+                    <span
+                      className="w-5 text-center text-[9px] font-bold leading-none"
+                      aria-label={`Current quantity: ${item.quantity}`}
+                      aria-live="polite"
+                    >
                       {item.quantity}x
                     </span>
                     <button
@@ -1704,7 +1784,7 @@ export default function POSScreen() {
                         updateQuantity(item.cartItemId, item.quantity + 1)
                       }
                       className="px-1 h-full hover:bg-[#F5C842] hover:text-[#0D0D0F] transition-colors"
-                      aria-label="Increase"
+                      aria-label={`Increase quantity of ${item.product.name}`}
                     >
                       <Plus size={8} />
                     </button>
@@ -1722,6 +1802,7 @@ export default function POSScreen() {
                           productId: item.cartItemId,
                         })
                       }
+                      aria-label={`Override price for ${item.product.name}. Current: ${curr}${currentPrice.toFixed(2)}`}
                       className="text-[10px] font-bold text-[#F5C842] tabular-nums"
                     >
                       {curr}
@@ -1823,7 +1904,7 @@ export default function POSScreen() {
                     </span>
                   </div>
                 </div>
-                <div className="flex gap-1 items-baseline">
+                <div className="flex gap-1 items-baseline" aria-live="polite">
                   <span className="text-[#4A4A5A] text-[8px] uppercase">
                     Total:
                   </span>
@@ -1862,9 +1943,10 @@ export default function POSScreen() {
                 aria-label="Payment method"
               >
                 {(["cash", "card", "upi", "store_credit", "split"] as const).map(
-                  (m) => (
+                  (m, idx) => (
                     <button
                       key={m}
+                      aria-label={`${m} payment method (Alt+${idx + 1})`}
                       onClick={() => {
                         if (
                           m === "store_credit" &&
@@ -1951,18 +2033,18 @@ export default function POSScreen() {
                 <button
                   onClick={handlePrintKOT}
                   disabled={processing}
-                  aria-label="Print Kitchen Order Ticket"
+                  aria-label="Print Kitchen Order Ticket (F9)"
                   className="flex-1 py-2 text-[10px] font-bold uppercase bg-[#141418] border border-[#1E1E26] rounded hover:bg-[#1E1E26] transition-colors"
                 >
-                  KOT
+                  KOT <span className="text-[7px] opacity-50 ml-1">F9</span>
                 </button>
                 <button
                   onClick={handleHoldOrder}
                   disabled={processing}
-                  aria-label="Hold order for later"
+                  aria-label="Hold order for later (F10)"
                   className="flex-1 py-2 text-[10px] font-bold uppercase bg-[#141418] border border-[#1E1E26] rounded hover:bg-[#1E1E26] transition-colors"
                 >
-                  Hold
+                  Hold <span className="text-[7px] opacity-50 ml-1">F10</span>
                 </button>
                 <button
                   onClick={() => {
@@ -1996,6 +2078,7 @@ export default function POSScreen() {
                     cart.length === 0 ||
                     (orderType === "dine_in" && !tableId)
                   }
+                  aria-label={`Charge ${curr}${finalTotal.toFixed(2)} (F12)`}
                   className="flex-[3] py-2 text-[11px] font-bold uppercase bg-[#F5C842] text-[#0D0D0F] rounded hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
                   data-testid="checkout-button"
                   data-checkout-button
@@ -2007,6 +2090,7 @@ export default function POSScreen() {
                   )}
                   Charge {curr}
                   {finalTotal.toFixed(2)}
+                  <span className="text-[8px] opacity-60 ml-1 font-mono">F12</span>
                 </button>
               </div>
             </div>
