@@ -864,6 +864,12 @@ impl Database {
             self.set_version(8)?;
         }
 
+        // Migration to add password_hash to users
+        if current < 9 {
+            self.migration_v9()?;
+            self.set_version(9)?;
+        }
+
         Ok(())
     }
 
@@ -1304,6 +1310,33 @@ impl Database {
             );
         ",
         )?;
+        Ok(())
+    }
+
+    fn migration_v9(&self) -> Result<()> {
+        let _ = self
+            .conn
+            .execute("ALTER TABLE users ADD COLUMN password_hash TEXT", []);
+
+        // Update default users if they exist and have no password
+        let admin_pass = bcrypt::hash("admin123", bcrypt::DEFAULT_COST).unwrap();
+        let cashier_pass = bcrypt::hash("cashier123", bcrypt::DEFAULT_COST).unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        // Ensure default organization exists
+        let _ = self.conn.execute(
+            "INSERT OR IGNORE INTO organizations (id, name, email, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params!["default", "Default Organization", "admin@example.com", "trial", now],
+        );
+
+        let _ = self.conn.execute(
+            "UPDATE users SET password_hash = ?1, email = 'admin@example.com', organization_id = 'default' WHERE id = 'admin' AND (password_hash IS NULL OR password_hash = '')",
+            params![admin_pass],
+        );
+        let _ = self.conn.execute(
+            "UPDATE users SET password_hash = ?1, email = 'cashier@example.com', organization_id = 'default' WHERE id = 'cashier' AND (password_hash IS NULL OR password_hash = '')",
+            params![cashier_pass],
+        );
         Ok(())
     }
 
@@ -4254,14 +4287,23 @@ impl Database {
         if count == 0 {
             let admin_pin = bcrypt::hash("1234", bcrypt::DEFAULT_COST).unwrap();
             let cashier_pin = bcrypt::hash("0000", bcrypt::DEFAULT_COST).unwrap();
+            let admin_pass = bcrypt::hash("admin123", bcrypt::DEFAULT_COST).unwrap();
+            let cashier_pass = bcrypt::hash("cashier123", bcrypt::DEFAULT_COST).unwrap();
+            let now = chrono::Utc::now().to_rfc3339();
+
+            // Seed a default organization
+            self.conn.execute(
+                "INSERT OR IGNORE INTO organizations (id, name, email, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params!["default", "Default Organization", "admin@example.com", "trial", now],
+            )?;
 
             self.conn.execute(
-                "INSERT INTO users (id, pin, name, role) VALUES (?1, ?2, ?3, ?4)",
-                params!["admin", admin_pin, "Administrator", "admin"],
+                "INSERT INTO users (id, organization_id, pin, name, role, email, password_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params!["admin", "default", admin_pin, "Administrator", "admin", "admin@example.com", admin_pass],
             )?;
             self.conn.execute(
-                "INSERT INTO users (id, pin, name, role) VALUES (?1, ?2, ?3, ?4)",
-                params!["cashier", cashier_pin, "Cashier", "cashier"],
+                "INSERT INTO users (id, organization_id, pin, name, role, email, password_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params!["cashier", "default", cashier_pin, "Cashier", "cashier", "cashier@example.com", cashier_pass],
             )?;
         }
         Ok(())
@@ -4287,11 +4329,11 @@ impl Database {
         Ok(stores)
     }
 
-    pub fn verify_pin(&self, pin: &str) -> Result<Option<User>> {
+    pub fn verify_pin(&self, pin: &str, organization_id: &str) -> Result<Option<User>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, organization_id, pin, name, email, role, store_id FROM users")?;
-        let user_iter = stmt.query_map([], |row| {
+            .prepare("SELECT id, organization_id, pin, name, email, role, store_id FROM users WHERE organization_id = ?1")?;
+        let user_iter = stmt.query_map(params![organization_id], |row| {
             Ok((
                 User {
                     id: row.get(0)?,
@@ -4359,6 +4401,8 @@ impl Database {
         let store_id = uuid::Uuid::new_v4().to_string();
         let hashed_pin = bcrypt::hash("1234", bcrypt::DEFAULT_COST)
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let hashed_password = bcrypt::hash(password, bcrypt::DEFAULT_COST)
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let now = chrono::Utc::now().to_rfc3339();
 
         self.conn.execute(
@@ -4367,8 +4411,8 @@ impl Database {
         )?;
 
         self.conn.execute(
-            "INSERT INTO users (id, organization_id, pin, name, email, role, store_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![user_id, org_id, hashed_pin, "Admin", email, "admin", store_id],
+            "INSERT INTO users (id, organization_id, pin, name, email, role, store_id, password_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![user_id, org_id, hashed_pin, "Admin", email, "admin", store_id, hashed_password],
         )?;
 
         self.conn.execute(
@@ -4405,15 +4449,17 @@ impl Database {
         Ok((user, organization))
     }
 
-    pub fn login(&self, email: &str) -> Result<Option<(User, Organization)>> {
+    pub fn login(&self, email: &str, password: &str) -> Result<Option<(User, Organization)>> {
         let mut stmt = self.conn.prepare(
-            "SELECT u.id, u.organization_id, u.name, u.email, u.role, u.store_id, o.id, o.name, o.email, o.status, o.created_at
+            "SELECT u.id, u.organization_id, u.name, u.email, u.role, u.store_id, u.password_hash, o.id, o.name, o.email, o.status, o.created_at
              FROM users u
              LEFT JOIN organizations o ON u.organization_id = o.id
              WHERE u.email = ?1"
         )?;
 
         let result = stmt.query_row(params![email], |row| {
+            let password_hash: Option<String> = row.get(6)?;
+
             Ok((
                 User {
                     id: row.get(0)?,
@@ -4425,17 +4471,27 @@ impl Database {
                     pin: String::new(), // Don't expose hashed pin
                 },
                 Organization {
-                    id: row.get(4)?,
-                    name: row.get(5)?,
-                    email: row.get(6)?,
-                    status: row.get(7)?,
-                    created_at: row.get(8)?,
+                    id: row.get(7)?,
+                    name: row.get(8)?,
+                    email: row.get(9)?,
+                    status: row.get(10)?,
+                    created_at: row.get(11)?,
                 },
+                password_hash,
             ))
         });
 
         match result {
-            Ok(pair) => Ok(Some(pair)),
+            Ok((user, organization, hashed_password)) => {
+                if let Some(h) = hashed_password {
+                    if let Ok(verified) = bcrypt::verify(password, &h) {
+                        if verified {
+                            return Ok(Some((user, organization)));
+                        }
+                    }
+                }
+                Ok(None)
+            }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e),
         }

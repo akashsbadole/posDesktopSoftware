@@ -150,8 +150,9 @@ export default function LoginScreen() {
         {view === "credentials" ? (
           <form onSubmit={handleCredentialSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={{ textAlign: "left" }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, display: "block" }}>Email Address</label>
+              <label htmlFor="email" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, display: "block" }}>Email Address</label>
               <input
+                id="email"
                 type="email"
                 required
                 value={email}
@@ -169,8 +170,9 @@ export default function LoginScreen() {
               />
             </div>
             <div style={{ textAlign: "left" }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, display: "block" }}>Password</label>
+              <label htmlFor="password" style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, display: "block" }}>Password</label>
               <input
+                id="password"
                 type="password"
                 required
                 value={password}

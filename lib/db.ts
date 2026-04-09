@@ -685,11 +685,11 @@ async function sql<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (neonClient && !cmd.startsWith("get_premium")) {
     try {
       if (cmd === "register") {
-        const { orgName, email, password } = enhancedArgs as any;
+        const { org_name, email, password } = enhancedArgs as any;
         const orgId = Math.random().toString(36).substr(2, 9);
         const userId = Math.random().toString(36).substr(2, 9);
 
-        await neonClient`INSERT INTO organizations (id, name, email) VALUES (${orgId}, ${orgName}, ${email})`;
+        await neonClient`INSERT INTO organizations (id, name, email) VALUES (${orgId}, ${org_name}, ${email})`;
         await neonClient`INSERT INTO users (id, organization_id, name, email, password_hash, role, pin)
                          VALUES (${userId}, ${orgId}, 'Admin', ${email}, ${password}, 'admin', '1234')`;
         await neonClient`INSERT INTO stores (id, organization_id, name, industry) VALUES ('default', ${orgId}, 'Main Store', 'food')`;
@@ -1019,7 +1019,7 @@ export async function dbRegister(
   password: string,
 ): Promise<{ user: User; organization: Organization }> {
   return sql<{ user: User; organization: Organization }>("register", {
-    orgName,
+    org_name: orgName,
     email,
     password,
   });
@@ -1055,7 +1055,7 @@ export async function verifyPin(
   pin: string,
   organizationId: string,
 ): Promise<User | null> {
-  return sql<User | null>("verify_pin", { pin, organizationId });
+  return sql<User | null>("verify_pin", { pin, organization_id: organizationId });
 }
 
 export async function changePin(userId: string, newPin: string): Promise<void> {
@@ -2093,6 +2093,37 @@ async function browserFallback<T>(
         default: { ...defaultSettings(), onboarding_completed: true },
         retail1: { ...defaultSettings(), onboarding_completed: true },
       });
+      lsSet("pos_organizations", [
+        {
+          id: "default",
+          name: "Default Organization",
+          email: "admin@example.com",
+          created_at: new Date().toISOString(),
+          status: "trial",
+        },
+      ]);
+      lsSet("pos_users", [
+        {
+          id: "admin",
+          organization_id: "default",
+          name: "Administrator",
+          email: "admin@example.com",
+          password: "admin123",
+          role: "admin",
+          hourly_rate: 0,
+          pin: "1234",
+        },
+        {
+          id: "cashier",
+          organization_id: "default",
+          name: "Cashier",
+          email: "cashier@example.com",
+          password: "cashier123",
+          role: "cashier",
+          hourly_rate: 0,
+          pin: "0000",
+        },
+      ]);
       lsSet("pos_initialized", true);
     }
     if (!lsGet("pos_tables") || lsGet<any[]>("pos_tables")?.length === 0) {
@@ -2270,12 +2301,12 @@ async function browserFallback<T>(
     }
     case "register": {
       console.log("[register] Creating new organization");
-      const { orgName, email, password } = args as any;
+      const { org_name, email, password } = args as any;
       const orgId = Math.random().toString(36).substr(2, 9);
       const userId = Math.random().toString(36).substr(2, 9);
       const organization: Organization = {
         id: orgId,
-        name: orgName,
+        name: org_name,
         email,
         created_at: new Date().toISOString(),
         status: "trial",
@@ -2363,7 +2394,7 @@ async function browserFallback<T>(
     }
     case "verify_pin": {
       const pin = (args as any).pin;
-      const orgId = (args as any).organizationId;
+      const orgId = (args as any).organization_id || (args as any).organizationId;
       console.log("[verify_pin] Looking for pin:", pin, "orgId:", orgId);
       const users = lsGet<User[]>("pos_users") || [];
       console.log("[verify_pin] Total users:", users.length);
@@ -3024,6 +3055,7 @@ async function browserFallback<T>(
           organization_id: "default",
           name: "Administrator",
           email: "admin@example.com",
+          password: "admin123",
           role: "admin",
           hourly_rate: 0,
         },
@@ -3032,6 +3064,7 @@ async function browserFallback<T>(
           organization_id: "default",
           name: "Cashier",
           email: "cashier@example.com",
+          password: "cashier123",
           role: "cashier",
           hourly_rate: 0,
         },
