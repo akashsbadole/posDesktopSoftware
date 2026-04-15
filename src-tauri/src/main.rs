@@ -508,7 +508,8 @@ fn get_sales_report(
 #[tauri::command]
 fn verify_pin(pin: String, organization_id: String) -> Result<Option<db::User>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.verify_pin(&pin, &organization_id).map_err(|e| e.to_string())
+    db.verify_pin(&pin, &organization_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -530,13 +531,37 @@ fn upsert_user(user: db::User) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn register(org_name: String, email: String, password: String) -> Result<(db::User, db::Organization), String> {
+fn register(
+    org_name: String,
+    email: String,
+    password: String,
+) -> Result<db::LoginResult, String> {
+    // Trim inputs to remove whitespace
+    let org_name = org_name.trim();
+    let email = email.trim();
+    let password = password.trim();
+
+    // Basic validation
+    if org_name.is_empty() {
+        return Err("Organization name cannot be empty".to_string());
+    }
+    if email.is_empty() {
+        return Err("Email cannot be empty".to_string());
+    }
+    if !email.contains('@') || !email.contains('.') {
+        return Err("Invalid email format".to_string());
+    }
+    if password.len() < 6 {
+        return Err("Password must be at least 6 characters".to_string());
+    }
+
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.register(&org_name, &email, &password).map_err(|e| e.to_string())
+    db.register(org_name, &email, &password)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn login(email: String, password: String) -> Result<Option<(db::User, db::Organization)>, String> {
+fn login(email: String, password: String) -> Result<Option<db::LoginResult>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.login(&email, &password).map_err(|e| e.to_string())
 }
@@ -725,28 +750,45 @@ fn get_customer_orders(phone: String, store_id: String) -> Result<Vec<db::Order>
 }
 
 #[tauri::command]
-fn get_customer_unpaid_orders(customer_id: String, store_id: String) -> Result<Vec<db::Order>, String> {
+fn get_customer_unpaid_orders(
+    customer_id: String,
+    store_id: String,
+) -> Result<Vec<db::Order>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_customer_unpaid_orders(&customer_id, &store_id).map_err(|e| e.to_string())
+    db.get_customer_unpaid_orders(&customer_id, &store_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn settle_order_payment(order_id: String, amount: f64, payment_method: String, store_id: String) -> Result<(), String> {
+fn settle_order_payment(
+    order_id: String,
+    amount: f64,
+    payment_method: String,
+    store_id: String,
+) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.settle_order_payment(&order_id, amount, &payment_method, &store_id).map_err(|e| e.to_string())
+    db.settle_order_payment(&order_id, amount, &payment_method, &store_id)
+        .map_err(|e| e.to_string())
 }
 
 // ─── Order Notes Commands ─────────────────────────────────────────────────────
 
 #[tauri::command]
-fn add_order_note(#[allow(non_snake_case)] orderId: String, note: String, #[allow(non_snake_case)] storeId: String) -> Result<(), String> {
+fn add_order_note(
+    #[allow(non_snake_case)] orderId: String,
+    note: String,
+    #[allow(non_snake_case)] storeId: String,
+) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.add_order_note(&orderId, &note, &storeId)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_order_notes(#[allow(non_snake_case)] orderId: String, #[allow(non_snake_case)] storeId: String) -> Result<Vec<db::OrderNote>, String> {
+fn get_order_notes(
+    #[allow(non_snake_case)] orderId: String,
+    #[allow(non_snake_case)] storeId: String,
+) -> Result<Vec<db::OrderNote>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.get_order_notes(&orderId, &storeId)
         .map_err(|e| e.to_string())

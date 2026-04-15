@@ -33,7 +33,10 @@ class RateLimiter {
     return false;
   }
 
-  recordAttempt(key: string, success: boolean = false): { allowed: boolean; remainingAttempts: number; blockedUntil?: number } {
+  recordAttempt(
+    key: string,
+    success: boolean = false,
+  ): { allowed: boolean; remainingAttempts: number; blockedUntil?: number } {
     const now = Date.now();
     let entry = this.attempts.get(key);
 
@@ -64,13 +67,13 @@ class RateLimiter {
       return {
         allowed: false,
         remainingAttempts: 0,
-        blockedUntil: entry.blockedUntil
+        blockedUntil: entry.blockedUntil,
       };
     }
 
     return {
       allowed: true,
-      remainingAttempts: this.maxAttempts - entry.attempts
+      remainingAttempts: this.maxAttempts - entry.attempts,
     };
   }
 
@@ -91,13 +94,13 @@ class RateLimiter {
     const now = Date.now();
     const toDelete: string[] = [];
 
-    for (const [key, entry] of this.attempts.entries()) {
+    for (const [key, entry] of Array.from(this.attempts.entries())) {
       if (now - entry.lastAttempt > this.windowMs * 2) {
         toDelete.push(key);
       }
     }
 
-    toDelete.forEach(key => this.attempts.delete(key));
+    toDelete.forEach((key) => this.attempts.delete(key));
   }
 }
 
@@ -105,6 +108,9 @@ class RateLimiter {
 export const authRateLimiter = new RateLimiter();
 
 // Clean up old entries every hour
-setInterval(() => {
-  authRateLimiter.cleanup();
-}, 60 * 60 * 1000);
+setInterval(
+  () => {
+    authRateLimiter.cleanup();
+  },
+  60 * 60 * 1000,
+);

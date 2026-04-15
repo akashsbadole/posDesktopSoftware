@@ -4,10 +4,12 @@ const APP_URL = 'http://localhost:3000';
 
 test.describe('Authentication - Login and Registration', () => {
   test.beforeEach(async ({ page }) => {
-    // Clear localStorage before each test to ensure clean state
+    // Mock Tauri environment and clear localStorage before each test
+    await page.addInitScript(() => {
+      (window as any).__TAURI__ = {};
+      localStorage.clear();
+    });
     await page.goto(APP_URL, { timeout: 60000 });
-    await page.evaluate(() => localStorage.clear());
-    await page.reload();
   });
 
   test('should register a new organization successfully', async ({ page }) => {
@@ -23,8 +25,20 @@ test.describe('Authentication - Login and Registration', () => {
     // Submit registration
     await page.click('button:has-text("Create Account")');
 
-    // Should transition to PIN view
-    await page.waitForSelector('#pin-input', { timeout: 15000 });
+    // Wait for transition (longer wait)
+    await page.waitForTimeout(5000);
+
+    // Check if we're on PIN view by checking for the PIN input
+    try {
+      await page.waitForSelector('#pin-input', { timeout: 5000 });
+    } catch {
+      // Check if there's an error message
+      const errorMsg = await page.locator('text=Registration failed').isVisible().catch(() => false);
+      if (errorMsg) {
+        throw new Error('Registration failed with error message');
+      }
+      throw new Error('Registration completed but PIN view not shown');
+    }
 
     // Verify we're on the PIN entry screen
     await expect(page.locator('h1')).toContainText('Welcome back!');
@@ -87,25 +101,20 @@ test.describe('Authentication - Login and Registration', () => {
       // Wait for next screen and fill in necessary fields
       await page.waitForTimeout(1500);
       
-      // Handle Store Identity step - fill in store name
-      // Force fill all text inputs on the page
-      const inputs = page.locator('input[type="text"]');
-      const inputCount = await inputs.count();
-      
-      for (let i = 0; i < inputCount; i++) {
-        const input = inputs.nth(i);
-        const isVisible = await input.isVisible();
-        if (isVisible) {
-          // Use fill to replace any existing value
-          if (i === 0) {
-            await input.fill('Test Store');
-          } else if (i === 1) {
-            await input.fill('123 Test Street');
-          } else if (i === 2) {
-            await input.fill('+1 123 456 789');
-          }
-        }
-      }
+      // Handle Store Identity step - fill in store name using evaluate
+      // to bypass React's controlled input issues
+      await page.evaluate(() => {
+        const inputs = document.querySelectorAll('input[type="text"]') as unknown as HTMLInputElement[];
+        if (inputs[0]) inputs[0].value = 'Test Store';
+        if (inputs[1]) inputs[1].value = '123 Test Street';
+        if (inputs[2]) inputs[2].value = '+1 123 456 789';
+        
+        // Dispatch input events to notify React
+        inputs.forEach((input: HTMLInputElement) => {
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+      });
       
       // Wait a moment for the form to recognize the changes
       await page.waitForTimeout(500);

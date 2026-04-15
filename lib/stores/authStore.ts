@@ -10,10 +10,12 @@ import {
   dbForgotPassword,
   dbResetPassword,
   dbForgotUser,
+  loginWithPinOffline,
   setOrganizationId,
 } from "@/lib/db";
 import { authRateLimiter } from "@/lib/rateLimiter";
 import { authLogger } from "@/lib/logger";
+import { isOfflineMode } from "@/lib/utils/offline";
 import { useSettingsStore } from "./settingsStore";
 
 interface AuthState {
@@ -23,9 +25,17 @@ interface AuthState {
   sessionStart: string | null;
   login: (pin: string) => Promise<boolean>;
   loginWithCredentials: (email: string, pass: string) => Promise<boolean>;
+  loginWithPinOffline: (
+    pin: string,
+    organizationId: string,
+  ) => Promise<boolean>;
   register: (orgName: string, email: string, pass: string) => Promise<boolean>;
   forgotPassword: (email: string) => Promise<boolean>;
-  resetPassword: (email: string, code: string, pass: string) => Promise<boolean>;
+  resetPassword: (
+    email: string,
+    code: string,
+    pass: string,
+  ) => Promise<boolean>;
   forgotUser: (email: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -46,21 +56,32 @@ export const useAuthStore = create<AuthState>()(
 
         // Check rate limiting
         const rateLimitKey = `pin_${orgId}`;
-        const rateLimitResult = authRateLimiter.recordAttempt(rateLimitKey, false);
+        const rateLimitResult = authRateLimiter.recordAttempt(
+          rateLimitKey,
+          false,
+        );
 
         if (!rateLimitResult.allowed) {
           authLogger.warn("PIN login blocked due to rate limiting", {
             orgId,
             blockedUntil: rateLimitResult.blockedUntil,
-            remainingTime: authRateLimiter.getRemainingTime(rateLimitKey)
+            remainingTime: authRateLimiter.getRemainingTime(rateLimitKey),
           });
           return false;
         }
 
         try {
-          console.log("[authStore.login] Calling verifyPin with pin:", pin, "orgId:", orgId);
+          console.log(
+            "[authStore.login] Calling verifyPin with pin:",
+            pin,
+            "orgId:",
+            orgId,
+          );
           const user = await verifyPin(pin, orgId);
-          console.log("[authStore.login] verifyPin returned:", user ? "user found" : "null");
+          console.log(
+            "[authStore.login] verifyPin returned:",
+            user ? "user found" : "null",
+          );
           if (user) {
             // Successful login - reset rate limiter
             authRateLimiter.recordAttempt(rateLimitKey, true);
@@ -79,14 +100,14 @@ export const useAuthStore = create<AuthState>()(
             authLogger.info("User logged in successfully", {
               userId: user.id,
               role: user.role,
-              orgId
+              orgId,
             });
 
             return true;
           } else {
             authLogger.warn("Invalid PIN attempt", {
               orgId,
-              remainingAttempts: rateLimitResult.remainingAttempts
+              remainingAttempts: rateLimitResult.remainingAttempts,
             });
             return false;
           }
@@ -96,9 +117,15 @@ export const useAuthStore = create<AuthState>()(
         }
       },
       loginWithCredentials: async (email: string, pass: string) => {
-        console.log("[authStore.loginWithCredentials] Calling dbLogin with email:", email);
+        console.log(
+          "[authStore.loginWithCredentials] Calling dbLogin with email:",
+          email,
+        );
         const res = await dbLogin(email, pass);
-        console.log("[authStore.loginWithCredentials] dbLogin returned:", res ? "data" : "null");
+        console.log(
+          "[authStore.loginWithCredentials] dbLogin returned:",
+          res ? "data" : "null",
+        );
         if (res) {
           setOrganizationId(res.organization.id);
           if (res.user.store_id) {
@@ -112,6 +139,71 @@ export const useAuthStore = create<AuthState>()(
           return true;
         }
         return false;
+      },
+      loginWithPinOffline: async (pin: string, organizationId: string) => {
+        console.log(
+          "[authStore.loginWithPinOffline] Attempting offline PIN login with orgId:",
+          organizationId,
+        );
+
+        // Only available in offline mode
+        if (!isOfflineMode()) {
+          authLogger.warn("PIN-only login only available in offline mode");
+          return false;
+        }
+
+        // Check rate limiting
+        const rateLimitKey = `pin_offline_${organizationId}`;
+        const rateLimitResult = authRateLimiter.recordAttempt(
+          rateLimitKey,
+          false,
+        );
+
+        if (!rateLimitResult.allowed) {
+          authLogger.warn("PIN login blocked due to rate limiting", {
+            organizationId,
+            blockedUntil: rateLimitResult.blockedUntil,
+            remainingTime: authRateLimiter.getRemainingTime(rateLimitKey),
+          });
+          return false;
+        }
+
+        try {
+          const res = await loginWithPinOffline(pin, organizationId);
+          if (res) {
+            // Successful login - reset rate limiter
+            authRateLimiter.recordAttempt(rateLimitKey, true);
+
+            // Set active store from user
+            if (res.user.store_id) {
+              useSettingsStore.getState().setActiveStore(res.user.store_id);
+            }
+
+            set({
+              user: res.user,
+              organization: res.organization,
+              isAuthenticated: true,
+              sessionStart: new Date().toISOString(),
+            });
+
+            authLogger.info("User logged in via offline PIN", {
+              userId: res.user.id,
+              role: res.user.role,
+              organizationId,
+            });
+
+            return true;
+          } else {
+            authLogger.warn("Invalid PIN attempt", {
+              organizationId,
+              remainingAttempts: rateLimitResult.remainingAttempts,
+            });
+            return false;
+          }
+        } catch (error) {
+          authLogger.error("Offline PIN login failed", error);
+          return false;
+        }
       },
       register: async (orgName: string, email: string, pass: string) => {
         const res = await dbRegister(orgName, email, pass);
@@ -148,6 +240,6 @@ export const useAuthStore = create<AuthState>()(
         });
       },
     }),
-    { name: "pos-auth-v2" }
-  )
+    { name: "pos-auth-v2" },
+  ),
 );

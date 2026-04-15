@@ -922,6 +922,56 @@ export default function SettingsScreen() {
           )}
         </div>
 
+        {/* Language & Region */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <span style={{ color: "#F5C842" }}>🌐</span>
+            <h2 className="font-semibold">Language</h2>
+          </div>
+          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
+            Choose your preferred language for the POS interface.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { code: "en", name: "English" },
+              { code: "hi", name: "हिंदी (Hindi)" },
+              { code: "mr", name: "मराठी (Marathi)" },
+              { code: "te", name: "తెలుగు (Telugu)" },
+              { code: "ta", name: "தமிழ் (Tamil)" },
+              { code: "gu", name: "ગુજરાતી (Gujarati)" },
+            ].map((lang) => (
+              <button
+                key={lang.code}
+                onClick={() => {
+                  updateLocal("language", lang.code);
+                  if (typeof window !== "undefined") {
+                    localStorage.setItem("pos_language", lang.code);
+                    window.location.reload();
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-3 rounded-lg border transition-all text-left"
+                style={{
+                  background: localSettings.language === lang.code 
+                    ? "rgba(245,200,66,0.15)" 
+                    : "transparent",
+                  borderColor: localSettings.language === lang.code 
+                    ? "#F5C842" 
+                    : "#1E1E26",
+                  color: localSettings.language === lang.code 
+                    ? "#F5C842" 
+                    : "#9090A8",
+                }}
+              >
+                <span className="text-sm">{lang.code === "en" ? "🇺🇸" : "🇮🇳"}</span>
+                <span className="text-xs font-medium">{lang.name}</span>
+                {localSettings.language === lang.code && (
+                  <Check size={14} className="ml-auto" style={{ color: "#F5C842" }} />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Receipt Customization */}
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">

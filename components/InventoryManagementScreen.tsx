@@ -156,9 +156,9 @@ export default function InventoryManagementScreen() {
                     </select>
                   </div>
                 </div>
-                <div className="text-2xl font-bold text-[#F5C842]">
-                  {curr}{valuation[valuationMethod].toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </div>
+                 <div className="text-2xl font-bold text-[#F5C842]">
+                   {curr}{(valuation[valuationMethod] || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                 </div>
               </div>
 
               <div className="bg-surface border border-border p-5 rounded-2xl">

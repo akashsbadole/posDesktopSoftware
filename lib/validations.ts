@@ -1,24 +1,28 @@
 // lib/validations.ts
 // Comprehensive input validation schemas using Zod
 
-import { z } from 'zod';
+import { z } from "zod";
 
 // Basic string validations
 export const nonEmptyString = z.string().min(1, "This field is required");
 export const emailString = z.string().email("Invalid email format");
-export const phoneString = z.string().regex(/^\+?[\d\s\-\(\)]+$/, "Invalid phone number format");
+export const phoneString = z
+  .string()
+  .regex(/^\+?[\d\s\-\(\)]+$/, "Invalid phone number format");
 
 // Numeric validations
 export const positiveNumber = z.number().positive("Must be a positive number");
 export const nonNegativeNumber = z.number().min(0, "Cannot be negative");
 
 // Common field patterns
-export const nameString = z.string()
+export const nameString = z
+  .string()
   .min(2, "Name must be at least 2 characters")
   .max(100, "Name cannot exceed 100 characters")
   .regex(/^[a-zA-Z\s\-'\.]+$/, "Name contains invalid characters");
 
-export const descriptionString = z.string()
+export const descriptionString = z
+  .string()
   .max(1000, "Description cannot exceed 1000 characters")
   .optional();
 
@@ -78,7 +82,9 @@ export const orderSchema = z.object({
   customer_name: z.string().optional(),
   status: z.enum(["pending", "completed", "cancelled", "refunded"]),
   order_type: z.enum(["dine_in", "takeaway", "delivery"]),
-  delivery_status: z.enum(["pending", "preparing", "ready", "delivered", "cancelled"]).optional(),
+  delivery_status: z
+    .enum(["pending", "preparing", "ready", "delivered", "cancelled"])
+    .optional(),
   delivery_address: z.string().optional(),
   delivery_phone: z.string().optional(),
   notes: z.string().optional(),
@@ -118,7 +124,8 @@ export const customerAddressSchema = z.object({
 export const userSchema = z.object({
   id: z.string().optional(),
   name: nameString,
-  pin: z.string()
+  pin: z
+    .string()
     .min(4, "PIN must be at least 4 digits")
     .max(8, "PIN cannot exceed 8 digits")
     .regex(/^\d+$/, "PIN must contain only numbers"),
@@ -148,7 +155,14 @@ export const staffSalarySchema = z.object({
 export const storeSchema = z.object({
   id: z.string().optional(),
   name: nameString,
-  industry: z.enum(["food", "retail", "pharmacy", "gift_shop", "salon_spa", "repair_shop"]),
+  industry: z.enum([
+    "food",
+    "retail",
+    "pharmacy",
+    "gift_shop",
+    "salon_spa",
+    "repair_shop",
+  ]),
   is_active: z.boolean(),
 });
 
@@ -189,23 +203,24 @@ export const settingsSchema = z.object({
 // Authentication validation schemas
 export const loginSchema = z.object({
   email: emailString,
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-export const registerSchema = z.object({
-  organization_name: nameString,
-  email: emailString,
-  password: z.string()
-    .min(8, "Password must be at least 8 characters")
-    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, "Password must contain uppercase, lowercase, and number"),
-  confirm_password: z.string(),
-}).refine((data) => data.password === data.confirm_password, {
-  message: "Passwords don't match",
-  path: ["confirm_password"],
-});
+export const registerSchema = z
+  .object({
+    organization_name: nameString,
+    email: emailString,
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    confirm_password: z.string(),
+  })
+  .refine((data) => data.password === data.confirm_password, {
+    message: "Passwords don't match",
+    path: ["confirm_password"],
+  });
 
 export const pinSchema = z.object({
-  pin: z.string()
+  pin: z
+    .string()
     .length(4, "PIN must be exactly 4 digits")
     .regex(/^\d{4}$/, "PIN must be 4 digits"),
 });
@@ -213,10 +228,14 @@ export const pinSchema = z.object({
 // Coupon validation schemas
 export const couponSchema = z.object({
   id: z.string().optional(),
-  code: z.string()
+  code: z
+    .string()
     .min(3, "Coupon code must be at least 3 characters")
     .max(20, "Coupon code cannot exceed 20 characters")
-    .regex(/^[A-Z0-9\-_]+$/, "Coupon code can only contain uppercase letters, numbers, hyphens, and underscores"),
+    .regex(
+      /^[A-Z0-9\-_]+$/,
+      "Coupon code can only contain uppercase letters, numbers, hyphens, and underscores",
+    ),
   discount_type: z.enum(["percentage", "fixed"]),
   discount_value: positiveNumber,
   min_order_amount: nonNegativeNumber,
@@ -289,7 +308,10 @@ export type SupplierFormData = z.infer<typeof supplierSchema>;
 export type PurchaseOrderFormData = z.infer<typeof purchaseOrderSchema>;
 
 // Validation helper functions
-export function validateData<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; errors: z.ZodError } {
+export function validateData<T>(
+  schema: z.ZodSchema<T>,
+  data: unknown,
+): { success: true; data: T } | { success: false; errors: z.ZodError } {
   const result = schema.safeParse(data);
   if (result.success) {
     return { success: true, data: result.data };
@@ -301,7 +323,7 @@ export function validateData<T>(schema: z.ZodSchema<T>, data: unknown): { succes
 export function getValidationErrors(error: z.ZodError): Record<string, string> {
   const errors: Record<string, string> = {};
   error.issues.forEach((err) => {
-    const path = err.path.join('.');
+    const path = err.path.join(".");
     errors[path] = err.message;
   });
   return errors;

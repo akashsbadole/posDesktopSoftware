@@ -382,6 +382,12 @@ pub struct Organization {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LoginResult {
+    pub user: User,
+    pub organization: Organization,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Table {
     pub id: String,
     pub store_id: String,
@@ -870,6 +876,18 @@ impl Database {
             self.set_version(9)?;
         }
 
+        // Migration to ensure organization_id exists in users table
+        if current < 10 {
+            self.migration_v10()?;
+            self.set_version(10)?;
+        }
+
+        // Migration to add missing columns: email and password_hash to users table
+        if current < 11 {
+            self.migration_v11()?;
+            self.set_version(11)?;
+        }
+
         Ok(())
     }
 
@@ -1337,6 +1355,59 @@ impl Database {
             "UPDATE users SET password_hash = ?1, email = 'cashier@example.com', organization_id = 'default' WHERE id = 'cashier' AND (password_hash IS NULL OR password_hash = '')",
             params![cashier_pass],
         );
+        Ok(())
+    }
+
+    fn migration_v10(&self) -> Result<()> {
+        // Ensure organizations table exists
+        let _ = self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS organizations (
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                email       TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'trial',
+                created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+        );
+
+        // Add organization_id column to users table if it doesn't exist
+        let _ = self
+            .conn
+            .execute("ALTER TABLE users ADD COLUMN organization_id TEXT", []);
+
+        // Ensure default organization exists
+        let now = chrono::Utc::now().to_rfc3339();
+        let _ = self.conn.execute(
+            "INSERT OR IGNORE INTO organizations (id, name, email, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params!["default", "Default Organization", "admin@example.com", "trial", now],
+        );
+
+        // Update any existing users without organization_id
+        let _ = self.conn.execute(
+            "UPDATE users SET organization_id = 'default' WHERE organization_id IS NULL",
+            [],
+        );
+
+        Ok(())
+    }
+
+    fn migration_v11(&self) -> Result<()> {
+        // Add email column to users table if it doesn't exist
+        let _ = self
+            .conn
+            .execute("ALTER TABLE users ADD COLUMN email TEXT", []);
+
+        // Add password_hash column to users table if it doesn't exist
+        let _ = self
+            .conn
+            .execute("ALTER TABLE users ADD COLUMN password_hash TEXT", []);
+
+        // Set default email for existing users without email
+        let _ = self.conn.execute(
+            "UPDATE users SET email = 'user_' || id || '@pos.local' WHERE email IS NULL OR email = ''",
+            [],
+        );
+
         Ok(())
     }
 
@@ -4390,12 +4461,7 @@ impl Database {
         Ok(users)
     }
 
-    pub fn register(
-        &self,
-        org_name: &str,
-        email: &str,
-        password: &str,
-    ) -> Result<(User, Organization)> {
+    pub fn register(&self, org_name: &str, email: &str, password: &str) -> Result<LoginResult> {
         let org_id = uuid::Uuid::new_v4().to_string();
         let user_id = uuid::Uuid::new_v4().to_string();
         let store_id = uuid::Uuid::new_v4().to_string();
@@ -4446,10 +4512,10 @@ impl Database {
             created_at: now,
         };
 
-        Ok((user, organization))
+        Ok(LoginResult { user, organization })
     }
 
-    pub fn login(&self, email: &str, password: &str) -> Result<Option<(User, Organization)>> {
+    pub fn login(&self, email: &str, password: &str) -> Result<Option<LoginResult>> {
         let mut stmt = self.conn.prepare(
             "SELECT u.id, u.organization_id, u.name, u.email, u.role, u.store_id, u.password_hash, o.id, o.name, o.email, o.status, o.created_at
              FROM users u
@@ -4486,7 +4552,7 @@ impl Database {
                 if let Some(h) = hashed_password {
                     if let Ok(verified) = bcrypt::verify(password, &h) {
                         if verified {
-                            return Ok(Some((user, organization)));
+                            return Ok(Some(LoginResult { user, organization }));
                         }
                     }
                 }

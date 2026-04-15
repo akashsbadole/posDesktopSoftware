@@ -108,7 +108,8 @@ export default function PremiumUpgradeModal({ isOpen, onClose, featureName }: Pr
                 <button
                   onClick={() =>
                     window.open(
-                      "mailto:info@appixen.com?subject=Premium Features Upgrade",
+                      "http://appixen.com/",
+                      "_blank"
                     )
                   }
                   className="w-full sm:w-auto px-10 py-4 bg-[#F5C842] text-[#0D0D0F] font-black rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_rgba(245,200,66,0.2)]"

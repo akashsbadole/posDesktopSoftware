@@ -34,6 +34,7 @@ import InventoryManagementScreen from "@/components/InventoryManagementScreen";
 import SupportScreen from "@/components/SupportScreen";
 import StoresScreen from "@/components/StoresScreen";
 import OnboardingModal from "@/components/OnboardingModal";
+import CloudOfflineIntegration from "@/components/CloudOfflineIntegration";
 import { dbGetPendingOrdersCount, setOrganizationId } from "@/lib/db";
 import { useAuthStore, useSettingsStore } from "@/lib/stores";
 import { PREMIUM_SCREENS } from "@/lib/constants";
@@ -109,27 +110,44 @@ export default function Home() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const { user, organization, isAuthenticated, logout } = useAuthStore();
-  const { activeStoreId, settings, fetchSettings, premiumEnabled, setLastSyncTime, setIsSyncing } = useSettingsStore();
+  const {
+    activeStoreId,
+    settings,
+    fetchSettings,
+    premiumEnabled,
+    setLastSyncTime,
+    setIsSyncing,
+  } = useSettingsStore();
 
   useEffect(() => {
     if (isAuthenticated && premiumEnabled && settings?.neon_url) {
-      const syncInterval = setInterval(async () => {
-        try {
-          const { syncToNeon, syncFromNeon } = await import("@/lib/db");
-          setIsSyncing(true);
-          await syncToNeon(activeStoreId);
-          await syncFromNeon(activeStoreId);
-          setLastSyncTime(new Date().toLocaleTimeString());
-          setIsSyncing(false);
-        } catch (err) {
-          setIsSyncing(false);
-          console.error("[Sync] Automatic sync failed:", err);
-        }
-      }, 5 * 60 * 1000); // 5 minutes
+      const syncInterval = setInterval(
+        async () => {
+          try {
+            const { syncToNeon, syncFromNeon } = await import("@/lib/db");
+            setIsSyncing(true);
+            await syncToNeon(activeStoreId);
+            await syncFromNeon(activeStoreId);
+            setLastSyncTime(new Date().toLocaleTimeString());
+            setIsSyncing(false);
+          } catch (err) {
+            setIsSyncing(false);
+            console.error("[Sync] Automatic sync failed:", err);
+          }
+        },
+        5 * 60 * 1000,
+      ); // 5 minutes
 
       return () => clearInterval(syncInterval);
     }
-  }, [isAuthenticated, premiumEnabled, settings?.neon_url, activeStoreId, setLastSyncTime, setIsSyncing]);
+  }, [
+    isAuthenticated,
+    premiumEnabled,
+    settings?.neon_url,
+    activeStoreId,
+    setLastSyncTime,
+    setIsSyncing,
+  ]);
 
   useEffect(() => {
     setMounted(true);
@@ -243,9 +261,17 @@ export default function Home() {
     return <LoginScreen />;
   }
 
-  if (settings && (!settings.onboarding_completed || !settings.license_agreed) && user?.role === "admin") {
+  if (
+    settings &&
+    (!settings.onboarding_completed || !settings.license_agreed) &&
+    user?.role === "admin"
+  ) {
     return <OnboardingModal />;
   }
+
+  // Initialize cloud sync service
+  const cloudIntegration =
+    isAuthenticated && organization ? <CloudOfflineIntegration /> : null;
 
   if (isAdminScreen && !isAdmin) {
     return (
@@ -289,6 +315,7 @@ export default function Home() {
 
   return (
     <ErrorBoundary>
+      {cloudIntegration}
       <div
         className="flex flex-col h-screen overflow-hidden bg-bg"
         role="application"

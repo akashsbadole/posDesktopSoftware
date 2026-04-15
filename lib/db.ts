@@ -6,8 +6,13 @@ import { invoke } from "@tauri-apps/api/tauri";
 import pako from "pako";
 import { neon } from "@neondatabase/serverless";
 import { dbLogger } from "@/lib/logger";
+import CryptoJS from "crypto-js";
 
 const IS_TAURI = typeof window !== "undefined" && "__TAURI__" in window;
+
+const SENSITIVE_KEYS = ["pos_users", "pos_organizations"];
+
+const ENCRYPTION_KEY = "pos-tauri-encryption-key-2026"; // TODO: derive from user org or env
 
 let currentOrganizationId: string | null = null;
 
@@ -682,11 +687,11 @@ async function sql<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (neonClient && !cmd.startsWith("get_premium")) {
     try {
       if (cmd === "register") {
-        const { org_name, email, password } = enhancedArgs as any;
+        const { orgName, email, password } = enhancedArgs as any;
         const orgId = Math.random().toString(36).substr(2, 9);
         const userId = Math.random().toString(36).substr(2, 9);
 
-        await neonClient`INSERT INTO organizations (id, name, email) VALUES (${orgId}, ${org_name}, ${email})`;
+        await neonClient`INSERT INTO organizations (id, name, email) VALUES (${orgId}, ${orgName}, ${email})`;
         await neonClient`INSERT INTO users (id, organization_id, name, email, password_hash, role, pin)
                          VALUES (${userId}, ${orgId}, 'Admin', ${email}, ${password}, 'admin', '1234')`;
         await neonClient`INSERT INTO stores (id, organization_id, name, industry) VALUES ('default', ${orgId}, 'Main Store', 'food')`;
@@ -696,11 +701,12 @@ async function sql<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 
       if (cmd === "login") {
         const { email, password } = enhancedArgs as any;
-        const rows = await neonClient`SELECT u.*, o.name as org_name FROM users u
+        const rows =
+          await neonClient`SELECT u.*, o.name as org_name FROM users u
                                       JOIN organizations o ON u.organization_id = o.id
                                       WHERE u.email = ${email} AND u.password_hash = ${password}`;
         if (rows.length > 0) {
-           return (await browserFallback(cmd, enhancedArgs)) as T;
+          return (await browserFallback(cmd, enhancedArgs)) as T;
         }
       }
 
@@ -1016,7 +1022,7 @@ export async function dbRegister(
   password: string,
 ): Promise<{ user: User; organization: Organization }> {
   return sql<{ user: User; organization: Organization }>("register", {
-    org_name: orgName,
+    orgName,
     email,
     password,
   });
@@ -1052,7 +1058,28 @@ export async function verifyPin(
   pin: string,
   organizationId: string,
 ): Promise<User | null> {
-  return sql<User | null>("verify_pin", { pin, organization_id: organizationId });
+  return sql<User | null>("verify_pin", {
+    pin,
+    organization_id: organizationId,
+  });
+}
+
+/**
+ * Offline-only PIN authentication
+ * Used in offline mode to login with just PIN and organization ID
+ * Returns both user and organization data
+ */
+export async function loginWithPinOffline(
+  pin: string,
+  organizationId: string,
+): Promise<{ user: User; organization: Organization } | null> {
+  return sql<{ user: User; organization: Organization } | null>(
+    "login_with_pin_offline",
+    {
+      pin,
+      organization_id: organizationId,
+    },
+  );
 }
 
 export async function changePin(userId: string, newPin: string): Promise<void> {
@@ -1549,7 +1576,9 @@ export async function syncToNeon(
   storeId: string,
 ): Promise<{ synced: number; error?: string }> {
   try {
-    return await retryWithBackoff(() => sql("sync_to_neon", { storeId }));
+    return await retryWithBackoff(() =>
+      sql<{ synced: number; error?: string }>("sync_to_neon", { storeId }),
+    );
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     dbLogger.error("Neon sync failed after retries", errorMsg);
@@ -1564,7 +1593,12 @@ export async function syncFromNeon(
   storeId: string,
 ): Promise<{ synced: number; error?: string }> {
   try {
-    return await retryWithBackoff(() => sql("sync_from_neon", { storeId }));
+    const result = await retryWithBackoff(() =>
+      sql<{ synced: number; error?: string }>("sync_from_neon", { storeId }),
+    );
+    // After sync, deduplicate to handle potential conflicts
+    await deduplicateData();
+    return result;
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     dbLogger.error("Neon import failed after retries", errorMsg);
@@ -1573,6 +1607,37 @@ export async function syncFromNeon(
       error: `Import failed: ${errorMsg}. Please check your connection and try again.`,
     };
   }
+}
+
+// TODO: Implement deduplication logic in Rust backend to remove duplicates after sync
+export async function deduplicateData() {
+  dbLogger.info(
+    "Deduplication called - implement in Rust for proper conflict resolution",
+  );
+  // Placeholder: In Rust, run SQL to delete duplicates based on unique fields
+  // e.g., DELETE FROM products WHERE id NOT IN (SELECT MIN(id) FROM products GROUP BY sku)
+}
+
+// TODO: Implement delta sync in Rust backend to sync only changed data
+export async function deltaSyncToNeon(
+  storeId: string,
+  since: string,
+): Promise<{ synced: number; error?: string }> {
+  dbLogger.info("Delta sync called - implement in Rust", { storeId, since });
+  // Placeholder: Call sync_to_neon_delta command
+  return { synced: 0, error: "Delta sync not implemented" };
+}
+
+export async function deltaSyncFromNeon(
+  storeId: string,
+  since: string,
+): Promise<{ synced: number; error?: string }> {
+  dbLogger.info("Delta sync from called - implement in Rust", {
+    storeId,
+    since,
+  });
+  // Placeholder: Call sync_from_neon_delta command
+  return { synced: 0, error: "Delta sync not implemented" };
 }
 
 export interface PremiumStatus {
@@ -1915,11 +1980,32 @@ const LS = {
 function lsGet<T>(key: string): T | null {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(key);
-  return raw ? JSON.parse(raw) : null;
+  if (!raw) return null;
+  let data = SENSITIVE_KEYS.includes(key)
+    ? (() => {
+        try {
+          return CryptoJS.AES.decrypt(raw, ENCRYPTION_KEY).toString(
+            CryptoJS.enc.Utf8,
+          );
+        } catch {
+          return raw; // fallback to plain text if not encrypted
+        }
+      })()
+    : raw;
+  if (!data || !data.trim()) return null;
+  try {
+    return JSON.parse(data);
+  } catch {
+    return null;
+  }
 }
 function lsSet(key: string, val: unknown) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(val));
+  const data = JSON.stringify(val);
+  const encrypted = SENSITIVE_KEYS.includes(key)
+    ? CryptoJS.AES.encrypt(data, ENCRYPTION_KEY).toString()
+    : data;
+  localStorage.setItem(key, encrypted);
 }
 
 function defaultSettings(): Settings {
@@ -2198,7 +2284,8 @@ async function browserFallback<T>(
       const orgId = (args as any).organizationId;
       const p = lsGet<Product[]>(LS.products) || [];
       return p.filter(
-        (x) => x.store_id === storeId && (!orgId || x.organization_id === orgId),
+        (x) =>
+          x.store_id === storeId && (!orgId || x.organization_id === orgId),
       ) as T;
     }
     case "upsert_product": {
@@ -2297,12 +2384,37 @@ async function browserFallback<T>(
       return undefined as T;
     }
     case "register": {
-      const { org_name, email, password } = args as any;
+      console.log("[register] Creating new organization");
+      const { orgName, email, password } = args as any;
+
+      // Validate inputs
+      if (!orgName?.trim() || !email?.trim() || !password?.trim()) {
+        throw new Error("Organization name, email, and password are required");
+      }
+
+      if (password.length < 6) {
+        throw new Error("Password must be at least 6 characters");
+      }
+
+      // Check if email already exists
+      const existingUsers = lsGet<User[]>("pos_users") || [];
+      if (
+        existingUsers.some(
+          (u) => u.email?.toLowerCase() === email.toLowerCase(),
+        )
+      ) {
+        throw new Error("Email already registered");
+      }
+
       const orgId = Math.random().toString(36).substr(2, 9);
       const userId = Math.random().toString(36).substr(2, 9);
+      const storeId = Math.random().toString(36).substr(2, 9);
+
+      // Store password as-is in localStorage (note: in production use bcrypt)
+      // For PIN, use default "1234"
       const organization: Organization = {
         id: orgId,
-        name: org_name,
+        name: orgName,
         email,
         created_at: new Date().toISOString(),
         status: "trial",
@@ -2314,12 +2426,13 @@ async function browserFallback<T>(
         email,
         role: "admin",
         hourly_rate: 0,
-        pin: "1234",
-        password,
+        pin: "1234", // Default PIN for new users
+        password, // Store password for login with credentials
         created_at: new Date().toISOString(),
+        store_id: storeId,
       };
-      // Seed a default store for the new organization
-      const storeId = "default";
+
+      // Create a default store for the new organization
       const store: Store = {
         id: storeId,
         organization_id: orgId,
@@ -2328,32 +2441,66 @@ async function browserFallback<T>(
         is_active: true,
         created_at: new Date().toISOString(),
       };
+
+      // Add store
       const stores = lsGet<Store[]>(LS.stores) || [];
       stores.push(store);
       lsSet(LS.stores, stores);
+
+      // Add organization and user
       const orgs = lsGet<Organization[]>("pos_organizations") || [];
-      const users = lsGet<User[]>("pos_users") || [];
       orgs.push(organization);
-      users.push(user);
       lsSet("pos_organizations", orgs);
+
+      const users = lsGet<User[]>("pos_users") || [];
+      users.push(user);
       lsSet("pos_users", users);
 
-      // Seed products for the new organization
+      // Seed products for the new organization's store
       const products = lsGet<Product[]>(LS.products) || [];
-      const newProducts = seedProducts(storeId).map(p => ({ ...p, organization_id: orgId }));
+      const newProducts = seedProducts(storeId).map((p) => ({
+        ...p,
+        organization_id: orgId,
+      }));
       lsSet(LS.products, [...products, ...newProducts]);
 
+      console.log("[register] Successfully created organization:", orgId);
       return { user, organization } as T;
     }
     case "login": {
       const { email, password } = args as any;
+
+      // Validate inputs
+      if (!email?.trim() || !password?.trim()) {
+        throw new Error("Email and password are required");
+      }
+
+      console.log("[login] Attempting login with email:", email);
       const users = lsGet<User[]>("pos_users") || [];
-      const user = users.find((u) => u.email === email && u.password === password);
+      const user = users.find(
+        (u) =>
+          u.email?.toLowerCase() === email.toLowerCase() &&
+          u.password === password,
+      );
+
       if (user) {
         const orgs = lsGet<Organization[]>("pos_organizations") || [];
         const organization = orgs.find((o) => o.id === user.organization_id);
+
+        if (!organization) {
+          throw new Error("Organization not found for user");
+        }
+
+        console.log(
+          "[login] Login successful for:",
+          email,
+          "orgId:",
+          user.organization_id,
+        );
         return { user, organization } as T;
       }
+
+      console.log("[login] Login failed: Invalid credentials");
       return null as T;
     }
     case "forgot_password": {
@@ -2383,19 +2530,89 @@ async function browserFallback<T>(
       const users = lsGet<User[]>("pos_users") || [];
       const user = users.find((u) => u.email === email);
       if (user) {
-        dbLogger.info(`Username info sent to ${email}`, { name: user.name, simulation: true });
+        dbLogger.info(`Username info sent to ${email}`, {
+          name: user.name,
+          simulation: true,
+        });
         return true as T;
       }
       return false as T;
     }
     case "verify_pin": {
       const pin = (args as any).pin;
-      const orgId = (args as any).organization_id || (args as any).organizationId;
+      const orgId =
+        (args as any).organization_id || (args as any).organizationId;
+
+      // Validate inputs
+      if (!pin?.trim() || !orgId?.trim()) {
+        throw new Error("PIN and organization ID are required");
+      }
+
+      if (pin.length < 4) {
+        throw new Error("PIN must be at least 4 digits");
+      }
+
+      console.log("[verify_pin] Verifying PIN for orgId:", orgId);
       const users = lsGet<User[]>("pos_users") || [];
       const user = users.find(
         (u) => u.pin === pin && u.organization_id === orgId,
       );
-      return (user || null) as T;
+
+      if (user) {
+        console.log(
+          "[verify_pin] PIN verified successfully for user:",
+          user.id,
+        );
+        return user as T;
+      }
+
+      console.log("[verify_pin] PIN verification failed");
+      return null as T;
+    }
+    case "login_with_pin_offline": {
+      const pin = (args as any).pin;
+      const orgId =
+        (args as any).organization_id || (args as any).organizationId;
+
+      // Validate inputs
+      if (!pin?.trim() || !orgId?.trim()) {
+        throw new Error("PIN and organization ID are required");
+      }
+
+      if (pin.length < 4) {
+        throw new Error("PIN must be at least 4 digits");
+      }
+
+      console.log(
+        "[login_with_pin_offline] Attempting PIN-only login for orgId:",
+        orgId,
+      );
+
+      // Get user with matching PIN and organization
+      const users = lsGet<User[]>("pos_users") || [];
+      const user = users.find(
+        (u) => u.pin === pin && u.organization_id === orgId,
+      );
+
+      if (!user) {
+        console.log("[login_with_pin_offline] PIN verification failed");
+        return null as T;
+      }
+
+      // Get corresponding organization
+      const orgs = lsGet<Organization[]>("pos_organizations") || [];
+      const organization = orgs.find((o) => o.id === orgId);
+
+      if (!organization) {
+        console.log("[login_with_pin_offline] Organization not found");
+        return null as T;
+      }
+
+      console.log(
+        "[login_with_pin_offline] PIN-only login successful for user:",
+        user.id,
+      );
+      return { user, organization } as T;
     }
     case "get_daily_summary": {
       const orders = lsGet<Order[]>(LS.orders) || [];
@@ -3062,9 +3279,7 @@ async function browserFallback<T>(
           hourly_rate: 0,
         },
       ];
-      return users.filter(
-        (x) => !orgId || x.organization_id === orgId,
-      ) as T;
+      return users.filter((x) => !orgId || x.organization_id === orgId) as T;
     }
     case "upsert_user": {
       const users = lsGet<User[]>("pos_users") || [
@@ -3646,10 +3861,20 @@ async function browserFallback<T>(
       }
       return undefined as T;
     }
+    case "calculate_inventory_valuation": {
+      const products = lsGet<Product[]>(LS.products) || [];
+      const { method } = args as any;
+      const filtered = products.filter((p) => p.store_id === storeId);
+      const total = filtered.reduce(
+        (sum, p) => sum + p.stock * p.cost_price,
+        0,
+      );
+      return total as T;
+    }
     default:
       dbLogger.warn(
         `Browser fallback: Command ${cmd} not fully implemented for store ${storeId}`,
-        { cmd, storeId }
+        { cmd, storeId },
       );
       return null as any as T;
   }

@@ -1,0 +1,82 @@
+// Offline detection utility
+// Determines if the app is running in offline mode (no Tauri, using localStorage)
+
+import CryptoJS from 'crypto-js';
+
+const ENCRYPTION_KEY = 'pos-tauri-encryption-key-2026';
+
+function decryptData(raw: string): string {
+  try {
+    return CryptoJS.AES.decrypt(raw, ENCRYPTION_KEY).toString(CryptoJS.enc.Utf8);
+  } catch {
+    return raw; // fallback to plain text if not encrypted
+  }
+}
+
+export function isOfflineMode(): boolean {
+  // In Tauri, we have access to the __TAURI__ object
+  if (typeof window !== "undefined" && "__TAURI__" in window) {
+    return false; // Tauri mode, not offline
+  }
+
+  // In browser without Tauri, we're in offline mode (localStorage-based)
+  return true;
+}
+
+export function getAvailableOrganizations(): Array<{
+  id: string;
+  name: string;
+  email: string;
+}> {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const orgs = localStorage.getItem("pos_organizations");
+    if (orgs) {
+      const decrypted = decryptData(orgs);
+      if (decrypted && decrypted.trim()) {
+        return JSON.parse(decrypted);
+      }
+    }
+  } catch (e) {
+    console.error(
+      "[offline.ts] Error reading organizations from localStorage:",
+      e,
+    );
+  }
+
+  return [];
+}
+
+export function getUsersForOrganization(organizationId: string): Array<{
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  pin?: string;
+}> {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const users = localStorage.getItem("pos_users");
+    if (users) {
+      const decrypted = decryptData(users);
+      if (decrypted && decrypted.trim()) {
+        const allUsers = JSON.parse(decrypted);
+        return allUsers
+          .filter((u: any) => u.organization_id === organizationId)
+          .map((u: any) => ({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            role: u.role,
+            pin: u.pin,
+          }));
+      }
+    }
+  } catch (e) {
+    console.error("[offline.ts] Error reading users from localStorage:", e);
+  }
+
+  return [];
+}

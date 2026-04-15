@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { I18nProvider } from "@/lib/i18n";
 export const metadata: Metadata = { 
   title: "POS Billing", 
   description: "POS Billing with SQLite + Neon",
@@ -10,13 +11,15 @@ export const viewport: Viewport = {
 };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="color-scheme" content="dark" />
       </head>
       <body>
-        <a href="#main-content" className="skip-link">Skip to main content</a>
-        {children}
+        <I18nProvider>
+          <a href="#main-content" className="skip-link">Skip to main content</a>
+          {children}
+        </I18nProvider>
       </body>
     </html>
   );

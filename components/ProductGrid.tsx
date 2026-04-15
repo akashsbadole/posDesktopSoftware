@@ -35,10 +35,11 @@ export default function ProductGrid({
   const productGridRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const filteredProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.barcode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.sku?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredProducts = products.filter(
+    (product) =>
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.barcode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.sku?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const getGridColumns = useCallback(() => {
@@ -50,12 +51,13 @@ export default function ProductGrid({
     return 5;
   }, []);
 
-  const totalItems = filteredProducts.length + (premiumEnabled ? combos.length : 0);
+  const totalItems =
+    filteredProducts.length + (premiumEnabled ? combos.length : 0);
 
   const getNewIndex = useGridNavigation(
     totalItems,
     setFocusedProductIndex,
-    getGridColumns()
+    getGridColumns(),
   );
 
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
@@ -98,7 +100,11 @@ export default function ProductGrid({
   const handleAddItem = async (product: Product) => {
     try {
       // Check if product has variants
-      if (product.metadata && typeof product.metadata === 'object' && 'variants' in product.metadata) {
+      if (
+        product.metadata &&
+        typeof product.metadata === "object" &&
+        "variants" in product.metadata
+      ) {
         if (onSelectVariant) {
           onSelectVariant(product);
           return;
@@ -106,12 +112,12 @@ export default function ProductGrid({
       }
 
       // Check if product requires batch selection
-      if (product.status === 'active' && onSelectBatch) {
+      if (product.status === "active" && onSelectBatch) {
         // This would need batch checking logic
       }
 
       // Check if product requires serial selection
-      if (product.status === 'active' && onSelectSerial) {
+      if (product.status === "active" && onSelectSerial) {
         // This would need serial checking logic
       }
 
@@ -132,7 +138,7 @@ export default function ProductGrid({
           <input
             ref={searchInputRef}
             type="text"
-            placeholder={`Search ${labels.products || 'products'}...`}
+            placeholder={`Search ${labels.products || "products"}...`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyDown={handleSearchKeyDown}
@@ -156,33 +162,34 @@ export default function ProductGrid({
           style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
         >
           {/* Combo Products */}
-          {premiumEnabled && combos.map((combo, index) => (
-            <div
-              key={`combo-${combo.id}`}
-              className={`relative p-3 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
-                focusedProductIndex === index && isGridFocused
-                  ? "ring-2 ring-blue-500 bg-blue-50"
-                  : "border-gray-200 hover:border-gray-300"
-              }`}
-              onClick={() => onAddCombo(combo)}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <Package className="w-4 h-4 text-purple-600" />
-                <span className="text-xs font-medium text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                  COMBO
-                </span>
+          {premiumEnabled &&
+            combos.map((combo, index) => (
+              <div
+                key={`combo-${combo.id}`}
+                className={`relative p-3 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
+                  focusedProductIndex === index && isGridFocused
+                    ? "ring-2 ring-blue-500 bg-blue-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+                onClick={() => onAddCombo(combo)}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <Package className="w-4 h-4 text-purple-600" />
+                  <span className="text-xs font-medium text-purple-600 bg-purple-100 px-2 py-1 rounded">
+                    COMBO
+                  </span>
+                </div>
+                <h3 className="font-medium text-sm text-gray-900 mb-1 line-clamp-2">
+                  {combo.name}
+                </h3>
+                <p className="text-lg font-bold text-gray-900">
+                  ₹{combo.combo_price.toFixed(2)}
+                </p>
+                <div className="text-xs text-gray-500 mt-1">
+                  {combo.items.length} items
+                </div>
               </div>
-              <h3 className="font-medium text-sm text-gray-900 mb-1 line-clamp-2">
-                {combo.name}
-              </h3>
-              <p className="text-lg font-bold text-gray-900">
-                ₹{combo.combo_price.toFixed(2)}
-              </p>
-              <div className="text-xs text-gray-500 mt-1">
-                {combo.items.length} items
-              </div>
-            </div>
-          ))}
+            ))}
 
           {/* Regular Products */}
           {filteredProducts.map((product, index) => {
@@ -208,7 +215,7 @@ export default function ProductGrid({
                       alt={product.name}
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.style.display = "none";
                       }}
                     />
                   </div>

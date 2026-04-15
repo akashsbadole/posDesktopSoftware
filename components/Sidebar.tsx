@@ -31,144 +31,145 @@ import { User } from "@/lib/db";
 import { useAuthStore, useSettingsStore, useStoresStore } from "@/lib/stores";
 import { getIndustryLabels } from "@/lib/industry";
 import PremiumUpgradeModal from "./PremiumUpgradeModal";
+import { useTranslation } from "@/lib/i18n";
 
 const allNavItems = [
-  { id: "pos" as Screen, label: "POS", icon: ShoppingCart, adminOnly: false, premium: false },
+  { id: "pos" as Screen, labelKey: "nav.pos", icon: ShoppingCart, adminOnly: false, premium: false },
   {
     id: "dashboard" as Screen,
-    label: "Dashboard",
+    labelKey: "nav.dashboard",
     icon: BarChart2,
     adminOnly: false,
     premium: false,
   },
   {
     id: "orders" as Screen,
-    label: "Orders",
+    labelKey: "nav.orders",
     icon: ClipboardList,
     adminOnly: false,
     premium: false,
   },
   {
     id: "products" as Screen,
-    label: "Products",
+    labelKey: "nav.products",
     icon: Package,
     adminOnly: false,
     premium: false,
   },
   {
     id: "tables" as Screen,
-    label: "Tables",
+    labelKey: "nav.tables",
     icon: UsersRound,
     adminOnly: false,
     premium: false,
   },
   {
     id: "reservations" as Screen,
-    label: "Bookings",
+    labelKey: "nav.bookings",
     icon: CalendarDays,
     adminOnly: false,
     premium: true,
   },
-  { id: "kds" as Screen, label: "Kitchen", icon: ChefHat, adminOnly: false, premium: false },
+  { id: "kds" as Screen, labelKey: "nav.kitchen", icon: ChefHat, adminOnly: false, premium: false },
   {
     id: "customers" as Screen,
-    label: "Customers",
+    labelKey: "nav.customers",
     icon: Users,
     adminOnly: false,
     premium: false,
   },
   {
     id: "expenses" as Screen,
-    label: "Expenses",
+    labelKey: "nav.expenses",
     icon: DollarSign,
     adminOnly: true,
     premium: true,
   },
   {
     id: "ingredients" as Screen,
-    label: "Ingredients",
+    labelKey: "nav.ingredients",
     icon: Wheat,
     adminOnly: true,
     premium: true,
   },
   {
     id: "suppliers" as Screen,
-    label: "Suppliers",
+    labelKey: "nav.suppliers",
     icon: Truck,
     adminOnly: true,
     premium: true,
   },
   {
     id: "purchase_orders" as Screen,
-    label: "PO",
+    labelKey: "nav.purchase_orders",
     icon: ClipboardList,
     adminOnly: true,
     premium: true,
   },
-  { id: "wallet" as Screen, label: "Wallet", icon: Wallet, adminOnly: true, premium: true },
-  { id: "coupons" as Screen, label: "Coupons", icon: Tag, adminOnly: true, premium: true },
+  { id: "wallet" as Screen, labelKey: "nav.wallet", icon: Wallet, adminOnly: true, premium: true },
+  { id: "coupons" as Screen, labelKey: "nav.coupons", icon: Tag, adminOnly: true, premium: true },
   {
     id: "inventory_alerts" as Screen,
-    label: "Alerts",
+    labelKey: "nav.alerts",
     icon: Bell,
     adminOnly: true,
     premium: true,
   },
   {
     id: "inventory" as Screen,
-    label: "Inventory",
+    labelKey: "nav.inventory",
     icon: ClipboardList,
     adminOnly: true,
     premium: true,
   },
   {
     id: "refund_requests" as Screen,
-    label: "Refunds",
+    labelKey: "nav.refunds",
     icon: Shield,
     adminOnly: true,
     premium: true,
   },
-  { id: "staff" as Screen, label: "Staff", icon: Users, adminOnly: true, premium: true },
+  { id: "staff" as Screen, labelKey: "nav.staff", icon: Users, adminOnly: true, premium: true },
   {
     id: "scheduling" as Screen,
-    label: "Schedule",
+    labelKey: "nav.schedule",
     icon: CalendarDays,
     adminOnly: true,
     premium: true,
   },
   {
     id: "reconciliation" as Screen,
-    label: "Day End",
+    labelKey: "nav.reconciliation",
     icon: Calculator,
     adminOnly: true,
     premium: true,
   },
   {
     id: "reports" as Screen,
-    label: "Reports",
+    labelKey: "nav.reports",
     icon: FileText,
     adminOnly: true,
     premium: true,
   },
-  { id: "gst" as Screen, label: "GST", icon: FileText, adminOnly: true, premium: true },
-  { id: "logs" as Screen, label: "Logs", icon: History, adminOnly: true, premium: true },
+  { id: "gst" as Screen, labelKey: "nav.gst", icon: FileText, adminOnly: true, premium: true },
+  { id: "logs" as Screen, labelKey: "nav.logs", icon: History, adminOnly: true, premium: true },
   {
     id: "stores" as Screen,
-    label: "Stores",
+    labelKey: "nav.stores",
     icon: LayoutGrid,
     adminOnly: true,
     premium: true,
   },
   {
     id: "settings" as Screen,
-    label: "Settings",
+    labelKey: "nav.settings",
     icon: Settings,
     adminOnly: true,
     premium: false,
   },
   {
     id: "support" as Screen,
-    label: "Support",
+    labelKey: "nav.support",
     icon: LifeBuoy,
     adminOnly: false,
     premium: false,
@@ -189,6 +190,7 @@ export default function Sidebar({
   const { logout } = useAuthStore();
   const { activeStoreId, setActiveStore, settings, premiumEnabled } = useSettingsStore();
   const { stores, fetchStores } = useStoresStore();
+  const t = useTranslation();
   const isAdmin = user?.role === "admin";
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [showStoreSwitcher, setShowStoreSwitcher] = useState(false);
@@ -218,7 +220,7 @@ export default function Sidebar({
     });
 
   const nav = allNavItems.filter((item) => !item.adminOnly || isAdmin).map(item => {
-    let label = item.label;
+    let label = t(item.labelKey);
     if (item.id === 'tables') label = labels.tables;
     if (item.id === 'kds') label = (labels.kitchen || "Kitchen").split('/')[0];
     if (item.id === 'gst') {

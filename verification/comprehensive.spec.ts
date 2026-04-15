@@ -7,9 +7,10 @@ test.describe('Comprehensive POS Features Verification', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto(APP_URL);
-    // Login as Admin
+    // Login as Admin - select organization and enter PIN
+    await page.click('button:has-text("Default Organization")'); // Select the default organization
     await page.fill('input[type="password"]', ADMIN_PIN);
-    await page.click('button:has-text("Login")');
+    await page.click('button:has-text("Enter POS")');
     await expect(page.locator('div[role="status"]').filter({ hasText: 'admin' })).toBeVisible();
   });
 
