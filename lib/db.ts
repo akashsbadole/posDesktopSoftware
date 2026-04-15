@@ -673,9 +673,6 @@ async function sql<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
     ? { organizationId: currentOrganizationId, ...args }
     : args;
 
-  console.log("[sql] Command:", cmd, "IS_TAURI:", IS_TAURI);
-  console.log("[sql] Args:", JSON.stringify(enhancedArgs));
-
   if (IS_TAURI) {
     return invoke<T>(cmd, enhancedArgs);
   }
@@ -2300,7 +2297,6 @@ async function browserFallback<T>(
       return undefined as T;
     }
     case "register": {
-      console.log("[register] Creating new organization");
       const { org_name, email, password } = args as any;
       const orgId = Math.random().toString(36).substr(2, 9);
       const userId = Math.random().toString(36).substr(2, 9);
@@ -2395,13 +2391,10 @@ async function browserFallback<T>(
     case "verify_pin": {
       const pin = (args as any).pin;
       const orgId = (args as any).organization_id || (args as any).organizationId;
-      console.log("[verify_pin] Looking for pin:", pin, "orgId:", orgId);
       const users = lsGet<User[]>("pos_users") || [];
-      console.log("[verify_pin] Total users:", users.length);
       const user = users.find(
         (u) => u.pin === pin && u.organization_id === orgId,
       );
-      console.log("[verify_pin] Found user:", user ? "yes" : "no");
       return (user || null) as T;
     }
     case "get_daily_summary": {

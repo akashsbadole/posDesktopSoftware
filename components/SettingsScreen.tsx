@@ -90,9 +90,13 @@ export default function SettingsScreen() {
     setDarkMode,
     premiumEnabled,
     premiumStatus,
+    lastSyncTime,
+    setLastSyncTime,
+    isSyncing,
+    setIsSyncing,
   } = useSettingsStore();
   const [saved, setSaved] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const syncing = isSyncing;
   const [syncMsg, setSyncMsg] = useState<{ text: string; ok: boolean } | null>(
     null,
   );
@@ -238,27 +242,37 @@ export default function SettingsScreen() {
   };
 
   const handleSyncUp = async () => {
-    setSyncing(true);
+    setIsSyncing(true);
     setSyncMsg(null);
-    const r = await syncToNeon(activeStoreId);
-    setSyncMsg(
-      r.error
-        ? { text: r.error, ok: false }
-        : { text: `✓ Synced ${r.synced} orders to Neon`, ok: true },
-    );
-    setSyncing(false);
+    try {
+      const r = await syncToNeon(activeStoreId);
+      setSyncMsg(
+        r.error
+          ? { text: r.error, ok: false }
+          : { text: `✓ Cloud Sync: Pushed local changes to Neon`, ok: true },
+      );
+      if (!r.error) setLastSyncTime(new Date().toLocaleTimeString());
+    } catch (err) {
+      setSyncMsg({ text: `Sync failed: ${err}`, ok: false });
+    }
+    setIsSyncing(false);
   };
 
   const handleSyncDown = async () => {
-    setSyncing(true);
+    setIsSyncing(true);
     setSyncMsg(null);
-    const r = await syncFromNeon(activeStoreId);
-    setSyncMsg(
-      r.error
-        ? { text: r.error, ok: false }
-        : { text: `✓ Synced ${r.synced} orders from Neon`, ok: true },
-    );
-    setSyncing(false);
+    try {
+      const r = await syncFromNeon(activeStoreId);
+      setSyncMsg(
+        r.error
+          ? { text: r.error, ok: false }
+          : { text: `✓ Cloud Sync: Pulled changes from Neon`, ok: true },
+      );
+      if (!r.error) setLastSyncTime(new Date().toLocaleTimeString());
+    } catch (err) {
+      setSyncMsg({ text: `Sync failed: ${err}`, ok: false });
+    }
+    setIsSyncing(false);
   };
 
   const handleExportBackup = async () => {
@@ -1038,6 +1052,12 @@ export default function SettingsScreen() {
               <RefreshCw size={16} style={{ color: "#F5C842" }} />
               <h2 className="font-semibold">Cloud Sync (Neon PostgreSQL)</h2>
             </div>
+            {premiumEnabled && lastSyncTime && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1" style={{ color: "#2ECC71", background: "rgba(46,204,113,0.1)" }}>
+                {syncing && <RefreshCw size={10} className="spin" />}
+                Last Sync: {lastSyncTime}
+              </span>
+            )}
             {!premiumEnabled && (
               <span className="badge-warning text-[10px] px-2 py-0.5 rounded-full uppercase font-bold">
                 Premium Feature

@@ -109,7 +109,27 @@ export default function Home() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const { user, organization, isAuthenticated, logout } = useAuthStore();
-  const { activeStoreId, settings, fetchSettings, premiumEnabled } = useSettingsStore();
+  const { activeStoreId, settings, fetchSettings, premiumEnabled, setLastSyncTime, setIsSyncing } = useSettingsStore();
+
+  useEffect(() => {
+    if (isAuthenticated && premiumEnabled && settings?.neon_url) {
+      const syncInterval = setInterval(async () => {
+        try {
+          const { syncToNeon, syncFromNeon } = await import("@/lib/db");
+          setIsSyncing(true);
+          await syncToNeon(activeStoreId);
+          await syncFromNeon(activeStoreId);
+          setLastSyncTime(new Date().toLocaleTimeString());
+          setIsSyncing(false);
+        } catch (err) {
+          setIsSyncing(false);
+          console.error("[Sync] Automatic sync failed:", err);
+        }
+      }, 5 * 60 * 1000); // 5 minutes
+
+      return () => clearInterval(syncInterval);
+    }
+  }, [isAuthenticated, premiumEnabled, settings?.neon_url, activeStoreId, setLastSyncTime, setIsSyncing]);
 
   useEffect(() => {
     setMounted(true);
