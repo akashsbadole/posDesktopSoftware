@@ -4729,13 +4729,24 @@ impl Database {
     }
 
     pub fn get_reservations(&self, date: &str, store_id: &str) -> Result<Vec<Reservation>> {
-        let mut stmt = self.conn.prepare(
+        let sql = if date.is_empty() {
+            "SELECT r.id, r.store_id, r.table_id, t.name, r.customer_name, r.phone, r.date, r.time, r.party_size, r.status, r.notes, r.created_at
+             FROM reservations r JOIN tables t ON r.table_id = t.id
+             WHERE r.store_id = ?1 ORDER BY r.date DESC, r.time ASC"
+        } else {
             "SELECT r.id, r.store_id, r.table_id, t.name, r.customer_name, r.phone, r.date, r.time, r.party_size, r.status, r.notes, r.created_at
              FROM reservations r JOIN tables t ON r.table_id = t.id
              WHERE r.store_id = ?1 AND r.date = ?2 ORDER BY r.time ASC"
-        )?;
+        };
+        let mut stmt = self.conn.prepare(sql)?;
+        let params_vec = if date.is_empty() {
+            params![store_id]
+        } else {
+            params![store_id, date]
+        };
+
         let reservations = stmt
-            .query_map(params![store_id, date], |row| {
+            .query_map(params_vec, |row| {
                 Ok(Reservation {
                     id: row.get(0)?,
                     store_id: row.get(1)?,
@@ -4780,6 +4791,25 @@ impl Database {
         let mut stmt = self.conn.prepare("SELECT id, store_id, category, amount, description, date, payment_method, created_at FROM expenses WHERE store_id = ?1 AND date = ?2")?;
         let expenses = stmt
             .query_map(params![store_id, date], |row| {
+                Ok(Expense {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    category: row.get(2)?,
+                    amount: row.get(3)?,
+                    description: row.get(4)?,
+                    date: row.get(5)?,
+                    payment_method: row.get(6)?,
+                    created_at: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(expenses)
+    }
+
+    pub fn get_all_expenses(&self, store_id: &str) -> Result<Vec<Expense>> {
+        let mut stmt = self.conn.prepare("SELECT id, store_id, category, amount, description, date, payment_method, created_at FROM expenses WHERE store_id = ?1")?;
+        let expenses = stmt
+            .query_map(params![store_id], |row| {
                 Ok(Expense {
                     id: row.get(0)?,
                     store_id: row.get(1)?,
@@ -5292,15 +5322,17 @@ impl Database {
             .as_ref()
             .and_then(|m| serde_json::to_string(m).ok());
 
+        let synced_val = if o.synced.unwrap_or(false) { 1 } else { 0 };
+
         tx.execute(
             "INSERT OR REPLACE INTO orders
              (id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, payment_status, created_at)
-              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,0,?18,?19,?20,?21,?22)",
+              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)",
             params![
                 o.id, store_id, o.subtotal, o.tax_amount, o.discount_amount, o.total,
                 o.payment_method, o.amount_paid, o.change_amount,
                 o.customer_name, o.status, o.order_type, o.delivery_status,
-                o.delivery_address, o.delivery_phone, o.user_id, o.user_name, metadata_str, o.tip_amount, o.discount_type, o.payment_status, o.created_at
+                o.delivery_address, o.delivery_phone, o.user_id, o.user_name, synced_val, metadata_str, o.tip_amount, o.discount_type, o.payment_status, o.created_at
             ],
         )?;
 
@@ -5981,6 +6013,25 @@ impl Database {
         let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, name, value, sku, price, stock FROM product_variants WHERE product_id=?1 AND store_id=?2")?;
         let variants = stmt
             .query_map(params![product_id, store_id], |row| {
+                Ok(ProductVariant {
+                    id: row.get(0)?,
+                    product_id: row.get(1)?,
+                    store_id: row.get(2)?,
+                    name: row.get(3)?,
+                    value: row.get(4)?,
+                    sku: row.get(5)?,
+                    price: row.get(6)?,
+                    stock: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(variants)
+    }
+
+    pub fn get_all_product_variants(&self, store_id: &str) -> Result<Vec<ProductVariant>> {
+        let mut stmt = self.conn.prepare("SELECT id, product_id, store_id, name, value, sku, price, stock FROM product_variants WHERE store_id=?1")?;
+        let variants = stmt
+            .query_map(params![store_id], |row| {
                 Ok(ProductVariant {
                     id: row.get(0)?,
                     product_id: row.get(1)?,

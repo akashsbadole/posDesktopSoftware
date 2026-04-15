@@ -239,8 +239,7 @@ export const expenseSchema = z.object({
 export const expenseCategorySchema = z.object({
   id: z.string().optional(),
   name: nameString,
-  icon: z.string().regex(/^[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}]+$/,
-    "Icon must be a valid emoji"),
+  icon: z.string().min(1, "Icon is required"),
 });
 
 // Reservation validation schemas
@@ -301,7 +300,7 @@ export function validateData<T>(schema: z.ZodSchema<T>, data: unknown): { succes
 
 export function getValidationErrors(error: z.ZodError): Record<string, string> {
   const errors: Record<string, string> = {};
-  error.errors.forEach((err) => {
+  error.issues.forEach((err) => {
     const path = err.path.join('.');
     errors[path] = err.message;
   });

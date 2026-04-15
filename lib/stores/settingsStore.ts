@@ -10,6 +10,10 @@ interface SettingsState {
   isDarkMode: boolean;
   premiumEnabled: boolean;
   premiumStatus: PremiumStatus | null;
+  lastSyncTime: string | null;
+  isSyncing: boolean;
+  setLastSyncTime: (time: string) => void;
+  setIsSyncing: (isSyncing: boolean) => void;
   fetchSettings: () => Promise<void>;
   saveSettings: (settings: Partial<Settings>) => Promise<void>;
   setDarkMode: (isDarkMode: boolean) => void;
@@ -76,6 +80,11 @@ export const useSettingsStore = create<SettingsState>()(
       isDarkMode: false,
       premiumEnabled: false,
       premiumStatus: null,
+      lastSyncTime: null,
+      isSyncing: false,
+
+      setLastSyncTime: (time) => set({ lastSyncTime: time }),
+      setIsSyncing: (isSyncing) => set({ isSyncing }),
 
       fetchSettings: async () => {
         set({ isLoading: true, error: null });

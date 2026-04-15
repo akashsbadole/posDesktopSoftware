@@ -50,11 +50,12 @@ export default function ProductGrid({
     return 5;
   }, []);
 
+  const totalItems = filteredProducts.length + (premiumEnabled ? combos.length : 0);
+
   const getNewIndex = useGridNavigation(
-    focusedProductIndex,
-    filteredProducts.length,
-    getGridColumns(),
-    isGridFocused
+    totalItems,
+    setFocusedProductIndex,
+    getGridColumns()
   );
 
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
@@ -74,7 +75,7 @@ export default function ProductGrid({
   };
 
   const handleProductGridKeyDown = (e: React.KeyboardEvent) => {
-    const newIndex = getNewIndex(e.key);
+    const newIndex = getNewIndex(focusedProductIndex, e.key);
     if (newIndex !== focusedProductIndex) {
       setFocusedProductIndex(newIndex);
     }
