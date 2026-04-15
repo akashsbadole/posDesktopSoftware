@@ -531,11 +531,7 @@ fn upsert_user(user: db::User) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn register(
-    org_name: String,
-    email: String,
-    password: String,
-) -> Result<db::LoginResult, String> {
+fn register(org_name: String, email: String, password: String) -> Result<db::LoginResult, String> {
     // Trim inputs to remove whitespace
     let org_name = org_name.trim();
     let email = email.trim();
@@ -1560,7 +1556,7 @@ async fn sync_to_neon(store_id: String) -> Result<neon::SyncResult, String> {
             error: Some(
                 "Neon Cloud Sync is a premium feature. Please upgrade to enable.".to_string(),
             ),
-            data: None,
+            orders: None,
         });
     }
 
@@ -1574,11 +1570,23 @@ async fn sync_to_neon(store_id: String) -> Result<neon::SyncResult, String> {
         return Ok(neon::SyncResult {
             synced: 0,
             error: Some("No Neon database URL configured. Set it in Settings.".to_string()),
-            data: None,
+            orders: None,
         });
     }
 
-    let (orders, products, customers, ingredients, suppliers, expenses, variants, tables, combos, coupons, reservations) = {
+    let (
+        orders,
+        products,
+        customers,
+        ingredients,
+        suppliers,
+        expenses,
+        variants,
+        tables,
+        combos,
+        coupons,
+        reservations,
+    ) = {
         let db = get_db().lock().map_err(|e| e.to_string())?;
         (
             db.get_unsynced_orders(&store_id).unwrap_or_default(),
@@ -1621,7 +1629,7 @@ async fn sync_to_neon(store_id: String) -> Result<neon::SyncResult, String> {
     Ok(neon::SyncResult {
         synced: total_synced,
         error: None,
-        data: None,
+        orders: None,
     })
 }
 
@@ -1633,7 +1641,7 @@ async fn sync_from_neon(store_id: String) -> Result<neon::SyncResult, String> {
             error: Some(
                 "Neon Cloud Sync is a premium feature. Please upgrade to enable.".to_string(),
             ),
-            data: None,
+            orders: None,
         });
     }
 
@@ -1647,7 +1655,7 @@ async fn sync_from_neon(store_id: String) -> Result<neon::SyncResult, String> {
         return Ok(neon::SyncResult {
             synced: 0,
             error: Some("No Neon database URL configured. Set it in Settings.".to_string()),
-            data: None,
+            orders: None,
         });
     }
 
@@ -1655,23 +1663,45 @@ async fn sync_from_neon(store_id: String) -> Result<neon::SyncResult, String> {
 
     if let Some(data) = &result.data {
         let db = get_db().lock().map_err(|e| e.to_string())?;
-        for order in &data.orders { let _ = db.save_order(order, &store_id); }
-        for product in &data.products { let _ = db.upsert_product(product, &store_id); }
-        for customer in &data.customers { let _ = db.save_customer(customer, &store_id); }
-        for ingredient in &data.ingredients { let _ = db.save_ingredient(ingredient, &store_id); }
-        for supplier in &data.suppliers { let _ = db.save_supplier(supplier, &store_id); }
-        for expense in &data.expenses { let _ = db.save_expense(expense, &store_id); }
-        for variant in &data.variants { let _ = db.save_product_variant(variant, &store_id); }
-        for table in &data.tables { let _ = db.save_table(table, &store_id); }
-        for combo in &data.combos { let _ = db.save_combo(combo, &store_id); }
-        for coupon in &data.coupons { let _ = db.save_coupon(coupon, &store_id); }
-        for res in &data.reservations { let _ = db.save_reservation(res, &store_id); }
+        for order in &data.orders {
+            let _ = db.save_order(order, &store_id);
+        }
+        for product in &data.products {
+            let _ = db.upsert_product(product, &store_id);
+        }
+        for customer in &data.customers {
+            let _ = db.save_customer(customer, &store_id);
+        }
+        for ingredient in &data.ingredients {
+            let _ = db.save_ingredient(ingredient, &store_id);
+        }
+        for supplier in &data.suppliers {
+            let _ = db.save_supplier(supplier, &store_id);
+        }
+        for expense in &data.expenses {
+            let _ = db.save_expense(expense, &store_id);
+        }
+        for variant in &data.variants {
+            let _ = db.save_product_variant(variant, &store_id);
+        }
+        for table in &data.tables {
+            let _ = db.save_table(table, &store_id);
+        }
+        for combo in &data.combos {
+            let _ = db.save_combo(combo, &store_id);
+        }
+        for coupon in &data.coupons {
+            let _ = db.save_coupon(coupon, &store_id);
+        }
+        for res in &data.reservations {
+            let _ = db.save_reservation(res, &store_id);
+        }
     }
 
     Ok(neon::SyncResult {
         synced: result.synced,
         error: result.error,
-        data: None,
+        orders: None,
     })
 }
 

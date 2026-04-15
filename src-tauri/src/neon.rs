@@ -2,8 +2,11 @@
 // Syncs local SQLite data to/from Neon PostgreSQL via HTTP API
 // Uses Neon's serverless driver HTTP endpoint
 
+use crate::db::{
+    Combo, Coupon, Customer, Expense, Ingredient, Order, Product, ProductVariant, Reservation,
+    Supplier, Table,
+};
 use serde::{Deserialize, Serialize};
-use crate::db::{Order, Product, Customer, Ingredient, Supplier, Expense, ProductVariant, Table, Combo, Coupon, Reservation};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(dead_code)]
@@ -38,7 +41,9 @@ fn neon_http_url(connection_string: &str) -> Result<String, String> {
         .trim_start_matches("postgres://")
         .trim_start_matches("postgresql://");
 
-    let at_pos = stripped.find('@').ok_or("Invalid connection string: missing @")?;
+    let at_pos = stripped
+        .find('@')
+        .ok_or("Invalid connection string: missing @")?;
     let _credentials = &stripped[..at_pos];
     let rest = &stripped[at_pos + 1..];
 
@@ -71,7 +76,10 @@ async fn neon_query(
     let auth = neon_auth(connection_string)?;
 
     let client = reqwest::Client::new();
-    let body = NeonQuery { query: query.to_string(), params };
+    let body = NeonQuery {
+        query: query.to_string(),
+        params,
+    };
 
     let resp = client
         .post(&url)
@@ -89,13 +97,17 @@ async fn neon_query(
         return Err(format!("Neon error {}: {}", status, text));
     }
 
-    resp.json::<NeonResponse>().await.map_err(|e| format!("Parse error: {}", e))
+    resp.json::<NeonResponse>()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))
 }
 
 /// Ensure Neon tables exist
 async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
     // Orders table
-    neon_query(connection_string, "
+    neon_query(
+        connection_string,
+        "
         CREATE TABLE IF NOT EXISTS pos_orders (
             id              TEXT PRIMARY KEY,
             items           TEXT NOT NULL,
@@ -121,10 +133,15 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             created_at      TEXT NOT NULL,
             device_id       TEXT NOT NULL DEFAULT 'local'
         )
-    ", vec![]).await?;
+    ",
+        vec![],
+    )
+    .await?;
 
     // Products table
-    neon_query(connection_string, "
+    neon_query(
+        connection_string,
+        "
         CREATE TABLE IF NOT EXISTS pos_products (
             id                TEXT PRIMARY KEY,
             store_id          TEXT NOT NULL,
@@ -149,10 +166,15 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             conversion_factor REAL,
             created_at        TEXT
         )
-    ", vec![]).await?;
+    ",
+        vec![],
+    )
+    .await?;
 
     // Customers table
-    neon_query(connection_string, "
+    neon_query(
+        connection_string,
+        "
         CREATE TABLE IF NOT EXISTS pos_customers (
             id              TEXT PRIMARY KEY,
             store_id        TEXT NOT NULL,
@@ -172,10 +194,15 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             tax_id          TEXT,
             created_at      TEXT NOT NULL
         )
-    ", vec![]).await?;
+    ",
+        vec![],
+    )
+    .await?;
 
     // Ingredients table
-    neon_query(connection_string, "
+    neon_query(
+        connection_string,
+        "
         CREATE TABLE IF NOT EXISTS pos_ingredients (
             id              TEXT PRIMARY KEY,
             store_id        TEXT NOT NULL,
@@ -185,10 +212,15 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             reorder_level   REAL NOT NULL,
             created_at      TEXT
         )
-    ", vec![]).await?;
+    ",
+        vec![],
+    )
+    .await?;
 
     // Suppliers table
-    neon_query(connection_string, "
+    neon_query(
+        connection_string,
+        "
         CREATE TABLE IF NOT EXISTS pos_suppliers (
             id              TEXT PRIMARY KEY,
             store_id        TEXT NOT NULL,
@@ -198,10 +230,15 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             address         TEXT,
             created_at      TEXT
         )
-    ", vec![]).await?;
+    ",
+        vec![],
+    )
+    .await?;
 
     // Expenses table
-    neon_query(connection_string, "
+    neon_query(
+        connection_string,
+        "
         CREATE TABLE IF NOT EXISTS pos_expenses (
             id              TEXT PRIMARY KEY,
             store_id        TEXT NOT NULL,
@@ -212,10 +249,15 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             payment_method  TEXT NOT NULL,
             created_at      TEXT
         )
-    ", vec![]).await?;
+    ",
+        vec![],
+    )
+    .await?;
 
     // Product Variants table
-    neon_query(connection_string, "
+    neon_query(
+        connection_string,
+        "
         CREATE TABLE IF NOT EXISTS pos_product_variants (
             id              TEXT PRIMARY KEY,
             product_id      TEXT NOT NULL,
@@ -226,10 +268,15 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             price           REAL NOT NULL,
             stock           INTEGER NOT NULL
         )
-    ", vec![]).await?;
+    ",
+        vec![],
+    )
+    .await?;
 
     // Tables table
-    neon_query(connection_string, "
+    neon_query(
+        connection_string,
+        "
         CREATE TABLE IF NOT EXISTS pos_tables (
             id              TEXT PRIMARY KEY,
             store_id        TEXT NOT NULL,
@@ -239,10 +286,15 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             position_x      INTEGER NOT NULL,
             position_y      INTEGER NOT NULL
         )
-    ", vec![]).await?;
+    ",
+        vec![],
+    )
+    .await?;
 
     // Combos table
-    neon_query(connection_string, "
+    neon_query(
+        connection_string,
+        "
         CREATE TABLE IF NOT EXISTS pos_combos (
             id              TEXT PRIMARY KEY,
             store_id        TEXT NOT NULL,
@@ -255,10 +307,15 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             is_active       BOOLEAN NOT NULL,
             created_at      TEXT
         )
-    ", vec![]).await?;
+    ",
+        vec![],
+    )
+    .await?;
 
     // Coupons table
-    neon_query(connection_string, "
+    neon_query(
+        connection_string,
+        "
         CREATE TABLE IF NOT EXISTS pos_coupons (
             id              TEXT PRIMARY KEY,
             store_id        TEXT NOT NULL,
@@ -273,10 +330,15 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             active          BOOLEAN NOT NULL,
             created_at      TEXT NOT NULL
         )
-    ", vec![]).await?;
+    ",
+        vec![],
+    )
+    .await?;
 
     // Reservations table
-    neon_query(connection_string, "
+    neon_query(
+        connection_string,
+        "
         CREATE TABLE IF NOT EXISTS pos_reservations (
             id              TEXT PRIMARY KEY,
             store_id        TEXT NOT NULL,
@@ -290,21 +352,32 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             notes           TEXT,
             created_at      TEXT
         )
-    ", vec![]).await?;
+    ",
+        vec![],
+    )
+    .await?;
 
     Ok(())
 }
 
 pub async fn sync_orders_to_neon(connection_string: &str, orders: &[Order]) -> SyncResult {
     if let Err(e) = ensure_neon_schema(connection_string).await {
-        return SyncResult { synced: 0, error: Some(e), data: None };
+        return SyncResult {
+            synced: 0,
+            error: Some(e),
+            orders: None,
+        };
     }
 
     let mut synced = 0i64;
 
     for order in orders {
         let items_json = serde_json::to_string(&order.items).unwrap_or_default();
-        let metadata_json = order.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok()).unwrap_or_default();
+        let metadata_json = order
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::to_string(m).ok())
+            .unwrap_or_default();
 
         let result = neon_query(
             connection_string,
@@ -351,17 +424,34 @@ pub async fn sync_orders_to_neon(connection_string: &str, orders: &[Order]) -> S
 
         match result {
             Ok(_) => synced += 1,
-            Err(e) => return SyncResult { synced, error: Some(e), data: None },
+            Err(e) => {
+                return SyncResult {
+                    synced,
+                    error: Some(e),
+                    orders: None,
+                }
+            }
         }
     }
 
-    SyncResult { synced, error: None, data: None }
+    SyncResult {
+        synced,
+        error: None,
+        orders: None,
+    }
 }
 
-pub async fn sync_products_to_neon(connection_string: &str, products: &[Product]) -> Result<i64, String> {
+pub async fn sync_products_to_neon(
+    connection_string: &str,
+    products: &[Product],
+) -> Result<i64, String> {
     let mut synced = 0i64;
     for p in products {
-        let metadata_json = p.metadata.as_ref().and_then(|m| serde_json::to_string(m).ok()).unwrap_or_default();
+        let metadata_json = p
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::to_string(m).ok())
+            .unwrap_or_default();
         neon_query(
             connection_string,
             "INSERT INTO pos_products (id, store_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, status, tags, is_digital, is_favorite, image_url, metadata, base_unit, conversion_factor, created_at)
@@ -409,7 +499,10 @@ pub async fn sync_combos_to_neon(connection_string: &str, combos: &[Combo]) -> R
     Ok(synced)
 }
 
-pub async fn sync_coupons_to_neon(connection_string: &str, coupons: &[Coupon]) -> Result<i64, String> {
+pub async fn sync_coupons_to_neon(
+    connection_string: &str,
+    coupons: &[Coupon],
+) -> Result<i64, String> {
     let mut synced = 0i64;
     for c in coupons {
         neon_query(
@@ -433,7 +526,10 @@ pub async fn sync_coupons_to_neon(connection_string: &str, coupons: &[Coupon]) -
     Ok(synced)
 }
 
-pub async fn sync_reservations_to_neon(connection_string: &str, reservations: &[Reservation]) -> Result<i64, String> {
+pub async fn sync_reservations_to_neon(
+    connection_string: &str,
+    reservations: &[Reservation],
+) -> Result<i64, String> {
     let mut synced = 0i64;
     for r in reservations {
         neon_query(
@@ -455,7 +551,10 @@ pub async fn sync_reservations_to_neon(connection_string: &str, reservations: &[
     Ok(synced)
 }
 
-pub async fn sync_customers_to_neon(connection_string: &str, customers: &[Customer]) -> Result<i64, String> {
+pub async fn sync_customers_to_neon(
+    connection_string: &str,
+    customers: &[Customer],
+) -> Result<i64, String> {
     let mut synced = 0i64;
     for c in customers {
         neon_query(
@@ -480,7 +579,10 @@ pub async fn sync_customers_to_neon(connection_string: &str, customers: &[Custom
     Ok(synced)
 }
 
-pub async fn sync_ingredients_to_neon(connection_string: &str, ingredients: &[Ingredient]) -> Result<i64, String> {
+pub async fn sync_ingredients_to_neon(
+    connection_string: &str,
+    ingredients: &[Ingredient],
+) -> Result<i64, String> {
     let mut synced = 0i64;
     for i in ingredients {
         neon_query(
@@ -499,7 +601,10 @@ pub async fn sync_ingredients_to_neon(connection_string: &str, ingredients: &[In
     Ok(synced)
 }
 
-pub async fn sync_suppliers_to_neon(connection_string: &str, suppliers: &[Supplier]) -> Result<i64, String> {
+pub async fn sync_suppliers_to_neon(
+    connection_string: &str,
+    suppliers: &[Supplier],
+) -> Result<i64, String> {
     let mut synced = 0i64;
     for s in suppliers {
         neon_query(
@@ -518,7 +623,10 @@ pub async fn sync_suppliers_to_neon(connection_string: &str, suppliers: &[Suppli
     Ok(synced)
 }
 
-pub async fn sync_expenses_to_neon(connection_string: &str, expenses: &[Expense]) -> Result<i64, String> {
+pub async fn sync_expenses_to_neon(
+    connection_string: &str,
+    expenses: &[Expense],
+) -> Result<i64, String> {
     let mut synced = 0i64;
     for e in expenses {
         neon_query(
@@ -538,7 +646,10 @@ pub async fn sync_expenses_to_neon(connection_string: &str, expenses: &[Expense]
     Ok(synced)
 }
 
-pub async fn sync_variants_to_neon(connection_string: &str, variants: &[ProductVariant]) -> Result<i64, String> {
+pub async fn sync_variants_to_neon(
+    connection_string: &str,
+    variants: &[ProductVariant],
+) -> Result<i64, String> {
     let mut synced = 0i64;
     for v in variants {
         neon_query(
@@ -601,14 +712,24 @@ pub struct SyncFromResult {
 
 pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFromResult {
     if let Err(e) = ensure_neon_schema(connection_string).await {
-        return SyncFromResult { synced: 0, error: Some(e), data: None };
+        return SyncFromResult {
+            synced: 0,
+            error: Some(e),
+            data: None,
+        };
     }
 
     let mut data = FullSyncData::default();
     let mut total_synced = 0i64;
 
     // 1. Sync Orders
-    match neon_query(connection_string, "SELECT * FROM pos_orders WHERE device_id != 'local' LIMIT 1000", vec![]).await {
+    match neon_query(
+        connection_string,
+        "SELECT * FROM pos_orders WHERE device_id != 'local' LIMIT 1000",
+        vec![],
+    )
+    .await
+    {
         Ok(resp) => {
             if let Some(rows) = resp.rows {
                 for row in rows {
@@ -633,11 +754,23 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                 }
             }
         }
-        Err(e) => return SyncFromResult { synced: total_synced, error: Some(format!("Orders sync failed: {}", e)), data: None },
+        Err(e) => {
+            return SyncFromResult {
+                synced: total_synced,
+                error: Some(format!("Orders sync failed: {}", e)),
+                data: None,
+            }
+        }
     }
 
     // 2. Sync Products
-    match neon_query(connection_string, "SELECT * FROM pos_products LIMIT 1000", vec![]).await {
+    match neon_query(
+        connection_string,
+        "SELECT * FROM pos_products LIMIT 1000",
+        vec![],
+    )
+    .await
+    {
         Ok(resp) => {
             if let Some(rows) = resp.rows {
                 for row in rows {
@@ -654,11 +787,23 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                 }
             }
         }
-        Err(e) => return SyncFromResult { synced: total_synced, error: Some(format!("Products sync failed: {}", e)), data: None },
+        Err(e) => {
+            return SyncFromResult {
+                synced: total_synced,
+                error: Some(format!("Products sync failed: {}", e)),
+                data: None,
+            }
+        }
     }
 
     // 3. Sync Customers
-    match neon_query(connection_string, "SELECT * FROM pos_customers LIMIT 1000", vec![]).await {
+    match neon_query(
+        connection_string,
+        "SELECT * FROM pos_customers LIMIT 1000",
+        vec![],
+    )
+    .await
+    {
         Ok(resp) => {
             if let Some(rows) = resp.rows {
                 for row in rows {
@@ -669,11 +814,23 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                 }
             }
         }
-        Err(e) => return SyncFromResult { synced: total_synced, error: Some(format!("Customers sync failed: {}", e)), data: None },
+        Err(e) => {
+            return SyncFromResult {
+                synced: total_synced,
+                error: Some(format!("Customers sync failed: {}", e)),
+                data: None,
+            }
+        }
     }
 
     // 4. Sync Ingredients
-    match neon_query(connection_string, "SELECT * FROM pos_ingredients LIMIT 1000", vec![]).await {
+    match neon_query(
+        connection_string,
+        "SELECT * FROM pos_ingredients LIMIT 1000",
+        vec![],
+    )
+    .await
+    {
         Ok(resp) => {
             if let Some(rows) = resp.rows {
                 for row in rows {
@@ -684,11 +841,23 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                 }
             }
         }
-        Err(e) => return SyncFromResult { synced: total_synced, error: Some(format!("Ingredients sync failed: {}", e)), data: None },
+        Err(e) => {
+            return SyncFromResult {
+                synced: total_synced,
+                error: Some(format!("Ingredients sync failed: {}", e)),
+                data: None,
+            }
+        }
     }
 
     // 5. Sync Suppliers
-    match neon_query(connection_string, "SELECT * FROM pos_suppliers LIMIT 1000", vec![]).await {
+    match neon_query(
+        connection_string,
+        "SELECT * FROM pos_suppliers LIMIT 1000",
+        vec![],
+    )
+    .await
+    {
         Ok(resp) => {
             if let Some(rows) = resp.rows {
                 for row in rows {
@@ -699,11 +868,23 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                 }
             }
         }
-        Err(e) => return SyncFromResult { synced: total_synced, error: Some(format!("Suppliers sync failed: {}", e)), data: None },
+        Err(e) => {
+            return SyncFromResult {
+                synced: total_synced,
+                error: Some(format!("Suppliers sync failed: {}", e)),
+                data: None,
+            }
+        }
     }
 
     // 6. Sync Expenses
-    match neon_query(connection_string, "SELECT * FROM pos_expenses LIMIT 1000", vec![]).await {
+    match neon_query(
+        connection_string,
+        "SELECT * FROM pos_expenses LIMIT 1000",
+        vec![],
+    )
+    .await
+    {
         Ok(resp) => {
             if let Some(rows) = resp.rows {
                 for row in rows {
@@ -714,11 +895,23 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                 }
             }
         }
-        Err(e) => return SyncFromResult { synced: total_synced, error: Some(format!("Expenses sync failed: {}", e)), data: None },
+        Err(e) => {
+            return SyncFromResult {
+                synced: total_synced,
+                error: Some(format!("Expenses sync failed: {}", e)),
+                data: None,
+            }
+        }
     }
 
     // 7. Sync Variants
-    match neon_query(connection_string, "SELECT * FROM pos_product_variants LIMIT 5000", vec![]).await {
+    match neon_query(
+        connection_string,
+        "SELECT * FROM pos_product_variants LIMIT 5000",
+        vec![],
+    )
+    .await
+    {
         Ok(resp) => {
             if let Some(rows) = resp.rows {
                 for row in rows {
@@ -729,11 +922,23 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                 }
             }
         }
-        Err(e) => return SyncFromResult { synced: total_synced, error: Some(format!("Variants sync failed: {}", e)), data: None },
+        Err(e) => {
+            return SyncFromResult {
+                synced: total_synced,
+                error: Some(format!("Variants sync failed: {}", e)),
+                data: None,
+            }
+        }
     }
 
     // 8. Sync Tables
-    match neon_query(connection_string, "SELECT * FROM pos_tables LIMIT 500", vec![]).await {
+    match neon_query(
+        connection_string,
+        "SELECT * FROM pos_tables LIMIT 500",
+        vec![],
+    )
+    .await
+    {
         Ok(resp) => {
             if let Some(rows) = resp.rows {
                 for row in rows {
@@ -744,11 +949,23 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                 }
             }
         }
-        Err(e) => return SyncFromResult { synced: total_synced, error: Some(format!("Tables sync failed: {}", e)), data: None },
+        Err(e) => {
+            return SyncFromResult {
+                synced: total_synced,
+                error: Some(format!("Tables sync failed: {}", e)),
+                data: None,
+            }
+        }
     }
 
     // 9. Sync Combos
-    match neon_query(connection_string, "SELECT * FROM pos_combos LIMIT 500", vec![]).await {
+    match neon_query(
+        connection_string,
+        "SELECT * FROM pos_combos LIMIT 500",
+        vec![],
+    )
+    .await
+    {
         Ok(resp) => {
             if let Some(rows) = resp.rows {
                 for row in rows {
@@ -765,11 +982,23 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                 }
             }
         }
-        Err(e) => return SyncFromResult { synced: total_synced, error: Some(format!("Combos sync failed: {}", e)), data: None },
+        Err(e) => {
+            return SyncFromResult {
+                synced: total_synced,
+                error: Some(format!("Combos sync failed: {}", e)),
+                data: None,
+            }
+        }
     }
 
     // 10. Sync Coupons
-    match neon_query(connection_string, "SELECT * FROM pos_coupons LIMIT 500", vec![]).await {
+    match neon_query(
+        connection_string,
+        "SELECT * FROM pos_coupons LIMIT 500",
+        vec![],
+    )
+    .await
+    {
         Ok(resp) => {
             if let Some(rows) = resp.rows {
                 for row in rows {
@@ -780,11 +1009,23 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                 }
             }
         }
-        Err(e) => return SyncFromResult { synced: total_synced, error: Some(format!("Coupons sync failed: {}", e)), data: None },
+        Err(e) => {
+            return SyncFromResult {
+                synced: total_synced,
+                error: Some(format!("Coupons sync failed: {}", e)),
+                data: None,
+            }
+        }
     }
 
     // 11. Sync Reservations
-    match neon_query(connection_string, "SELECT * FROM pos_reservations LIMIT 1000", vec![]).await {
+    match neon_query(
+        connection_string,
+        "SELECT * FROM pos_reservations LIMIT 1000",
+        vec![],
+    )
+    .await
+    {
         Ok(resp) => {
             if let Some(rows) = resp.rows {
                 for row in rows {
@@ -795,8 +1036,18 @@ pub async fn sync_from_neon(connection_string: &str, store_id: &str) -> SyncFrom
                 }
             }
         }
-        Err(e) => return SyncFromResult { synced: total_synced, error: Some(format!("Reservations sync failed: {}", e)), data: None },
+        Err(e) => {
+            return SyncFromResult {
+                synced: total_synced,
+                error: Some(format!("Reservations sync failed: {}", e)),
+                data: None,
+            }
+        }
     }
 
-    SyncFromResult { synced: total_synced, error: None, data: Some(data) }
+    SyncFromResult {
+        synced: total_synced,
+        error: None,
+        data: Some(data),
+    }
 }
