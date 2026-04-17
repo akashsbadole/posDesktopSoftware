@@ -29,6 +29,7 @@ export default function LoginScreen() {
     | "offline-org"
     | "offline-pin"
   >("credentials");
+  const [rememberMe, setRememberMe] = useState(false);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
   const {
@@ -39,7 +40,7 @@ export default function LoginScreen() {
     logout,
   } = useAuthStore();
 
-  // Initialize offline mode
+  // Initialize offline mode and load saved credentials
   useEffect(() => {
     if (isOfflineMode()) {
       const orgs = getAvailableOrganizations();
@@ -47,6 +48,15 @@ export default function LoginScreen() {
         setOfflineOrgs(orgs);
         setView("offline-org");
       }
+    }
+
+    // Load saved email if available
+    const savedEmail = localStorage.getItem("pos_saved_email");
+    const savedRememberMe = localStorage.getItem("pos_remember_me") === "true";
+
+    if (savedEmail && savedRememberMe) {
+      setEmail(savedEmail);
+      setRememberMe(true);
     }
   }, []);
 
@@ -121,6 +131,16 @@ export default function LoginScreen() {
       if (!success) {
         setError("Invalid email or password");
         setPassword("");
+      } else {
+        // Save email if remember me is checked
+        if (rememberMe) {
+          localStorage.setItem("pos_saved_email", trimmedEmail);
+          localStorage.setItem("pos_remember_me", "true");
+        } else {
+          // Clear saved credentials if remember me is unchecked
+          localStorage.removeItem("pos_saved_email");
+          localStorage.removeItem("pos_remember_me");
+        }
       }
       // If success, the useEffect hook will handle switching to PIN view
     } catch (e) {
@@ -261,6 +281,11 @@ export default function LoginScreen() {
     setLockoutEnd(null);
     setError("");
     setSelectedOrgId("");
+    // Clear saved credentials when switching organizations
+    localStorage.removeItem("pos_saved_email");
+    localStorage.removeItem("pos_remember_me");
+    setEmail("");
+    setRememberMe(false);
     if (isOfflineMode()) {
       setView("offline-org");
     } else {
@@ -615,6 +640,29 @@ export default function LoginScreen() {
                 {error}
               </div>
             )}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                id="remember-me"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                style={{
+                  width: 16,
+                  height: 16,
+                  accentColor: "#F5C842",
+                }}
+              />
+              <label
+                htmlFor="remember-me"
+                style={{
+                  fontSize: 14,
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                Remember me
+              </label>
+            </div>
             <button
               type="submit"
               disabled={loading}
