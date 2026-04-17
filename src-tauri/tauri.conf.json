@@ -45,7 +45,7 @@
     },
     "bundle": {
       "active": true,
-      "targets": "all",
+      "targets": ["deb", "appimage", "msi", "dmg"],
       "identifier": "com.posbilling.app",
       "icon": [
         "icons/32x32.png",
@@ -60,6 +60,18 @@
         "wix": {
           "language": "en-US"
         }
+      },
+      "deb": {
+        "depends": [
+          "libgtk-3-0",
+          "webkit2gtk-4.0",
+          "libayatana-appindicator3-1",
+          "librsvg2-common"
+        ]
+      },
+      "macOS": {
+        "frameworks": [],
+        "minimumSystemVersion": "10.13"
       }
     },
     "security": { 
