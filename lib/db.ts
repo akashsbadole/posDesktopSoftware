@@ -1038,8 +1038,8 @@ export async function dbLogin(
   });
 }
 
-export async function dbForgotPassword(email: string): Promise<boolean> {
-  return sql<boolean>("forgot_password", { email });
+export async function dbForgotPassword(email: string): Promise<string | boolean> {
+  return sql<string | boolean>("forgot_password", { email });
 }
 
 export async function dbResetPassword(
@@ -1050,8 +1050,8 @@ export async function dbResetPassword(
   return sql<boolean>("reset_password", { email, code, newPassword });
 }
 
-export async function dbForgotUser(email: string): Promise<boolean> {
-  return sql<boolean>("forgot_user", { email });
+export async function dbForgotUser(email: string): Promise<string | boolean> {
+  return sql<string | boolean>("forgot_user", { email });
 }
 
 export async function verifyPin(

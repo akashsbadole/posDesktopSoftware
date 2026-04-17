@@ -43,44 +43,59 @@ export default function CouponsScreen() {
   }, [activeStoreId]);
 
   const loadCoupons = async () => {
-    const data = await getCoupons(activeStoreId);
-    setCoupons(data);
+    try {
+      const data = await getCoupons(activeStoreId);
+      setCoupons(data);
+    } catch (error) {
+      console.error("Failed to load coupons:", error);
+      alert(`Failed to load coupons: ${error}`);
+    }
   };
 
   const handleSave = async () => {
-    const coupon: Coupon = {
-      id: editingCoupon?.id || uuid(),
-      store_id: activeStoreId,
-      code: formData.code.toUpperCase(),
-      discount_type: formData.discount_type,
-      discount_value: formData.discount_value,
-      min_order_amount: formData.min_order_amount,
-      max_uses: formData.max_uses,
-      used_count: editingCoupon?.used_count || 0,
-      valid_from: formData.valid_from,
-      valid_until: formData.valid_until,
-      active: formData.active,
-    };
-    await saveCoupon(coupon, activeStoreId);
-    setShowForm(false);
-    setEditingCoupon(null);
-    setFormData({
-      code: "",
-      discount_type: "percentage",
-      discount_value: 10,
-      min_order_amount: 0,
-      max_uses: 100,
-      valid_from: new Date().toISOString().split("T")[0],
-      valid_until: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split("T")[0],
-      active: true,
-    });
-    loadCoupons();
+    try {
+      const coupon: Coupon = {
+        id: editingCoupon?.id || uuid(),
+        store_id: activeStoreId,
+        code: formData.code.toUpperCase(),
+        discount_type: formData.discount_type,
+        discount_value: formData.discount_value,
+        min_order_amount: formData.min_order_amount,
+        max_uses: formData.max_uses,
+        used_count: editingCoupon?.used_count || 0,
+        valid_from: formData.valid_from,
+        valid_until: formData.valid_until,
+        active: formData.active,
+      };
+      await saveCoupon(coupon, activeStoreId);
+      setShowForm(false);
+      setEditingCoupon(null);
+      setFormData({
+        code: "",
+        discount_type: "percentage",
+        discount_value: 10,
+        min_order_amount: 0,
+        max_uses: 100,
+        valid_from: new Date().toISOString().split("T")[0],
+        valid_until: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split("T")[0],
+        active: true,
+      });
+      loadCoupons();
+    } catch (error) {
+      console.error("Failed to save coupon:", error);
+      alert(`Failed to save coupon: ${error}`);
+    }
   };
 
   const handleDelete = async (id: string) => {
     if (confirm("Delete this coupon?")) {
-      await deleteCoupon(id, activeStoreId);
-      loadCoupons();
+      try {
+        await deleteCoupon(id, activeStoreId);
+        loadCoupons();
+      } catch (error) {
+        console.error("Failed to delete coupon:", error);
+        alert(`Failed to delete coupon: ${error}`);
+      }
     }
   };
 

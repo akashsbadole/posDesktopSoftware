@@ -22,10 +22,11 @@ export default function ForgotPasswordScreen({ onBack }: ForgotPasswordScreenPro
     setLoading(true);
     setError("");
     try {
-      const success = await forgotPassword(email);
-      if (success) {
+      const result = await forgotPassword(email);
+      if (typeof result === 'string') {
+        // Display the reset code directly
         setStep("reset");
-        setMessage("Recovery code sent to your email.");
+        setMessage(`Reset code: ${result}\n\nThis code has also been saved to a file in your Documents folder and your email client has been opened.`);
       } else {
         setError("Email not found.");
       }
@@ -60,9 +61,10 @@ export default function ForgotPasswordScreen({ onBack }: ForgotPasswordScreenPro
     setLoading(true);
     setError("");
     try {
-      const success = await forgotUser(email);
-      if (success) {
-        setMessage("Username information sent to your email.");
+      const result = await forgotUser(email);
+      if (typeof result === 'string') {
+        // Display the username directly
+        setMessage(`Your username is: ${result}\n\nThis information has also been saved to a file in your Documents folder and your email client has been opened.`);
       } else {
         setError("Email not found.");
       }

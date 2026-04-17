@@ -4461,6 +4461,40 @@ impl Database {
         Ok(users)
     }
 
+    pub fn get_user_by_email(&self, email: &str) -> Result<Option<User>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, organization_id, name, email, role, store_id, pin FROM users WHERE email = ?1")?;
+        let mut rows = stmt.query_map([email], |row| {
+            Ok(User {
+                id: row.get(0)?,
+                organization_id: row.get(1)?,
+                name: row.get(2)?,
+                email: row.get(3)?,
+                role: row.get(4)?,
+                store_id: row.get(5)?,
+                pin: row.get(6)?,
+            })
+        })?;
+
+        match rows.next() {
+            Some(user) => Ok(Some(user?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn update_password(&self, email: &str, new_password: &str) -> Result<()> {
+        // Hash the new password
+        let hashed_password = bcrypt::hash(new_password, bcrypt::DEFAULT_COST)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
+
+        self.conn.execute(
+            "UPDATE users SET password = ?1 WHERE email = ?2",
+            [hashed_password, email.to_string()],
+        )?;
+        Ok(())
+    }
+
     pub fn register(&self, org_name: &str, email: &str, password: &str) -> Result<LoginResult> {
         let org_id = uuid::Uuid::new_v4().to_string();
         let user_id = uuid::Uuid::new_v4().to_string();

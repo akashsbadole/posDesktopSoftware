@@ -109,7 +109,7 @@ export default function Home() {
   const [isLocked, setIsLocked] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
-  const { user, organization, isAuthenticated, logout } = useAuthStore();
+  const { user, organization, isAuthenticated, logout, lock } = useAuthStore();
   const {
     activeStoreId,
     settings,
@@ -169,10 +169,10 @@ export default function Home() {
     if (isLocked) {
       // `handleLock` only flips the lock flag; this effect performs the single sign-out
       // and resets the lock state. This prevents double-logout during a fast unlock.
-      logout();
+      lock();
       setIsLocked(false);
     }
-  }, [isLocked, logout]);
+  }, [isLocked, lock]);
 
   const checkPendingOrders = async () => {
     try {

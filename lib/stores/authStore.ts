@@ -30,14 +30,15 @@ interface AuthState {
     organizationId: string,
   ) => Promise<boolean>;
   register: (orgName: string, email: string, pass: string) => Promise<boolean>;
-  forgotPassword: (email: string) => Promise<boolean>;
+  forgotPassword: (email: string) => Promise<string | boolean>;
   resetPassword: (
     email: string,
     code: string,
     pass: string,
   ) => Promise<boolean>;
-  forgotUser: (email: string) => Promise<boolean>;
+  forgotUser: (email: string) => Promise<string | boolean>;
   logout: () => void;
+  lock: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -238,6 +239,14 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           sessionStart: null,
         });
+      },
+      lock: () => {
+        set({
+          user: null,
+          isAuthenticated: false,
+          sessionStart: null,
+        });
+        // Keep organization so PIN screen shows
       },
     }),
     { name: "pos-auth-v2" },

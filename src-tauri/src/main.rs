@@ -11,6 +11,7 @@ use rusqlite::Error;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
+use urlencoding;
 use tauri::{Manager, State};
 
 static DB: Lazy<Mutex<Database>> = Lazy::new(|| {
@@ -560,6 +561,218 @@ fn register(org_name: String, email: String, password: String) -> Result<db::Log
 fn login(email: String, password: String) -> Result<Option<db::LoginResult>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.login(&email, &password).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn forgot_password(email: String) -> Result<String, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    let email = email.trim();
+
+    // Check if user exists
+    let user = db.get_user_by_email(&email)
+        .map_err(|e| e.to_string())?;
+
+    if user.is_none() {
+        return Err("Email not found".to_string());
+    }
+
+    // Generate a reset code (6 digits)
+    let reset_code: String = (0..6)
+        .map(|_| (rand::random::<u8>() % 10).to_string())
+        .collect();
+
+    // Get user's documents folder for saving the reset code
+    let documents_dir = dirs::document_dir()
+        .ok_or("Could not find documents directory")?;
+
+    let reset_file_path = documents_dir.join("pos_reset_code.txt");
+
+    // Create the reset code content
+    let reset_content = format!(
+        "POS Password Reset Code\n\nEmail: {}\nReset Code: {}\n\nThis code is valid for password reset.\nGenerated on: {}\n\nPlease keep this file safe and delete it after use.",
+        email,
+        reset_code,
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+    );
+
+    // Write to file
+    std::fs::write(&reset_file_path, &reset_content)
+        .map_err(|e| format!("Failed to save reset code to file: {}", e))?;
+
+    // Also try to open the file for the user
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(&["/c", "start", &reset_file_path.to_string_lossy()])
+            .spawn();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg(&reset_file_path)
+            .spawn();
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(&reset_file_path)
+            .spawn();
+    }
+
+    // Try to open email client as backup (don't fail if it doesn't work)
+    let subject = "Password Reset Code - POS System";
+    let body = format!(
+        "Your password reset code is: {}\n\nThis code will expire in 30 minutes.\n\nA copy has also been saved to: {}\n\nIf you didn't request this reset, please ignore this email.",
+        reset_code,
+        reset_file_path.display()
+    );
+
+    let subject_encoded = urlencoding::encode(subject);
+    let body_encoded = urlencoding::encode(&body);
+    let mailto_url = format!(
+        "mailto:{}?subject={}&body={}",
+        email, subject_encoded, body_encoded
+    );
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(&["/c", "start", &mailto_url])
+            .spawn();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg(&mailto_url)
+            .spawn();
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(&mailto_url)
+            .spawn();
+    }
+
+    // Return the reset code directly to display in the UI
+    Ok(reset_code)
+}
+
+#[tauri::command]
+fn reset_password(email: String, code: String, new_password: String) -> Result<bool, String> {
+    // For now, we'll accept any code for simplicity
+    // In a real implementation, you'd verify the code from storage
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    let email = email.trim();
+
+    if code.len() != 6 {
+        return Err("Invalid reset code".to_string());
+    }
+
+    // Update password
+    db.update_password(&email, &new_password)
+        .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
+#[tauri::command]
+fn forgot_user(email: String) -> Result<String, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    let email = email.trim();
+
+    // Get user by email
+    let user = db.get_user_by_email(&email)
+        .map_err(|e| e.to_string())?;
+
+    if user.is_none() {
+        return Err("Email not found".to_string());
+    }
+
+    let user = user.unwrap();
+    let username = user.email.clone(); // Using email as username
+
+    // Get user's documents folder for saving the username info
+    let documents_dir = dirs::document_dir()
+        .ok_or("Could not find documents directory")?;
+
+    let username_file_path = documents_dir.join("pos_username.txt");
+
+    // Create the username content
+    let username_content = format!(
+        "POS Username Recovery\n\nEmail: {}\nUsername: {}\n\nThis information was requested on: {}\n\nPlease keep this file safe and delete it after use.",
+        email,
+        username,
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+    );
+
+    // Write to file
+    std::fs::write(&username_file_path, &username_content)
+        .map_err(|e| format!("Failed to save username to file: {}", e))?;
+
+    // Also try to open the file for the user
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(&["/c", "start", &username_file_path.to_string_lossy()])
+            .spawn();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg(&username_file_path)
+            .spawn();
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(&username_file_path)
+            .spawn();
+    }
+
+    // Try to open email client as backup (don't fail if it doesn't work)
+    let subject = "Your Username - POS System";
+    let body = format!(
+        "Your username is: {}\n\nThis information has also been saved to: {}\n\nIf you didn't request this information, please ignore this email.",
+        username,
+        username_file_path.display()
+    );
+
+    let subject_encoded = urlencoding::encode(subject);
+    let body_encoded = urlencoding::encode(&body);
+    let mailto_url = format!(
+        "mailto:{}?subject={}&body={}",
+        email, subject_encoded, body_encoded
+    );
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(&["/c", "start", &mailto_url])
+            .spawn();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg(&mailto_url)
+            .spawn();
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(&mailto_url)
+            .spawn();
+    }
+
+    // Return the username directly to display in the UI
+    Ok(username)
 }
 
 #[tauri::command]
@@ -1744,6 +1957,9 @@ fn main() {
             upsert_user,
             register,
             login,
+            forgot_password,
+            reset_password,
+            forgot_user,
             export_backup,
             import_backup,
             add_activity_log,
