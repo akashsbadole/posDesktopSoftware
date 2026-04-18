@@ -131,6 +131,48 @@ npm run tauri:build
 
 ---
 
+## Cross-Platform Distribution
+
+### GitHub Actions (Recommended)
+This project includes a GitHub Actions workflow in `.github/workflows/release.yml`. When you push a tag (e.g., `v1.0.0`) to your repository, it will automatically build:
+- **Windows**: `.msi` (Wix Installer)
+- **Linux**: `.deb` (Ubuntu/Debian) and `AppImage`
+- **macOS**: `.dmg` (Disk Image)
+
+The builds will be available as a draft release in your GitHub "Releases" section.
+
+### Building for Linux on Windows (WSL)
+If you want to build the Linux `.deb` package locally on a Windows machine:
+1. **Install WSL2**: Run `wsl --install` in PowerShell.
+2. **Install Ubuntu**: Open the Ubuntu terminal from the Microsoft Store.
+3. **Setup Environment**:
+   ```bash
+   sudo apt update
+   sudo apt install -y nodejs npm build-essential curl wget file libssl-dev libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev librsvg2-dev
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   source "$HOME/.cargo/env"
+   ```
+4. **Clone & Build**:
+   ```bash
+   git clone <your-repo-url>
+   cd pos-tauri
+   npm install
+   npm run tauri:build:linux64
+   ```
+
+### Microsoft Store Submission (Windows)
+To publish your application as a Windows app in the Microsoft Store:
+1. **Create a Partner Center Account**: Register at [partner.microsoft.com](https://partner.microsoft.com/dashboard/registration).
+2. **Reserve App Name**: In the dashboard, reserve your product name.
+3. **Configure MSIX**: Update `src-tauri/tauri.conf.json` under `bundle > windows > msix` with your Publisher ID and Identity Name provided by Microsoft.
+4. **Build MSIX**:
+   ```bash
+   npm run tauri:build -- --bundle msix
+   ```
+5. **Upload**: Upload the generated `.msix` file (found in `src-tauri/target/release/bundle/msix/`) to your submission in the Partner Center.
+
+---
+
 ## Neon PostgreSQL Setup (Optional)
 
 1. Sign up at **https://neon.tech** (free tier available)
