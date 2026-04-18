@@ -1109,6 +1109,33 @@ export async function verifyPin(
   });
 }
 
+export async function findOrganizationByEmail(
+  email: string,
+): Promise<Organization | null> {
+  return sql<Organization | null>("find_organization_by_email", {
+    email,
+  });
+}
+
+export async function verifyPinOffline(
+  pin: string,
+  organizationId: string,
+): Promise<{ user: User; organization: Organization } | null> {
+  return sql<{ user: User; organization: Organization } | null>(
+    "verify_pin_offline",
+    {
+      pin,
+      organization_id: organizationId,
+    },
+  );
+}
+
+export async function getOrganizationById(
+  id: string,
+): Promise<Organization | null> {
+  return sql<Organization | null>("get_organization_by_id", { id });
+}
+
 /**
  * Offline-only PIN authentication
  * Used in offline mode to login with just PIN and organization ID
@@ -2616,6 +2643,75 @@ async function browserFallback<T>(
       console.log("[verify_pin] PIN verification failed");
       return null as T;
     }
+    case "find_organization_by_email": {
+      const email = (args as any).email?.trim().toLowerCase();
+      if (!email) {
+        throw new Error("Email is required");
+      }
+
+      console.log("[find_organization_by_email] Looking up org for email:", email);
+      const orgs = lsGet<Organization[]>("pos_organizations") || [];
+      const org = orgs.find((o) => o.email.toLowerCase() === email);
+
+      if (org) {
+        console.log("[find_organization_by_email] Found org:", org.id);
+        return org as T;
+      }
+
+      console.log("[find_organization_by_email] Organization not found");
+      return null as T;
+    }
+    case "get_organization_by_id": {
+      const orgId = (args as any).id || (args as any).organization_id;
+      if (!orgId?.trim()) {
+        throw new Error("Organization ID is required");
+      }
+
+      console.log("[get_organization_by_id] Fetching org with id:", orgId);
+      const orgs = lsGet<Organization[]>("pos_organizations") || [];
+      const org = orgs.find((o) => o.id === orgId);
+
+      if (org) {
+        return org as T;
+      }
+
+      return null as T;
+    }
+    case "verify_pin_offline": {
+      const pin = (args as any).pin;
+      const orgId =
+        (args as any).organization_id || (args as any).organizationId;
+
+      if (!pin?.trim() || !orgId?.trim()) {
+        throw new Error("PIN and organization ID are required");
+      }
+
+      if (pin.length < 4) {
+        throw new Error("PIN must be at least 4 digits");
+      }
+
+      console.log("[verify_pin_offline] Verifying PIN for orgId:", orgId);
+      const users = lsGet<User[]>("pos_users") || [];
+      const user = users.find(
+        (u) => u.pin === pin && u.organization_id === orgId,
+      );
+
+      if (!user) {
+        console.log("[verify_pin_offline] PIN verification failed");
+        return null as T;
+      }
+
+      const orgs = lsGet<Organization[]>("pos_organizations") || [];
+      const organization = orgs.find((o) => o.id === orgId);
+
+      if (!organization) {
+        console.log("[verify_pin_offline] Organization not found");
+        return null as T;
+      }
+
+      console.log("[verify_pin_offline] PIN verified successfully");
+      return { user, organization } as T;
+    }
     case "login_with_pin_offline": {
       const pin = (args as any).pin;
       const orgId =
@@ -3432,23 +3528,12 @@ async function browserFallback<T>(
           trial_expiry: null,
         } as T;
 
-      // Mock trial for browser fallback: 180 days from first access
-      let firstAccess = lsGet<string>("pos_first_access");
-      if (!firstAccess) {
-        firstAccess = new Date().toISOString();
-        lsSet("pos_first_access", firstAccess);
-      }
-      const expiry = new Date(firstAccess);
-      expiry.setDate(expiry.getDate() + 183);
-      const daysLeft = Math.ceil(
-        (expiry.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24),
-      );
-
+      // All features are free - no trial needed
       return {
-        enabled: daysLeft > 0,
-        source: daysLeft > 0 ? "trial" : "none",
-        trial_days_left: Math.max(0, daysLeft),
-        trial_expiry: expiry.toISOString(),
+        enabled: true,
+        source: "free",
+        trial_days_left: 0,
+        trial_expiry: null,
       } as T;
     }
     case "is_premium_enabled": {

@@ -78,7 +78,7 @@ export default function RegistrationScreen({
             <span className="text-2xl font-bold text-[#0D0D0F]">POS</span>
           </div>
           <h1 className="text-2xl font-bold text-foreground">Create Account</h1>
-          <p className="text-muted-foreground">Start your free trial today</p>
+          <p className="text-muted-foreground">100% Free - No payment required</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

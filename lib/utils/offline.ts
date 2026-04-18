@@ -80,3 +80,57 @@ export function getUsersForOrganization(organizationId: string): Array<{
 
   return [];
 }
+
+export function findOrganizationByEmail(
+  email: string,
+): { id: string; name: string; email: string } | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const orgs = getAvailableOrganizations();
+    const normalizedEmail = email.trim().toLowerCase();
+    return (
+      orgs.find((org) => org.email.toLowerCase() === normalizedEmail) || null
+    );
+  } catch (e) {
+    console.error(
+      "[offline.ts] Error finding organization by email:",
+      e,
+    );
+    return null;
+  }
+}
+
+export function getUserByEmail(
+  email: string,
+  organizationId: string,
+): { id: string; name: string; email: string; role: string } | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const users = localStorage.getItem("pos_users");
+    if (users) {
+      const decrypted = decryptData(users);
+      if (decrypted && decrypted.trim()) {
+        const allUsers = JSON.parse(decrypted);
+        const user = allUsers.find(
+          (u: any) =>
+            u.email.toLowerCase() === email.trim().toLowerCase() &&
+            u.organization_id === organizationId,
+        );
+        if (user) {
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[offline.ts] Error finding user by email:", e);
+  }
+
+  return null;
+}

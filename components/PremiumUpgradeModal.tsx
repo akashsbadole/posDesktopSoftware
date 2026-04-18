@@ -113,19 +113,15 @@ export default function PremiumUpgradeModal({
           </div>
 
           <h2 className="text-3xl font-bold mb-2">
-            {premiumStatus?.source === "trial"
-              ? "Your Free Trial is Active!"
-              : "Upgrade to Premium"}
+            All Features Are Free!
           </h2>
           {featureName && (
             <p className="text-[#F5C842] font-semibold mb-4 uppercase tracking-widest text-xs">
-              Access {featureName} & More
+              {featureName} Included
             </p>
           )}
           <p className="text-gray-400 max-w-md mx-auto mb-10">
-            {premiumStatus?.source === "trial"
-              ? `You have full access to all professional features for ${premiumStatus.trial_days_left} more days. Upgrade now to ensure uninterrupted service.`
-              : "Unlock the full power of Appixen POS Billing with professional features designed to help your business scale and stay organized."}
+            Appixen POS Billing is 100% free - no subscription, no trial, no hidden fees. All professional features are unlocked from day one!
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left mb-12">

@@ -1,1 +1,45 @@
-PREM-Q3JWA7PU2NIA-09514aad
+Appixen POS Billing - License Information
+
+===========================================
+CURRENT LICENSE: FREE FOREVER
+===========================================
+
+All features are 100% free - no subscription, no trial, no hidden fees.
+
+-------------------------------------------
+FUTURE PREMIUM SERVICES (Coming Soon)
+-------------------------------------------
+
+While the core POS application is and will always be free, we may offer optional paid services in the future:
+
+1. **Custom Cloud Hosting**
+   - Dedicated server hosting for businesses wanting isolated data
+   - Expected cost: $19-49/month
+
+2. **Priority Support**
+   - 24/7 dedicated support with faster response times
+   - Expected cost: $29-99/month
+
+3. **Advanced Analytics**
+   - AI-powered business insights and predictions
+   - Expected cost: $9-19/month
+
+4. **White-label Solutions**
+   - Custom branding with your company logo
+   - Expected cost: $99-299 one-time
+
+5. **POS Hardware Integration**
+   - Premium integration with specialized hardware
+   - Expected cost: Varies per device
+
+-------------------------------------------
+NOTE: 
+- All above services are PLANNED and NOT YET AVAILABLE
+- The core app remains 100% free forever
+- Current license key (if any) unlocks all features at no extra cost
+
+-------------------------------------------
+Current License Key: PREM-Q3JWA7PU2NIA-09514aad
+Status: All features unlocked
+
+For questions: info@appixen.com
