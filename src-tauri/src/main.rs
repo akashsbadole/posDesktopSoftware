@@ -14,6 +14,39 @@ use std::sync::{Arc, Mutex};
 use urlencoding;
 use tauri::{Manager, State};
 
+#[tauri::command]
+fn check_camera_availability() -> CameraStatus {
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, check if any camera is available using Windows Media Device API
+        // Simplified check - in production, use windows::Media::Capture
+        CameraStatus {
+            available: true, // Assume available; actual check requires more complex code
+            message: "Camera check not fully implemented - relies on webview".to_string(),
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        CameraStatus {
+            available: true,
+            message: "macOS camera access via webview".to_string(),
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        CameraStatus {
+            available: true,
+            message: "Linux camera access via webview".to_string(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CameraStatus {
+    pub available: bool,
+    pub message: String,
+}
+
 static DB: Lazy<Mutex<Database>> = Lazy::new(|| {
     let db_path = std::env::var("DATABASE_PATH")
         .map(std::path::PathBuf::from)
@@ -2080,6 +2113,7 @@ fn main() {
             print_receipt,
             print_to_printer,
             open_cash_drawer,
+            check_camera_availability,
             seed_database,
             reset_database,
             reset_and_seed_database,

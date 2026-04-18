@@ -27,7 +27,7 @@ import {
   ShieldCheck,
   BarChart3
 } from "lucide-react";
-import { useSettingsStore, useProductsStore, useAuthStore, useStoresStore } from "@/lib/stores";
+import { useSettingsStore, useProductsStore, useAuthStore, useStoresStore, useOrdersStore } from "@/lib/stores";
 import {
   dbGetProducts, Product, dbUpdateStock, dbTransferStock,
   dbGetInventoryTransactions, dbGetAllInventoryTransactions, InventoryTransaction,
@@ -44,10 +44,12 @@ export default function InventoryManagementScreen() {
   const { user } = useAuthStore();
   const { stores } = useStoresStore();
   const { products, fetchProducts } = useProductsStore();
+  const { orders } = useOrdersStore();
 
   const curr = settings?.currency_symbol ?? "₹";
 
   const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [forecastAlerts, setForecastAlerts] = useState<{productId: string, name: string, currentStock: number, forecastedDemand: number, daysLeft: number}[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -67,6 +69,37 @@ export default function InventoryManagementScreen() {
   useEffect(() => {
     loadInventoryData();
   }, [activeStoreId, activeTab, products.length]);
+
+  useEffect(() => {
+    // Compute forecast alerts
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const salesData: {[productId: string]: number} = {};
+    orders.forEach(order => {
+      if (new Date(order.created_at) >= thirtyDaysAgo && order.status === 'completed') {
+        order.items.forEach(item => {
+          salesData[item.product_id] = (salesData[item.product_id] || 0) + item.quantity;
+        });
+      }
+    });
+
+    const alerts = products.map(product => {
+      const totalSold = salesData[product.id] || 0;
+      const avgDaily = totalSold / 30;
+      const forecastedDemand = avgDaily * 7; // 7 days buffer
+      const daysLeft = avgDaily > 0 ? Math.floor(product.stock / avgDaily) : Infinity;
+      return {
+        productId: product.id,
+        name: product.name,
+        currentStock: product.stock,
+        forecastedDemand,
+        daysLeft,
+      };
+    }).filter(alert => alert.daysLeft <= 7 && alert.daysLeft !== Infinity);
+
+    setForecastAlerts(alerts);
+  }, [products, orders]);
 
   const loadInventoryData = async () => {
     setIsLoading(true);
@@ -176,12 +209,51 @@ export default function InventoryManagementScreen() {
               </div>
 
               <div className="bg-surface border border-border p-5 rounded-2xl">
+                <span className="text-muted-foreground text-sm font-medium flex items-center gap-2">
+                  Forecast Alerts <TrendingDown size={14} className="text-orange-500" />
+                </span>
+                <div className="text-2xl font-bold mt-3 text-orange-500">
+                  {forecastAlerts.length}
+                </div>
+                <div className="text-xs mt-1 text-muted-foreground">
+                  Items running low based on sales forecast
+                </div>
+              </div>
+
+              <div className="bg-surface border border-border p-5 rounded-2xl">
                 <span className="text-muted-foreground text-sm font-medium">Pending Counts</span>
                 <div className="text-2xl font-bold mt-3 text-blue-500">
                   {stockCounts.filter(c => c.status === 'draft').length}
                 </div>
               </div>
             </div>
+
+            {/* Forecast Alerts */}
+            {forecastAlerts.length > 0 && (
+              <div className="bg-surface border border-border p-5 rounded-2xl">
+                <h3 className="font-semibold mb-4 flex items-center gap-2">
+                  <TrendingDown size={16} className="text-orange-500" />
+                  Forecast Alerts
+                </h3>
+                <div className="space-y-3">
+                  {forecastAlerts.slice(0, 5).map(alert => (
+                    <div key={alert.productId} className="flex items-center justify-between p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                      <div>
+                        <div className="font-medium">{alert.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          Current: {alert.currentStock} | Forecast: {alert.forecastedDemand.toFixed(1)}/week
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-semibold text-orange-600 dark:text-orange-400">
+                          {alert.daysLeft} days left
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Main Content Area */}
             <div className="flex-1 bg-surface border border-border rounded-2xl flex flex-col overflow-hidden">

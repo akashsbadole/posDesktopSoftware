@@ -18,6 +18,7 @@ import {
   Wallet,
   Truck,
   CalendarDays,
+  Gift,
   Wheat,
   Shield,
   Bell,
@@ -128,6 +129,12 @@ const allNavItems = [
     icon: Shield,
     adminOnly: true,
     premium: true,
+  },
+  {
+    id: "gift_cards" as Screen,
+    labelKey: "nav.gift_cards",
+    icon: Gift,
+    adminOnly: true,
   },
   { id: "staff" as Screen, labelKey: "nav.staff", icon: Users, adminOnly: true, premium: true },
   {

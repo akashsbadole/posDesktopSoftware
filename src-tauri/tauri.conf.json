@@ -54,13 +54,9 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
+
       "category": "Business",
-      "shortDescription": "Restaurant POS Billing System",
-      "windows": {
-        "wix": {
-          "language": "en-US"
-        }
-      }
+      "shortDescription": "Restaurant POS Billing System"
     },
     "security": { 
       "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: asset: https://asset.localhost; connect-src 'self' https://*.neon.tech https://api.twilio.com https://*.twilio.com https://*whatsapp*"

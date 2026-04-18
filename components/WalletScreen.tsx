@@ -60,7 +60,7 @@ export default function WalletScreen() {
 
   const filteredCustomers = customers.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone.includes(search)
+    (c.phone && c.phone.includes(search))
   );
 
   return (
