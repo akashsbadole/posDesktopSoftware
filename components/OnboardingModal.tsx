@@ -253,7 +253,7 @@ export default function OnboardingModal() {
                   <Store size={32} />
                 </div>
                 <h1 className="text-3xl font-bold mb-2">
-                  Welcome to POS Billing
+                  Welcome to Appixen POS Billing
                 </h1>
                 <p className="text-muted-foreground">
                   Select your industry to get started
@@ -265,7 +265,10 @@ export default function OnboardingModal() {
                   <button
                     key={ind.id}
                     onClick={() =>
-                      setFormData({ ...formData, industry: ind.id as StoreType["industry"] })
+                      setFormData({
+                        ...formData,
+                        industry: ind.id as StoreType["industry"],
+                      })
                     }
                     className={`p-4 rounded-2xl border-2 transition-all text-left group ${
                       formData.industry === ind.id

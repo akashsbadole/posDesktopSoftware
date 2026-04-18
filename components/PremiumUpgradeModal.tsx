@@ -1,6 +1,18 @@
 "use client";
 import React, { useState } from "react";
-import { X, Check, Key, Zap, ShieldCheck, Database, LayoutGrid, Users, MessageSquare, ChevronRight, RefreshCw } from "lucide-react";
+import {
+  X,
+  Check,
+  Key,
+  Zap,
+  ShieldCheck,
+  Database,
+  LayoutGrid,
+  Users,
+  MessageSquare,
+  ChevronRight,
+  RefreshCw,
+} from "lucide-react";
 import { useSettingsStore } from "@/lib/stores";
 
 interface PremiumUpgradeModalProps {
@@ -9,7 +21,11 @@ interface PremiumUpgradeModalProps {
   featureName?: string;
 }
 
-export default function PremiumUpgradeModal({ isOpen, onClose, featureName }: PremiumUpgradeModalProps) {
+export default function PremiumUpgradeModal({
+  isOpen,
+  onClose,
+  featureName,
+}: PremiumUpgradeModalProps) {
   const { saveSettings, checkPremium, premiumStatus } = useSettingsStore();
   const [licenseKey, setLicenseKey] = useState("");
   const [activating, setActivating] = useState(false);
@@ -46,12 +62,36 @@ export default function PremiumUpgradeModal({ isOpen, onClose, featureName }: Pr
   };
 
   const benefits = [
-    { icon: Database, label: "Cloud Sync (Neon)", desc: "Real-time backup & multi-device sync" },
-    { icon: LayoutGrid, label: "Multi-Store Management", desc: "Manage all branches from one app" },
-    { icon: ShieldCheck, label: "Advanced Inventory", desc: "Ingredients, POs & Recipe tracking" },
-    { icon: Users, label: "CRM & Loyalty", desc: "Customer Wallet & Points system" },
-    { icon: Zap, label: "Staff Payroll", desc: "Salary calculations & scheduling" },
-    { icon: MessageSquare, label: "SMS & WhatsApp", desc: "Automated digital receipts" },
+    {
+      icon: Database,
+      label: "Cloud Sync (Neon)",
+      desc: "Real-time backup & multi-device sync",
+    },
+    {
+      icon: LayoutGrid,
+      label: "Multi-Store Management",
+      desc: "Manage all branches from one app",
+    },
+    {
+      icon: ShieldCheck,
+      label: "Advanced Inventory",
+      desc: "Ingredients, POs & Recipe tracking",
+    },
+    {
+      icon: Users,
+      label: "CRM & Loyalty",
+      desc: "Customer Wallet & Points system",
+    },
+    {
+      icon: Zap,
+      label: "Staff Payroll",
+      desc: "Salary calculations & scheduling",
+    },
+    {
+      icon: MessageSquare,
+      label: "SMS & WhatsApp",
+      desc: "Automated digital receipts",
+    },
   ];
 
   return (
@@ -85,17 +125,25 @@ export default function PremiumUpgradeModal({ isOpen, onClose, featureName }: Pr
           <p className="text-gray-400 max-w-md mx-auto mb-10">
             {premiumStatus?.source === "trial"
               ? `You have full access to all professional features for ${premiumStatus.trial_days_left} more days. Upgrade now to ensure uninterrupted service.`
-              : "Unlock the full power of POS Billing with professional features designed to help your business scale and stay organized."}
+              : "Unlock the full power of Appixen POS Billing with professional features designed to help your business scale and stay organized."}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left mb-12">
             {benefits.map((benefit, i) => (
-              <div key={i} className="flex gap-4 p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-[#F5C842]/20 transition-all group">
+              <div
+                key={i}
+                className="flex gap-4 p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-[#F5C842]/20 transition-all group"
+              >
                 <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-[#F5C842]/10 transition-colors">
-                  <benefit.icon size={20} className="text-gray-400 group-hover:text-[#F5C842]" />
+                  <benefit.icon
+                    size={20}
+                    className="text-gray-400 group-hover:text-[#F5C842]"
+                  />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white">{benefit.label}</h4>
+                  <h4 className="text-sm font-bold text-white">
+                    {benefit.label}
+                  </h4>
                   <p className="text-[11px] text-gray-500">{benefit.desc}</p>
                 </div>
               </div>
@@ -106,12 +154,7 @@ export default function PremiumUpgradeModal({ isOpen, onClose, featureName }: Pr
             <div className="flex flex-col items-center">
               <div className="flex flex-col sm:flex-row gap-4 items-center justify-center mb-6 w-full">
                 <button
-                  onClick={() =>
-                    window.open(
-                      "http://appixen.com/",
-                      "_blank"
-                    )
-                  }
+                  onClick={() => window.open("http://appixen.com/", "_blank")}
                   className="w-full sm:w-auto px-10 py-4 bg-[#F5C842] text-[#0D0D0F] font-black rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_rgba(245,200,66,0.2)]"
                 >
                   UPGRADE NOW
