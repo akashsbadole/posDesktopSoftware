@@ -681,8 +681,10 @@ fn login_with_pin_offline(
 ) -> Result<Option<db::LoginResult>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.login_with_pin_offline(&pin, &organization_id)
+        .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
 fn verify_pin_offline(
     pin: String,
     organization_id: String,
