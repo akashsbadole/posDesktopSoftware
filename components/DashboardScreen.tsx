@@ -7,6 +7,7 @@ import {
   Package,
   RefreshCw,
 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { useOrdersStore, useSettingsStore, useStoresStore } from "@/lib/stores";
 import SyncControls from "@/components/SyncControls";
 
@@ -18,6 +19,7 @@ export default function DashboardScreen() {
     weeklyRevenue,
     topProducts,
     lowStock,
+    paymentMethodStats,
     isLoading,
     error,
     fetchDashboardData,
@@ -130,48 +132,60 @@ export default function DashboardScreen() {
         })}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div className="card p-4">
           <h2 className="font-semibold mb-4 text-sm">Weekly Revenue</h2>
-          <div className="flex items-end gap-2" style={{ height: 120 }}>
-            {revenueData.map((d) => {
-              const pct = (d.revenue / maxRevenue) * 100;
-              const isToday =
-                d.label ===
-                new Date().toLocaleDateString("en", { weekday: "short" });
-              return (
-                <div
-                  key={d.label}
-                  className="flex-1 flex flex-col items-center gap-1"
-                >
-                  <div
-                    className="w-full rounded-t-md"
-                    title={`${curr}${d.revenue.toFixed(0)}`}
-                    style={{
-                      height: `${Math.max(4, pct)}%`,
-                      background: isToday ? "#F5C842" : "#1E1E26",
-                      minHeight: 4,
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: isToday ? "#F5C842" : "#4A4A5A",
-                    }}
-                  >
-                    {d.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          {(revenueData.length === 0 ||
-            revenueData.every((d) => d.revenue === 0)) && (
-            <div
-              className="text-center text-xs mt-2"
-              style={{ color: "#4A4A5A" }}
-            >
+          {revenueData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={120}>
+              <BarChart data={revenueData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1E1E26" />
+                <XAxis dataKey="label" stroke="#4A4A5A" fontSize={10} />
+                <YAxis stroke="#4A4A5A" fontSize={10} />
+                <Tooltip
+                  contentStyle={{ background: "#141418", border: "1px solid #1E1E26", borderRadius: 4 }}
+                  labelStyle={{ color: "#F5C842" }}
+                  itemStyle={{ color: "#9090A8" }}
+                  formatter={(value) => [`${curr}${Number(value).toFixed(0)}`, "Revenue"]}
+                />
+                <Bar dataKey="revenue" fill="#F5C842" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="text-center text-xs mt-2" style={{ color: "#4A4A5A" }}>
               No sales data yet
+            </div>
+          )}
+        </div>
+
+        <div className="card p-4">
+          <h2 className="font-semibold mb-4 text-sm">Payment Methods</h2>
+          {paymentMethodStats.length > 0 ? (
+            <ResponsiveContainer width="100%" height={120}>
+              <PieChart>
+                <Pie
+                  data={paymentMethodStats}
+                  dataKey="amount"
+                  nameKey="method"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={40}
+                  fill="#8884d8"
+                  label={({ method, percent }) => `${method} ${((percent || 0) * 100).toFixed(0)}%`}
+                  labelLine={false}
+                >
+                  {paymentMethodStats.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={["#F5C842", "#3498DB", "#E74C3C", "#2ECC71", "#9B59B6"][index % 5]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: "#141418", border: "1px solid #1E1E26", borderRadius: 4 }}
+                  formatter={(value) => [`${curr}${Number(value).toFixed(0)}`, "Amount"]}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="text-center text-xs mt-2" style={{ color: "#4A4A5A" }}>
+              No payment data yet
             </div>
           )}
         </div>

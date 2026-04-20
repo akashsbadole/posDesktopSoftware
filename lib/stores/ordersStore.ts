@@ -10,6 +10,12 @@ interface DashboardData {
   items_sold: number;
 }
 
+interface PaymentMethodStat {
+  method: string;
+  count: number;
+  amount: number;
+}
+
 interface OrdersState {
   orders: Order[];
   isLoading: boolean;
@@ -23,6 +29,7 @@ interface OrdersState {
   weeklyRevenue: { label: string; revenue: number }[];
   topProducts: { name: string; qty: number; revenue: number }[];
   lowStock: { name: string; stock: number }[];
+  paymentMethodStats: PaymentMethodStat[];
   fetchOrders: () => Promise<void>;
   saveOrder: (order: Order) => Promise<void>;
   refundOrder: (id: string, userId?: string, userName?: string) => Promise<void>;
@@ -54,6 +61,7 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
   weeklyRevenue: [],
   topProducts: [],
   lowStock: [],
+  paymentMethodStats: [],
 
   fetchOrders: async (force = false) => {
     const { orders, isLoading } = get();
@@ -133,11 +141,31 @@ export const useOrdersStore = create<OrdersState>((set, get) => ({
           dbGetTopProducts(storeId),
           dbGetLowStock(storeId),
         ]);
+      // Compute payment method stats from today's orders
+      const today = new Date().toISOString().split('T')[0];
+      const todayOrders = get().orders.filter(o => o.created_at.startsWith(today) && o.status === 'completed');
+      const paymentStats: PaymentMethodStat[] = [];
+      const methodMap: {[key: string]: {count: number, amount: number}} = {};
+      todayOrders.forEach(order => {
+        const method = order.payment_method;
+        if (!methodMap[method]) methodMap[method] = {count: 0, amount: 0};
+        methodMap[method].count++;
+        methodMap[method].amount += order.total;
+      });
+      Object.keys(methodMap).forEach(method => {
+        paymentStats.push({
+          method: method.charAt(0).toUpperCase() + method.slice(1),
+          count: methodMap[method].count,
+          amount: methodMap[method].amount,
+        });
+      });
+
       set({
         dashboardData,
         weeklyRevenue,
         topProducts,
         lowStock,
+        paymentMethodStats: paymentStats,
         isLoading: false,
       });
     } catch (err) {

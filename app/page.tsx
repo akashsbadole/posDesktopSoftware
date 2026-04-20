@@ -29,6 +29,7 @@ import IngredientsScreen from "@/components/IngredientsScreen";
 import StaffScheduling from "@/components/StaffScheduling";
 import DayEndReconciliation from "@/components/DayEndReconciliation";
 import RefundRequestsScreen from "@/components/RefundRequestsScreen";
+import GiftCardsScreen from "@/components/GiftCardsScreen";
 import InventoryAlertsScreen from "@/components/InventoryAlertsScreen";
 import InventoryManagementScreen from "@/components/InventoryManagementScreen";
 import SupportScreen from "@/components/SupportScreen";
@@ -63,6 +64,7 @@ export type Screen =
   | "scheduling"
   | "reconciliation"
   | "refund_requests"
+  | "gift_cards"
   | "inventory_alerts"
   | "inventory"
   | "support"
@@ -76,6 +78,7 @@ const adminScreens: Screen[] = [
   "staff",
   "coupons",
   "wallet",
+  "gift_cards",
   "gst",
   "suppliers",
   "purchase_orders",
@@ -366,6 +369,7 @@ export default function Home() {
               {screen === "scheduling" && <StaffScheduling />}
               {screen === "reconciliation" && <DayEndReconciliation />}
               {screen === "refund_requests" && <RefundRequestsScreen />}
+              {screen === "gift_cards" && <GiftCardsScreen />}
               {screen === "inventory_alerts" && <InventoryAlertsScreen />}
               {screen === "inventory" && <InventoryManagementScreen />}
               {screen === "support" && <SupportScreen />}

@@ -11,8 +11,41 @@ use rusqlite::Error;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
-use urlencoding;
 use tauri::{Manager, State};
+use urlencoding;
+
+#[tauri::command]
+fn check_camera_availability() -> CameraStatus {
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, check if any camera is available using Windows Media Device API
+        // Simplified check - in production, use windows::Media::Capture
+        CameraStatus {
+            available: true, // Assume available; actual check requires more complex code
+            message: "Camera check not fully implemented - relies on webview".to_string(),
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        CameraStatus {
+            available: true,
+            message: "macOS camera access via webview".to_string(),
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        CameraStatus {
+            available: true,
+            message: "Linux camera access via webview".to_string(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CameraStatus {
+    pub available: bool,
+    pub message: String,
+}
 
 static DB: Lazy<Mutex<Database>> = Lazy::new(|| {
     let db_path = std::env::var("DATABASE_PATH")
@@ -120,12 +153,12 @@ fn send_notification(
     body: String,
 ) -> Result<(), String> {
     use tauri::api::notification::Notification;
-    
+
     let result = Notification::new(&app_handle.config().tauri.bundle.identifier)
         .title(&title)
         .body(&body)
         .show();
-    
+
     match result {
         Ok(_) => Ok(()),
         Err(e) => Err(e.to_string()),
@@ -192,30 +225,12 @@ fn get_premium_status() -> PremiumStatus {
                 }
             }
         }
-
-        // 4. Check Trial (6 months from installation)
-        if let Ok(install_date_str) = db.get_installation_date() {
-            if let Ok(install_date) = chrono::DateTime::parse_from_rfc3339(&install_date_str) {
-                let now = chrono::Utc::now();
-                // 6 months is roughly 183 days
-                let expiry = install_date + chrono::Duration::days(183);
-                let days_left = (expiry.with_timezone(&chrono::Utc) - now).num_days();
-
-                if days_left > 0 {
-                    return PremiumStatus {
-                        enabled: true,
-                        source: "trial".into(),
-                        trial_days_left: days_left,
-                        trial_expiry: Some(expiry.to_rfc3339()),
-                    };
-                }
-            }
-        }
     }
 
+    // All features are free - no trial or payment needed
     PremiumStatus {
-        enabled: false,
-        source: "none".into(),
+        enabled: true,
+        source: "free".into(),
         trial_days_left: 0,
         trial_expiry: None,
     }
@@ -229,6 +244,127 @@ fn is_premium_enabled() -> bool {
 #[tauri::command]
 fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
+fn create_desktop_shortcut() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+
+        let exe_path =
+            std::env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
+
+        let desktop_dir = dirs::desktop_dir().ok_or("Could not find desktop directory")?;
+
+        let shortcut_path = desktop_dir.join("Appixen POS Billing.lnk");
+
+        let script = format!(
+            r#"$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut("{}"); $Shortcut.TargetPath = "{}"; $Shortcut.WorkingDirectory = "{}"; $Shortcut.Description = "Appixen POS Billing"; $Shortcut.Save"#,
+            shortcut_path.to_string_lossy().replace("\\", "\\\\"),
+            exe_path.to_string_lossy().replace("\\", "\\\\"),
+            exe_path
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default()
+                .replace("\\", "\\\\")
+        );
+
+        let output = Command::new("powershell")
+            .args(["-ExecutionPolicy", "Bypass", "-Command", &script])
+            .output()
+            .map_err(|e| format!("Failed to create shortcut: {}", e))?;
+
+        if output.status.success() {
+            Ok(format!(
+                "Shortcut created at: {}",
+                shortcut_path.to_string_lossy()
+            ))
+        } else {
+            Err(format!(
+                "Failed to create shortcut: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ))
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::fs;
+        use std::path::PathBuf;
+
+        let exe_path =
+            std::env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
+
+        let applications_dir = dirs::home_dir()
+            .map(|h| h.join("Applications"))
+            .ok_or("Could not find Applications directory")?;
+
+        let app_dir = applications_dir.join("Appixen POS Billing.app");
+
+        fs::create_dir_all(app_dir.join("Contents/MacOS"))
+            .map_err(|e| format!("Failed to create app directory: {}", e))?;
+
+        fs::write(app_dir.join("Contents/Info.plist"), r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>pos-tauri</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.posbilling.app</string>
+    <key>CFBundleName</key>
+    <string>Appixen POS Billing</string>
+    <key>CFBundleVersion</key>
+    <string>1.0.0</string>
+</dict>
+</plist>"#)
+            .map_err(|e| format!("Failed to write Info.plist: {}", e))?;
+
+        Ok(format!(
+            "App bundle created at: {}",
+            app_dir.to_string_lossy()
+        ))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::fs;
+
+        let exe_path =
+            std::env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
+
+        let desktop_file = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+            .join(".local/share/applications/appixen-pos.desktop");
+
+        let desktop_entry = format!(
+            r#"[Desktop Entry]
+Type=Application
+Name=Appixen POS Billing
+Exec={}
+Terminal=false
+Categories=Office;Finance;
+"#,
+            exe_path.to_string_lossy()
+        );
+
+        if let Some(parent) = desktop_file.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
+        }
+
+        fs::write(&desktop_file, desktop_entry)
+            .map_err(|e| format!("Failed to write desktop file: {}", e))?;
+
+        Ok(format!(
+            "Desktop entry created at: {}",
+            desktop_file.to_string_lossy()
+        ))
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        Err("Unsupported operating system".to_string())
+    }
 }
 
 // ─── Product Commands ────────────────────────────────────────────────────────
@@ -545,7 +681,28 @@ fn login_with_pin_offline(
 ) -> Result<Option<db::LoginResult>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.login_with_pin_offline(&pin, &organization_id)
+}
+
+fn verify_pin_offline(
+    pin: String,
+    organization_id: String,
+) -> Result<Option<db::PinLoginResult>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.verify_pin_offline(&pin, &organization_id)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn find_organization_by_email(email: String) -> Result<Option<db::Organization>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.find_organization_by_email(&email)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_organization_by_id(id: String) -> Result<Option<db::Organization>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_organization_by_id(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -604,8 +761,7 @@ fn forgot_password(email: String) -> Result<String, String> {
     let email = email.trim();
 
     // Check if user exists
-    let user = db.get_user_by_email(&email)
-        .map_err(|e| e.to_string())?;
+    let user = db.get_user_by_email(&email).map_err(|e| e.to_string())?;
 
     if user.is_none() {
         return Err("Email not found".to_string());
@@ -617,8 +773,7 @@ fn forgot_password(email: String) -> Result<String, String> {
         .collect();
 
     // Get user's documents folder for saving the reset code
-    let documents_dir = dirs::document_dir()
-        .ok_or("Could not find documents directory")?;
+    let documents_dir = dirs::document_dir().ok_or("Could not find documents directory")?;
 
     let reset_file_path = documents_dir.join("pos_reset_code.txt");
 
@@ -680,9 +835,7 @@ fn forgot_password(email: String) -> Result<String, String> {
 
     #[cfg(target_os = "macos")]
     {
-        let _ = std::process::Command::new("open")
-            .arg(&mailto_url)
-            .spawn();
+        let _ = std::process::Command::new("open").arg(&mailto_url).spawn();
     }
 
     #[cfg(target_os = "linux")]
@@ -706,9 +859,8 @@ fn reset_password(email: String, code: String, new_password: String) -> Result<b
     }
 
     // Check if user exists first
-    let user = db.get_user_by_email(&email)
-        .map_err(|e| e.to_string())?;
-    
+    let user = db.get_user_by_email(&email).map_err(|e| e.to_string())?;
+
     if user.is_none() {
         return Err("Email not found".to_string());
     }
@@ -726,8 +878,7 @@ fn forgot_user(email: String) -> Result<String, String> {
     let email = email.trim();
 
     // Get user by email
-    let user = db.get_user_by_email(&email)
-        .map_err(|e| e.to_string())?;
+    let user = db.get_user_by_email(&email).map_err(|e| e.to_string())?;
 
     if user.is_none() {
         return Err("Email not found".to_string());
@@ -737,8 +888,7 @@ fn forgot_user(email: String) -> Result<String, String> {
     let username = user.email.clone(); // Using email as username
 
     // Get user's documents folder for saving the username info
-    let documents_dir = dirs::document_dir()
-        .ok_or("Could not find documents directory")?;
+    let documents_dir = dirs::document_dir().ok_or("Could not find documents directory")?;
 
     let username_file_path = documents_dir.join("pos_username.txt");
 
@@ -800,9 +950,7 @@ fn forgot_user(email: String) -> Result<String, String> {
 
     #[cfg(target_os = "macos")]
     {
-        let _ = std::process::Command::new("open")
-            .arg(&mailto_url)
-            .spawn();
+        let _ = std::process::Command::new("open").arg(&mailto_url).spawn();
     }
 
     #[cfg(target_os = "linux")]
@@ -1994,6 +2142,9 @@ fn main() {
             get_sales_report,
             verify_pin,
             login_with_pin_offline,
+            find_organization_by_email,
+            get_organization_by_id,
+            verify_pin_offline,
             change_pin,
             get_users,
             upsert_user,
@@ -2122,6 +2273,7 @@ fn main() {
             print_receipt,
             print_to_printer,
             open_cash_drawer,
+            check_camera_availability,
             seed_database,
             reset_database,
             reset_and_seed_database,
@@ -2129,6 +2281,7 @@ fn main() {
             get_premium_status,
             is_premium_enabled,
             get_app_version,
+            create_desktop_shortcut,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

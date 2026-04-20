@@ -213,7 +213,7 @@ export interface Order {
   tax_amount: number;
   discount_amount: number;
   total: number;
-  payment_method: "cash" | "card" | "upi" | "wallet" | "store_credit";
+  payment_method: "cash" | "card" | "upi" | "wallet" | "store_credit" | "gift_card";
   amount_paid: number;
   change_amount: number;
   customer_name: string;
@@ -283,20 +283,20 @@ export interface Customer {
   organization_id?: string;
   store_id: string;
   name: string;
-  phone: string;
-  email: string;
-  loyalty_points: number;
-  total_spent: number;
-  visits: number;
+  phone?: string;
+  email?: string;
   group_name?: string;
   notes?: string;
   birthday?: string;
   anniversary?: string;
   credit_limit?: number;
-  price_tier?: string;
-  loyalty_tier?: string;
+  price_tier?: "standard" | "premium" | "vip";
+  loyalty_tier?: "bronze" | "silver" | "gold" | "platinum";
   tax_id?: string;
-  created_at: string;
+  tags?: string[];
+  created_at?: string;
+  synced?: boolean;
+  metadata?: any;
 }
 
 export interface CustomerAddress {
@@ -495,6 +495,18 @@ export interface Reservation {
   status: string;
   notes: string;
   created_at?: string;
+}
+
+export interface GiftCard {
+  id: string;
+  code: string;
+  balance: number;
+  initial_amount: number;
+  created_at: string;
+  expires_at?: string;
+  store_id: string;
+  customer_id?: string;
+  is_active: boolean;
 }
 
 export interface KdsOrder {
@@ -907,6 +919,38 @@ export async function dbRefundOrder(
   return sql("refund_order", { id, storeId, userId, userName });
 }
 
+// ─── Gift Cards ───────────────────────────────────────────────────────────────
+export async function dbCreateGiftCard(
+  storeId: string,
+  initialAmount: number,
+  customerId?: string,
+  expiresAt?: string,
+): Promise<string> {
+  const id = crypto.randomUUID();
+  const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+  return sql<string>("create_gift_card", {
+    id,
+    code,
+    balance: initialAmount,
+    initialAmount,
+    storeId,
+    customerId,
+    expiresAt,
+  });
+}
+
+export async function dbGetGiftCards(storeId: string): Promise<GiftCard[]> {
+  return sql<GiftCard[]>("get_gift_cards", { storeId });
+}
+
+export async function dbRedeemGiftCard(
+  code: string,
+  amount: number,
+  storeId: string,
+): Promise<{ success: boolean; balance: number }> {
+  return sql("redeem_gift_card", { code, amount, storeId });
+}
+
 export async function updateDeliveryStatus(
   id: string,
   status: string,
@@ -1016,6 +1060,7 @@ export interface User {
   role: string;
   store_id?: string;
   hourly_rate: number;
+  commission_rate?: number; // Percentage commission on sales
   pin?: string;
   password?: string; // Only used for browser fallback/internal logic
   created_at?: string;
@@ -1067,6 +1112,33 @@ export async function verifyPin(
     pin,
     organization_id: organizationId,
   });
+}
+
+export async function findOrganizationByEmail(
+  email: string,
+): Promise<Organization | null> {
+  return sql<Organization | null>("find_organization_by_email", {
+    email,
+  });
+}
+
+export async function verifyPinOffline(
+  pin: string,
+  organizationId: string,
+): Promise<{ user: User; organization: Organization } | null> {
+  return sql<{ user: User; organization: Organization } | null>(
+    "verify_pin_offline",
+    {
+      pin,
+      organization_id: organizationId,
+    },
+  );
+}
+
+export async function getOrganizationById(
+  id: string,
+): Promise<Organization | null> {
+  return sql<Organization | null>("get_organization_by_id", { id });
 }
 
 /**
@@ -1465,12 +1537,14 @@ export async function dbCreateRefundRequest(
   amount: number,
   reason: string,
   storeId: string,
+  selectedItems?: {product_id: string, quantity: number, price: number}[],
 ): Promise<string> {
   return sql<string>("create_refund_request", {
     orderId,
     amount,
     reason,
     storeId,
+    selectedItems: selectedItems || [],
   });
 }
 
@@ -2575,6 +2649,75 @@ async function browserFallback<T>(
       console.log("[verify_pin] PIN verification failed");
       return null as T;
     }
+    case "find_organization_by_email": {
+      const email = (args as any).email?.trim().toLowerCase();
+      if (!email) {
+        throw new Error("Email is required");
+      }
+
+      console.log("[find_organization_by_email] Looking up org for email:", email);
+      const orgs = lsGet<Organization[]>("pos_organizations") || [];
+      const org = orgs.find((o) => o.email.toLowerCase() === email);
+
+      if (org) {
+        console.log("[find_organization_by_email] Found org:", org.id);
+        return org as T;
+      }
+
+      console.log("[find_organization_by_email] Organization not found");
+      return null as T;
+    }
+    case "get_organization_by_id": {
+      const orgId = (args as any).id || (args as any).organization_id;
+      if (!orgId?.trim()) {
+        throw new Error("Organization ID is required");
+      }
+
+      console.log("[get_organization_by_id] Fetching org with id:", orgId);
+      const orgs = lsGet<Organization[]>("pos_organizations") || [];
+      const org = orgs.find((o) => o.id === orgId);
+
+      if (org) {
+        return org as T;
+      }
+
+      return null as T;
+    }
+    case "verify_pin_offline": {
+      const pin = (args as any).pin;
+      const orgId =
+        (args as any).organization_id || (args as any).organizationId;
+
+      if (!pin?.trim() || !orgId?.trim()) {
+        throw new Error("PIN and organization ID are required");
+      }
+
+      if (pin.length < 4) {
+        throw new Error("PIN must be at least 4 digits");
+      }
+
+      console.log("[verify_pin_offline] Verifying PIN for orgId:", orgId);
+      const users = lsGet<User[]>("pos_users") || [];
+      const user = users.find(
+        (u) => u.pin === pin && u.organization_id === orgId,
+      );
+
+      if (!user) {
+        console.log("[verify_pin_offline] PIN verification failed");
+        return null as T;
+      }
+
+      const orgs = lsGet<Organization[]>("pos_organizations") || [];
+      const organization = orgs.find((o) => o.id === orgId);
+
+      if (!organization) {
+        console.log("[verify_pin_offline] Organization not found");
+        return null as T;
+      }
+
+      console.log("[verify_pin_offline] PIN verified successfully");
+      return { user, organization } as T;
+    }
     case "login_with_pin_offline": {
       const pin = (args as any).pin;
       const orgId =
@@ -2912,32 +3055,25 @@ async function browserFallback<T>(
       return undefined as T;
     }
     case "export_customers_csv": {
-      const c = lsGet<Customer[]>("pos_customers") || [];
-      const filtered = c.filter((x) => x.store_id === storeId);
+      const storeId = (args as any).storeId as string;
+      const customers = await dbGetCustomers(storeId);
       const header = [
-        "id",
-        "name",
-        "phone",
-        "email",
-        "loyalty_points",
-        "total_spent",
-        "visits",
-        "group_name",
-        "notes",
-        "birthday",
-        "anniversary",
-        "credit_limit",
-        "price_tier",
-        "loyalty_tier",
+        "Name",
+        "Phone",
+        "Email",
+        "Group",
+        "Notes",
+        "Birthday",
+        "Anniversary",
+        "Credit Limit",
+        "Price Tier",
+        "Loyalty Tier",
+        "Tax ID",
       ];
-      const rows = filtered.map((x) => [
-        x.id,
+      const rows = customers.map((x) => [
         x.name,
         x.phone,
         x.email,
-        x.loyalty_points.toString(),
-        x.total_spent.toString(),
-        x.visits.toString(),
         x.group_name || "",
         x.notes || "",
         x.birthday || "",
@@ -2945,9 +3081,10 @@ async function browserFallback<T>(
         (x.credit_limit || 0).toString(),
         x.price_tier || "",
         x.loyalty_tier || "",
+        x.tax_id || "",
       ]);
       const csv = [header, ...rows]
-        .map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(","))
+        .map((r) => r.map((v) => `"${(v || "").replace(/"/g, '""')}"`).join(","))
         .join("\n");
       return csv as T;
     }
@@ -2973,17 +3110,15 @@ async function browserFallback<T>(
           name: parts[1],
           phone: parts[2],
           email: parts[3] || "",
-          loyalty_points: parseInt(parts[4]) || 0,
-          total_spent: parseFloat(parts[5]) || 0,
-          visits: parseInt(parts[6]) || 0,
-          group_name: parts[7],
-          notes: parts[8],
-          birthday: parts[9],
-          anniversary: parts[10],
-          credit_limit: parseFloat(parts[11]),
-          price_tier: parts[12],
-          loyalty_tier: parts[13],
-          tax_id: parts[14] || "",
+
+          group_name: parts[4],
+          notes: parts[5] || "",
+          birthday: parts[6],
+          anniversary: parts[7],
+          credit_limit: parseFloat(parts[8]),
+          price_tier: parts[9] as "standard" | "premium" | "vip",
+          loyalty_tier: parts[10] as "bronze" | "silver" | "gold" | "platinum",
+          tax_id: parts[11] || "",
           created_at: new Date().toISOString(),
         };
         const idx = customers.findIndex((x) => x.id === c.id);
@@ -2998,10 +3133,15 @@ async function browserFallback<T>(
       const customers = lsGet<Customer[]>("pos_customers") || [];
       const c = customers.find((x) => x.id === (args as any).customerId);
       if (!c) return { total_spent: 0, visits: 0, avg_order_value: 0 } as T;
+      // Calculate from orders
+      const orders = lsGet<Order[]>(LS.orders) || [];
+      const customerOrders = orders.filter(o => o.customer_name === c.name && o.store_id === storeId);
+      const total_spent = customerOrders.reduce((sum, o) => sum + o.total, 0);
+      const visits = customerOrders.length;
       return {
-        total_spent: c.total_spent,
-        visits: c.visits,
-        avg_order_value: c.visits > 0 ? c.total_spent / c.visits : 0,
+        total_spent,
+        visits,
+        avg_order_value: visits > 0 ? total_spent / visits : 0,
       } as T;
     }
     case "get_customer_by_phone": {
@@ -3394,23 +3534,12 @@ async function browserFallback<T>(
           trial_expiry: null,
         } as T;
 
-      // Mock trial for browser fallback: 180 days from first access
-      let firstAccess = lsGet<string>("pos_first_access");
-      if (!firstAccess) {
-        firstAccess = new Date().toISOString();
-        lsSet("pos_first_access", firstAccess);
-      }
-      const expiry = new Date(firstAccess);
-      expiry.setDate(expiry.getDate() + 183);
-      const daysLeft = Math.ceil(
-        (expiry.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24),
-      );
-
+      // All features are free - no trial needed
       return {
-        enabled: daysLeft > 0,
-        source: daysLeft > 0 ? "trial" : "none",
-        trial_days_left: Math.max(0, daysLeft),
-        trial_expiry: expiry.toISOString(),
+        enabled: true,
+        source: "free",
+        trial_days_left: 0,
+        trial_expiry: null,
       } as T;
     }
     case "is_premium_enabled": {

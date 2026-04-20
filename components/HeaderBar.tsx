@@ -195,6 +195,7 @@ function getScreenLabel(screen: string, taxName: string = "GST"): string {
     coupons: "Coupons & Offers",
     inventory_alerts: "Inventory Alerts",
     refund_requests: "Refund Requests",
+    gift_cards: "Gift Cards",
     ingredients: "Ingredients & Stock",
     suppliers: "Suppliers",
     purchase_orders: "Purchase Orders",

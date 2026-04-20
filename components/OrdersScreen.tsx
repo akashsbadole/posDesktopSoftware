@@ -32,6 +32,7 @@ export default function OrdersScreen() {
 
   const [refundReason, setRefundReason] = useState("");
   const [showRefundModal, setShowRefundModal] = useState<string | null>(null);
+  const [refundItems, setRefundItems] = useState<{[productId: string]: number}>({});
 
   const handleRefund = async (id: string) => {
     const order = orders.find(o => o.id === id);
@@ -64,9 +65,22 @@ export default function OrdersScreen() {
     if (!order) return;
     if (!refundReason.trim()) return;
     const reason = refundReason.trim();
+    let refundAmount = order.total;
+    const selectedItems: {product_id: string, quantity: number, price: number}[] = [];
+    if (Object.keys(refundItems).length > 0) {
+      refundAmount = 0;
+      order.items.forEach(item => {
+        const refundQty = refundItems[item.product_id] || 0;
+        if (refundQty > 0) {
+          selectedItems.push({product_id: item.product_id, quantity: refundQty, price: item.price});
+          refundAmount += refundQty * (item.price - item.discount);
+        }
+      });
+    }
     setShowRefundModal(null);
     setRefundReason("");
-    await dbCreateRefundRequest(id, order.total, reason, activeStoreId);
+    setRefundItems({});
+    await dbCreateRefundRequest(id, refundAmount, reason, activeStoreId, selectedItems);
     alert("Refund request created. Please approve from Refund Requests screen.");
   };
 
@@ -498,13 +512,53 @@ export default function OrdersScreen() {
             <div className="card p-6 w-full max-w-md fade-in">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-semibold text-base">Request Refund</h2>
-                <button 
-                  onClick={() => { setShowRefundModal(null); setRefundReason(""); }} 
+                <button
+                  onClick={() => { setShowRefundModal(null); setRefundReason(""); setRefundItems({}); }}
                   className="btn-ghost py-1 px-3"
                   aria-label="Close"
                 >
                   <X size={16} />
                 </button>
+              </div>
+              <div className="mb-4 max-h-40 overflow-y-auto">
+                <label className="text-xs mb-2 block" style={{ color: "#4A4A5A" }}>Select items to refund (leave empty for full refund)</label>
+                {orders.find(o => o.id === showRefundModal)?.items.map(item => (
+                  <div key={item.product_id} className="flex items-center gap-2 mb-2">
+                    <input
+                      type="checkbox"
+                      checked={!!refundItems[item.product_id]}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setRefundItems(prev => ({...prev, [item.product_id]: item.quantity}));
+                        } else {
+                          setRefundItems(prev => {
+                            const newItems = {...prev};
+                            delete newItems[item.product_id];
+                            return newItems;
+                          });
+                        }
+                      }}
+                    />
+                    <span className="flex-1 text-sm">{item.product_name}</span>
+                    {refundItems[item.product_id] && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setRefundItems(prev => ({...prev, [item.product_id]: Math.max(1, (prev[item.product_id] || 0) - 1)}))}
+                          className="btn-ghost p-1"
+                        >
+                          <Minus size={12} />
+                        </button>
+                        <span className="w-8 text-center text-sm">{refundItems[item.product_id]}</span>
+                        <button
+                          onClick={() => setRefundItems(prev => ({...prev, [item.product_id]: Math.min(item.quantity, (prev[item.product_id] || 0) + 1)}))}
+                          className="btn-ghost p-1"
+                        >
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
               <div className="mb-4">
                 <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Reason for refund *</label>
@@ -516,7 +570,7 @@ export default function OrdersScreen() {
                 />
               </div>
               <div className="flex gap-2">
-                <button onClick={() => { setShowRefundModal(null); setRefundReason(""); }} className="btn-ghost flex-1">Close</button>
+                <button onClick={() => { setShowRefundModal(null); setRefundReason(""); setRefundItems({}); }} className="btn-ghost flex-1">Close</button>
                 <button onClick={() => handleConfirmRefund(showRefundModal)} className="btn-danger flex-1" disabled={!refundReason.trim()}>
                   Submit Request
                 </button>

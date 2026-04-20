@@ -7,7 +7,7 @@
     "distDir": "../out"
   },
   "package": {
-    "productName": "POS Billing",
+    "productName": "Appixen POS Billing",
     "version": "1.0.0"
   },
   "tauri": {
@@ -22,11 +22,11 @@
       "fs": {
         "all": true,
         "scope": [
-          "$APPDATA/*", 
-          "$DOCUMENT/*", 
+          "$APPDATA/*",
+          "$DOCUMENT/*",
           "$DOWNLOAD/*",
           "$APPDATA/**",
-          "$DOCUMENT/**", 
+          "$DOCUMENT/**",
           "$DOWNLOAD/**"
         ]
       },
@@ -57,8 +57,9 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
+
       "category": "Business",
-      "shortDescription": "Restaurant POS Billing System",
+      "shortDescription": "Appixen POS Billing System",
       "windows": {
         "wix": {
           "language": "en-US"
@@ -77,14 +78,14 @@
         "minimumSystemVersion": "10.13"
       }
     },
-    "security": { 
+    "security": {
       "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: asset: https://asset.localhost; connect-src 'self' https://*.neon.tech https://api.twilio.com https://*.twilio.com https://*whatsapp*"
     },
     "windows": [
       {
         "fullscreen": false,
         "resizable": true,
-        "title": "POS Billing",
+        "title": "Appixen POS Billing",
         "width": 1280,
         "height": 780,
         "minWidth": 1024,

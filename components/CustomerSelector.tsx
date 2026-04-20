@@ -123,19 +123,7 @@ export default function CustomerSelector({
               </button>
             </div>
 
-            {/* Loyalty Points */}
-            <div className="mt-3 pt-3 border-t border-gray-200">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Loyalty Points:</span>
-                <span className="font-medium text-green-600">
-                  {activeCustomer.loyalty_points}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm mt-1">
-                <span className="text-gray-600">Total Spent:</span>
-                <span className="font-medium">₹{activeCustomer.total_spent.toFixed(2)}</span>
-              </div>
-            </div>
+
           </div>
 
           {/* Address Selection */}

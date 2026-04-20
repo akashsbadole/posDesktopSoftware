@@ -5,6 +5,8 @@ import { isOfflineMode, getAvailableOrganizations } from "@/lib/utils/offline";
 import RegistrationScreen from "./RegistrationScreen";
 import ForgotPasswordScreen from "./ForgotPasswordScreen";
 
+type AuthMethod = "credentials" | "pin";
+
 const MAX_ATTEMPTS = 3;
 const LOCKOUT_DURATION_MS = 60000; // 1 minute
 
@@ -29,12 +31,14 @@ export default function LoginScreen() {
     | "offline-org"
     | "offline-pin"
   >("credentials");
+  const [authMethod, setAuthMethod] = useState<AuthMethod>("credentials");
   const [rememberMe, setRememberMe] = useState(false);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
   const {
     login,
     loginWithCredentials,
+    loginWithPinOnly,
     loginWithPinOffline,
     organization,
     logout,
@@ -147,6 +151,68 @@ export default function LoginScreen() {
       console.error("[LoginScreen] Login error:", e);
       setError("Login failed. Please try again.");
       setPassword("");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePinOnlySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const trimmedEmail = email.trim();
+    const trimmedPin = pin.trim();
+
+    if (!trimmedEmail) {
+      setError("Email is required");
+      return;
+    }
+
+    if (!trimmedEmail.includes("@")) {
+      setError("Please enter a valid email");
+      return;
+    }
+
+    if (lockoutEnd) {
+      setError(`Too many failed attempts. Try again in ${countdown} seconds.`);
+      return;
+    }
+
+    if (trimmedPin.length < 4) {
+      setError("PIN must be at least 4 digits");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      console.log(
+        "[LoginScreen] Attempting PIN-only login with email:",
+        trimmedEmail,
+      );
+      const success = await loginWithPinOnly(trimmedEmail, trimmedPin);
+
+      if (!success) {
+        const newAttempts = attempts + 1;
+        setAttempts(newAttempts);
+        setPin("");
+
+        if (newAttempts >= MAX_ATTEMPTS) {
+          setLockoutEnd(Date.now() + LOCKOUT_DURATION_MS);
+          setError(
+            `Too many failed attempts. Please wait ${Math.ceil(LOCKOUT_DURATION_MS / 1000)} seconds.`,
+          );
+        } else {
+          const remaining = MAX_ATTEMPTS - newAttempts;
+          setError(
+            `Invalid email or PIN. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.`,
+          );
+        }
+      }
+    } catch (e) {
+      console.error("[LoginScreen] PIN-only login error:", e);
+      setError("Login failed. Please try again.");
+      setPin("");
     } finally {
       setLoading(false);
     }
@@ -376,6 +442,69 @@ export default function LoginScreen() {
                 : "Enter your credentials to continue"}
         </p>
 
+        {view === "credentials" && (
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginBottom: 24,
+              background: "var(--bg)",
+              borderRadius: 12,
+              padding: 4,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMethod("credentials");
+                setError("");
+                setPin("");
+                setPassword("");
+              }}
+              disabled={loading}
+              style={{
+                flex: 1,
+                padding: "10px 16px",
+                fontSize: 14,
+                fontWeight: 600,
+                background: authMethod === "credentials" ? "#F5C842" : "transparent",
+                color: authMethod === "credentials" ? "#0D0D0F" : "var(--text-muted)",
+                border: "none",
+                borderRadius: 10,
+                cursor: loading ? "not-allowed" : "pointer",
+                opacity: loading ? 0.6 : 1,
+                transition: "all 0.2s",
+              }}
+            >
+              Email & Password
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMethod("pin");
+                setError("");
+                setPassword("");
+              }}
+              disabled={loading}
+              style={{
+                flex: 1,
+                padding: "10px 16px",
+                fontSize: 14,
+                fontWeight: 600,
+                background: authMethod === "pin" ? "#F5C842" : "transparent",
+                color: authMethod === "pin" ? "#0D0D0F" : "var(--text-muted)",
+                border: "none",
+                borderRadius: 10,
+                cursor: loading ? "not-allowed" : "pointer",
+                opacity: loading ? 0.6 : 1,
+                transition: "all 0.2s",
+              }}
+            >
+              Email & PIN
+            </button>
+          </div>
+        )}
+
         {view === "offline-org" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {offlineOrgs.length > 0 ? (
@@ -553,7 +682,7 @@ export default function LoginScreen() {
           </form>
         ) : view === "credentials" ? (
           <form
-            onSubmit={handleCredentialSubmit}
+            onSubmit={authMethod === "pin" ? handlePinOnlySubmit : handleCredentialSubmit}
             style={{ display: "flex", flexDirection: "column", gap: 16 }}
           >
             <div style={{ textAlign: "left" }}>
@@ -589,44 +718,92 @@ export default function LoginScreen() {
                 }}
               />
             </div>
-            <div style={{ textAlign: "left" }}>
-              <label
-                htmlFor="password"
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "var(--text-muted)",
-                  marginBottom: 4,
-                  display: "block",
-                }}
-              >
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === "Enter" && !loading) {
-                    handleCredentialSubmit(e as any);
+            {authMethod === "pin" ? (
+              <div style={{ textAlign: "left" }}>
+                <label
+                  htmlFor="pin"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--text-muted)",
+                    marginBottom: 4,
+                    display: "block",
+                  }}
+                >
+                  PIN
+                </label>
+                <input
+                  id="pin"
+                  type="password"
+                  required
+                  value={pin}
+                  onChange={(e) =>
+                    setPin(e.target.value.replace(/\D/g, "").slice(0, 6))
                   }
-                }}
-                placeholder="••••••••"
-                disabled={loading}
-                style={{
-                  width: "100%",
-                  padding: "12px 16px",
-                  borderRadius: 12,
-                  background: "var(--bg)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text)",
-                  outline: "none",
-                  opacity: loading ? 0.6 : 1,
-                }}
-              />
-            </div>
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter" && !loading && pin.length >= 4) {
+                      handlePinOnlySubmit(e as any);
+                    }
+                  }}
+                  placeholder="Enter PIN (4-6 digits)"
+                  maxLength={6}
+                  inputMode="numeric"
+                  disabled={loading}
+                  style={{
+                    width: "100%",
+                    padding: "12px 16px",
+                    borderRadius: 12,
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    outline: "none",
+                    opacity: loading ? 0.6 : 1,
+                    letterSpacing: 8,
+                    textAlign: "center",
+                    fontSize: 18,
+                  }}
+                />
+              </div>
+            ) : (
+              <div style={{ textAlign: "left" }}>
+                <label
+                  htmlFor="password"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--text-muted)",
+                    marginBottom: 4,
+                    display: "block",
+                  }}
+                >
+                  Password
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter" && !loading) {
+                      handleCredentialSubmit(e as any);
+                    }
+                  }}
+                  placeholder="••••••••"
+                  disabled={loading}
+                  style={{
+                    width: "100%",
+                    padding: "12px 16px",
+                    borderRadius: 12,
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    outline: "none",
+                    opacity: loading ? 0.6 : 1,
+                  }}
+                />
+              </div>
+            )}
             {error && (
               <div
                 style={{
@@ -640,48 +817,61 @@ export default function LoginScreen() {
                 {error}
               </div>
             )}
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input
-                type="checkbox"
-                id="remember-me"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                style={{
-                  width: 16,
-                  height: 16,
-                  accentColor: "#F5C842",
-                }}
-              />
-              <label
-                htmlFor="remember-me"
-                style={{
-                  fontSize: 14,
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                }}
-              >
-                Remember me
-              </label>
-            </div>
+            {authMethod === "credentials" && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  id="remember-me"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  style={{
+                    width: 16,
+                    height: 16,
+                    accentColor: "#F5C842",
+                  }}
+                />
+                <label
+                  htmlFor="remember-me"
+                  style={{
+                    fontSize: 14,
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                  }}
+                >
+                  Remember me
+                </label>
+              </div>
+            )}
             <button
               type="submit"
-              disabled={loading}
+              disabled={
+                loading ||
+                (authMethod === "pin" ? pin.length < 4 : false)
+              }
               style={{
                 width: "100%",
                 padding: 14,
                 fontSize: 16,
                 fontWeight: 600,
-                background: "#F5C842",
+                background:
+                  authMethod === "pin"
+                    ? pin.length >= 4 && !lockoutEnd
+                      ? "#F5C842"
+                      : "#999"
+                    : "#F5C842",
                 color: "#0D0D0F",
                 border: "none",
                 borderRadius: 12,
-                cursor: loading ? "not-allowed" : "pointer",
-                marginTop: 8,
+                cursor:
+                  loading || (authMethod === "pin" && pin.length < 4)
+                    ? "not-allowed"
+                    : "pointer",
+                marginTop: authMethod === "pin" ? 0 : 8,
                 opacity: loading ? 0.8 : 1,
                 transition: "all 0.2s",
               }}
             >
-              {loading ? "Signing in..." : "Continue"}
+              {loading ? "Signing in..." : "Enter POS"}
             </button>
 
             <div

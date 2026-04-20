@@ -391,6 +391,12 @@ pub struct LoginResult {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PinLoginResult {
+    pub user: User,
+    pub organization: Organization,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Table {
     pub id: String,
     pub store_id: String,
@@ -4638,6 +4644,92 @@ impl Database {
             params![hashed, user_id],
         )?;
         Ok(())
+    }
+
+    pub fn find_organization_by_email(&self, email: &str) -> Result<Option<Organization>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, email, status, created_at FROM organizations WHERE LOWER(email) = LOWER(?1)",
+        )?;
+        let mut rows = stmt.query(params![email])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(Organization {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                email: row.get(2)?,
+                status: row.get(3)?,
+                created_at: row.get(4)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn get_organization_by_id(&self, id: &str) -> Result<Option<Organization>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, email, status, created_at FROM organizations WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query(params![id])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(Organization {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                email: row.get(2)?,
+                status: row.get(3)?,
+                created_at: row.get(4)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn verify_pin_offline(
+        &self,
+        pin: &str,
+        organization_id: &str,
+    ) -> Result<Option<PinLoginResult>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, organization_id, pin, name, email, role, store_id FROM users WHERE organization_id = ?1",
+        )?;
+        let user_iter = stmt.query_map(params![organization_id], |row| {
+            Ok((
+                User {
+                    id: row.get(0)?,
+                    organization_id: row.get(1)?,
+                    name: row.get(3)?,
+                    email: row.get(4)?,
+                    role: row.get(5)?,
+                    store_id: row.get(6)?,
+                    pin: String::new(),
+                },
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+
+        for user_res in user_iter {
+            if let Ok((user, hashed_pin)) = user_res {
+                if let Ok(verified) = bcrypt::verify(pin, &hashed_pin) {
+                    if verified {
+                        let mut org_stmt = self.conn.prepare(
+                            "SELECT id, name, email, status, created_at FROM organizations WHERE id = ?1",
+                        )?;
+                        let mut org_rows = org_stmt.query(params![organization_id])?;
+                        if let Some(org_row) = org_rows.next()? {
+                            return Ok(Some(PinLoginResult {
+                                user,
+                                organization: Organization {
+                                    id: org_row.get(0)?,
+                                    name: org_row.get(1)?,
+                                    email: org_row.get(2)?,
+                                    status: org_row.get(3)?,
+                                    created_at: org_row.get(4)?,
+                                },
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(None)
     }
 
     pub fn get_users(&self) -> Result<Vec<User>> {

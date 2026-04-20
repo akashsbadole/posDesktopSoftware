@@ -40,11 +40,12 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
   const [settling, setSettling] = useState(false);
   const [showBulkSettle, setShowBulkSettle] = useState(false);
   const [bulkSettleAmount, setBulkSettleAmount] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
 
   const [newCustomer, setNewCustomer] = useState<Partial<Customer>>({
     name: "", phone: "", email: "", group_name: "retail",
     notes: "", birthday: "", anniversary: "", credit_limit: 0,
-    price_tier: "standard", loyalty_tier: "bronze", tax_id: ""
+    price_tier: "standard", loyalty_tier: "bronze", tax_id: "", tags: []
   });
 
   const [newAddress, setNewAddress] = useState<Partial<CustomerAddress>>({
@@ -82,7 +83,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
     setLoading(true);
     try {
       const [orders, addrs, statistics, unpaid] = await Promise.all([
-        dbGetCustomerOrders(customer.phone, activeStoreId),
+        dbGetCustomerOrders(customer.phone || "", activeStoreId),
         dbGetCustomerAddresses(customer.id),
         dbGetCustomerStatistics(customer.id),
         dbGetCustomerUnpaidOrders(customer.id, activeStoreId)
@@ -106,9 +107,6 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
         name: newCustomer.name!,
         phone: newCustomer.phone!,
         email: newCustomer.email || "",
-        loyalty_points: newCustomer.loyalty_points || 0,
-        total_spent: newCustomer.total_spent || 0,
-        visits: newCustomer.visits || 0,
         group_name: newCustomer.group_name,
         notes: newCustomer.notes,
         birthday: newCustomer.birthday,
@@ -116,6 +114,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
         credit_limit: newCustomer.credit_limit,
         price_tier: newCustomer.price_tier,
         loyalty_tier: newCustomer.loyalty_tier,
+        tags: newCustomer.tags,
         tax_id: newCustomer.tax_id,
         created_at: newCustomer.created_at || new Date().toISOString(),
       };
@@ -155,7 +154,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
         city: newAddress.city || "",
         state: newAddress.state || "",
         zip: newAddress.zip || "",
-        phone: newAddress.phone || selectedCustomer.phone,
+        phone: newAddress.phone || selectedCustomer.phone || "",
       };
       await dbSaveCustomerAddress(addr);
       const updated = await dbGetCustomerAddresses(selectedCustomer.id);
@@ -263,10 +262,10 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
     const message = `Hello ${selectedCustomer.name}, this is a friendly reminder from ${settings.store_name} regarding your outstanding balance of ${curr}${totalDue.toFixed(2)}. ${upiUrl ? `You can pay via UPI: ${upiUrl}` : ""}`;
     try {
       if (settings.whatsapp_enabled) {
-        await sendWhatsAppMessage(selectedCustomer.phone, message, activeStoreId);
+        await sendWhatsAppMessage(selectedCustomer.phone || "", message, activeStoreId);
         alert("WhatsApp reminder sent!");
       } else {
-        await sendSmsNotification(selectedCustomer.phone, message, activeStoreId);
+        await sendSmsNotification(selectedCustomer.phone || "", message, activeStoreId);
         alert("SMS reminder sent!");
       }
     } catch (err) {
@@ -300,12 +299,14 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
     }
   };
 
-  const filteredCustomers = customers.filter(c =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.phone.includes(searchQuery) ||
-    c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCustomers = customers.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.phone && c.phone.includes(searchQuery)) ||
+      (c.email && c.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      c.id.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTag = !tagFilter || (c.tags || []).some(tag => tag.toLowerCase().includes(tagFilter.toLowerCase()));
+    return matchesSearch && matchesTag;
+  });
 
   if (!showModal) return null;
 
@@ -346,11 +347,20 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                   className="w-full pl-9"
                 />
               </div>
+              <div className="relative">
+                <Tag size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input
+                  placeholder="Filter by tag..."
+                  value={tagFilter}
+                  onChange={(e) => setTagFilter(e.target.value)}
+                  className="w-full pl-9"
+                />
+              </div>
               <button onClick={() => {
                 setNewCustomer({
                   name: "", phone: "", email: "", group_name: "retail",
                   notes: "", birthday: "", anniversary: "", credit_limit: 0,
-                  price_tier: "standard", loyalty_tier: "bronze"
+                  price_tier: "standard", loyalty_tier: "bronze", tax_id: "", tags: []
                 });
                 setShowAddForm(true);
               }} className="btn-accent p-2.5" data-testid="add-customer-btn" aria-label="Add New Customer">
@@ -382,7 +392,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                     </div>
                     <div className="text-[11px] text-gray-500 flex items-center justify-between">
                        <span>{customer.phone}</span>
-                       <span className="font-mono">{curr}{customer.total_spent.toFixed(0)} spent</span>
+         
                     </div>
                   </div>
                 ))}
@@ -413,6 +423,13 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                         <span className="flex items-center gap-1"><Phone size={12} /> {selectedCustomer.phone}</span>
                         <span className="flex items-center gap-1"><Mail size={12} /> {selectedCustomer.email || "No email"}</span>
                         <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 uppercase font-bold text-[9px]">{selectedCustomer.group_name || 'retail'}</span>
+                        {(selectedCustomer.tags || []).length > 0 && (
+                          <div className="flex gap-1">
+                            {(selectedCustomer.tags || []).map(tag => (
+                              <span key={tag} className="px-2 py-0.5 rounded bg-green-500/10 text-green-400 text-[9px]">{tag}</span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -454,16 +471,10 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                             <h4 className="text-xs font-bold text-gray-500 uppercase mb-4 flex items-center gap-2">
                               <Star size={14} className="text-yellow-400" /> Loyalty Program
                             </h4>
-                            <div className="grid grid-cols-2 gap-4">
-                               <div>
-                                  <div className="text-[10px] text-gray-600 uppercase font-bold">Current Points</div>
-                                  <div className="text-lg font-bold text-yellow-400">{selectedCustomer.loyalty_points}</div>
-                               </div>
-                               <div>
-                                  <div className="text-[10px] text-gray-600 uppercase font-bold">Tier</div>
-                                  <div className="text-lg font-bold capitalize">{selectedCustomer.loyalty_tier || 'bronze'}</div>
-                               </div>
-                            </div>
+                             <div className="text-center">
+                                <div className="text-[10px] text-gray-600 uppercase font-bold">Tier</div>
+                                <div className="text-lg font-bold capitalize">{selectedCustomer.loyalty_tier || 'bronze'}</div>
+                             </div>
                          </div>
                          <div className="card bg-[#141418] p-4">
                             <h4 className="text-xs font-bold text-gray-500 uppercase mb-4 flex items-center gap-2">
@@ -736,7 +747,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                   <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Loyalty Tier</label>
                   <select
                     value={newCustomer.loyalty_tier || 'bronze'}
-                    onChange={(e) => setNewCustomer({ ...newCustomer, loyalty_tier: e.target.value })}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, loyalty_tier: e.target.value as "bronze" | "silver" | "gold" | "platinum" })}
                     className="w-full"
                   >
                     <option value="bronze">Bronze</option>
@@ -750,7 +761,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                   <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Price Tier</label>
                   <select
                     value={newCustomer.price_tier || 'standard'}
-                    onChange={(e) => setNewCustomer({ ...newCustomer, price_tier: e.target.value })}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, price_tier: e.target.value as "standard" | "premium" | "vip" })}
                     className="w-full"
                   >
                     <option value="standard">Standard</option>
@@ -765,6 +776,14 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                     type="number"
                     value={newCustomer.credit_limit || 0}
                     onChange={(e) => setNewCustomer({ ...newCustomer, credit_limit: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Tags (comma separated)</label>
+                  <input
+                    value={(newCustomer.tags || []).join(', ')}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, tags: e.target.value.split(',').map(t => t.trim()).filter(t => t) })}
+                    placeholder="vip, regular, new"
                   />
                 </div>
                 <div>

@@ -19,8 +19,10 @@ import {
   Key,
   Receipt,
   Lock,
+  Monitor,
   LayoutGrid,
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/tauri";
 import {
   syncToNeon,
   syncFromNeon,
@@ -137,6 +139,11 @@ export default function SettingsScreen() {
     null,
   );
   const [changingPin, setChangingPin] = useState(false);
+  const [shortcutMsg, setShortcutMsg] = useState<{
+    text: string;
+    ok: boolean;
+  } | null>(null);
+  const [creatingShortcut, setCreatingShortcut] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
   const [localSettings, setLocalSettings] = useState<Settings>(
@@ -168,7 +175,7 @@ export default function SettingsScreen() {
       primary_color: "#F5C842",
       secondary_color: "#1E1E26",
       accent_color: "#2ECC71",
-      footer_text: "Powered by POS Billing",
+      footer_text: "Powered by Appixen POS Billing",
       contact_email: "",
       contact_website: "",
       upi_id: "",
@@ -509,6 +516,18 @@ export default function SettingsScreen() {
     setChangingPin(false);
   };
 
+  const handleCreateShortcut = async () => {
+    setCreatingShortcut(true);
+    setShortcutMsg(null);
+    try {
+      const result = await invoke<string>("create_desktop_shortcut");
+      setShortcutMsg({ text: `✓ ${result}`, ok: true });
+    } catch (err) {
+      setShortcutMsg({ text: `Error: ${err}`, ok: false });
+    }
+    setCreatingShortcut(false);
+  };
+
   if (isLoading || !localSettings)
     return (
       <div
@@ -543,18 +562,12 @@ export default function SettingsScreen() {
               </div>
               <div>
                 <h2 className="text-lg font-bold">
-                  {premiumStatus?.source === "trial"
-                    ? "Free Trial Active"
-                    : premiumEnabled
-                      ? "Premium Plan Active"
-                      : "Free Plan"}
+                  {premiumEnabled ? "Professional Plan Active" : "Free Plan"}
                 </h2>
                 <p className="text-xs" style={{ color: "#4A4A5A" }}>
-                  {premiumStatus?.source === "trial"
-                    ? `Professional features unlocked! ${premiumStatus.trial_days_left} days remaining in trial.`
-                    : premiumEnabled
-                      ? "You have access to all professional features."
-                      : "Upgrade to unlock professional POS features."}
+                  {premiumEnabled
+                    ? "You have access to all professional features."
+                    : "All features are free - no upgrade needed!"}
                 </p>
               </div>
             </div>
@@ -1993,6 +2006,38 @@ export default function SettingsScreen() {
               will enable professional mode.
             </p>
           </div>
+        </div>
+
+        {/* Desktop Shortcut */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Monitor size={16} style={{ color: "#F5C842" }} />
+            <h2 className="font-semibold">Desktop Shortcut</h2>
+          </div>
+          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
+            Create a desktop shortcut to quickly launch Appixen POS Billing.
+          </p>
+          <button
+            onClick={handleCreateShortcut}
+            disabled={creatingShortcut}
+            className="btn-accent w-full flex items-center justify-center gap-2 text-sm"
+          >
+            {creatingShortcut ? (
+              <RefreshCw size={14} className="spin" />
+            ) : (
+              <>
+                <Monitor size={14} /> Create Desktop Shortcut
+              </>
+            )}
+          </button>
+          {shortcutMsg && (
+            <div
+              className="text-xs mt-2"
+              style={{ color: shortcutMsg.ok ? "#2ECC71" : "#E74C3C" }}
+            >
+              {shortcutMsg.text}
+            </div>
+          )}
         </div>
 
         <button

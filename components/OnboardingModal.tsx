@@ -195,33 +195,23 @@ export default function OnboardingModal() {
               </div>
 
               <div className="bg-muted/50 border border-border rounded-xl p-6 h-64 overflow-y-auto text-xs font-mono space-y-4 leading-relaxed">
-                <p className="font-bold">MIT License</p>
+                <p className="font-bold text-lg">MIT License - 100% Free Forever</p>
                 <p>Copyright (c) 2025 Appixen</p>
-                <p>
-                  Permission is hereby granted, free of charge, to any person
-                  obtaining a copy of this software and associated documentation
-                  files (the "Software"), to deal in the Software without
-                  restriction, including without limitation the rights to use,
-                  copy, modify, merge, publish, distribute, sublicense, and/or
-                  sell copies of the Software, and to permit persons to whom the
-                  Software is furnished to do so, subject to the following
-                  conditions:
-                </p>
-                <p>
-                  The above copyright notice and this permission notice shall be
-                  included in all copies or substantial portions of the
-                  Software.
-                </p>
-                <p>
-                  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
-                  KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
-                  WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-                  PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-                  COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-                  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-                  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-                  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-                </p>
+                <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 my-2">
+                  <p className="font-bold text-green-400">✨ Completely Free - No Hidden Costs</p>
+                </div>
+                <p>Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:</p>
+                <p><strong>What's FREE:</strong></p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>No subscription fees - ever</li>
+                  <li>No trial period - full features from day one</li>
+                  <li>No hidden charges - everything included</li>
+                  <li>Unlimited users, products, and orders</li>
+                  <li>All premium features unlocked at no cost</li>
+                  <li>Cloud sync across devices - free</li>
+                </ul>
+                <p>The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.</p>
+                <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.</p>
               </div>
 
               <label
@@ -253,7 +243,7 @@ export default function OnboardingModal() {
                   <Store size={32} />
                 </div>
                 <h1 className="text-3xl font-bold mb-2">
-                  Welcome to POS Billing
+                  Welcome to Appixen POS Billing
                 </h1>
                 <p className="text-muted-foreground">
                   Select your industry to get started
@@ -265,7 +255,10 @@ export default function OnboardingModal() {
                   <button
                     key={ind.id}
                     onClick={() =>
-                      setFormData({ ...formData, industry: ind.id as StoreType["industry"] })
+                      setFormData({
+                        ...formData,
+                        industry: ind.id as StoreType["industry"],
+                      })
                     }
                     className={`p-4 rounded-2xl border-2 transition-all text-left group ${
                       formData.industry === ind.id

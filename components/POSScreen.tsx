@@ -18,6 +18,7 @@ import {
   Save,
   MessageCircle,
   Clock,
+  Camera,
   FolderOpen,
   Tag,
   Wallet,
@@ -56,6 +57,7 @@ import {
   dbAddActivityLog,
   dbGetBatches,
   dbGetSerialNumbers,
+  dbRedeemGiftCard,
   Batch,
   SerialNumber,
   ProductVariant,
@@ -76,6 +78,7 @@ import { uiLogger } from "@/lib/logger";
 import PinModal from "./PinModal";
 import { getIndustryLabels } from "@/lib/industry";
 import { v4 as uuid } from "uuid";
+import BarcodeScannerModal from "@/components/BarcodeScannerModal";
 import PremiumUpgradeModal from "./PremiumUpgradeModal";
 import { Lock } from "lucide-react";
 import { Order } from "@/lib/db";
@@ -205,6 +208,10 @@ export default function POSScreen() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [pendingFeature, setPendingFeature] = useState("");
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [showGiftCardRedeem, setShowGiftCardRedeem] = useState(false);
+  const [giftCardCode, setGiftCardCode] = useState("");
+  const [giftCardAmount, setGiftCardAmount] = useState("");
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -573,7 +580,7 @@ export default function POSScreen() {
         setActiveCustomer(customer);
         setCustomerInfo({
           name: customer.name,
-          phone: customer.phone,
+          phone: customer.phone || "",
           address: customerInfo?.address,
         });
 
@@ -586,12 +593,10 @@ export default function POSScreen() {
         setCustomerAddresses(addrs);
 
         // Apply price tier logic if applicable
-        if (customer.price_tier === "discount") {
+        if (customer.price_tier === "premium") {
+          setGlobalDiscount(5, "percentage");
+        } else if (customer.price_tier === "vip") {
           setGlobalDiscount(10, "percentage");
-        } else if (customer.price_tier === "wholesale") {
-          setGlobalDiscount(15, "percentage");
-        } else if (customer.price_tier === "premium") {
-          setGlobalDiscount(-10, "percentage");
         }
       } else {
         setActiveCustomer(null);
@@ -1247,6 +1252,14 @@ export default function POSScreen() {
               <span id="search-hint" className="sr-only">
                 Press Enter to search by barcode, Escape to clear
               </span>
+              <button
+                onClick={() => setShowBarcodeScanner(true)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 btn-ghost p-1"
+                title="Scan barcode"
+                aria-label="Open barcode scanner"
+              >
+                <Camera size={16} />
+              </button>
             </div>
             <div
               className="flex gap-1"
@@ -1938,11 +1951,11 @@ export default function POSScreen() {
               )}
 
               <div
-                className="grid grid-cols-5 gap-1"
+                className="grid grid-cols-6 gap-1"
                 role="group"
                 aria-label="Payment method"
               >
-                {(["cash", "card", "upi", "store_credit", "split"] as const).map(
+                {(["cash", "card", "upi", "store_credit", "gift_card", "split"] as const).map(
                   (m, idx) => (
                     <button
                       key={m}
@@ -1974,6 +1987,7 @@ export default function POSScreen() {
 
                         setPaymentMethod(m);
                         if (m === "split") setShowSplitPaymentModal(true);
+                        if (m === "gift_card") setShowGiftCardRedeem(true);
                       }}
                       className={`py-1.5 rounded-sm text-[8px] font-bold uppercase tracking-wider border transition-all ${paymentMethod === m ? "bg-[#F5C842] border-[#F5C842] text-[#0D0D0F]" : "bg-[#141418] border-[#1E1E26] text-[#4A4A5A] hover:border-[#F5C842]/50"}`}
                       title={m === "store_credit" ? "Udhar / Khata" : ""}
@@ -2883,6 +2897,82 @@ export default function POSScreen() {
           </div>
         )}
       </div>
+
+      <BarcodeScannerModal
+        isOpen={showBarcodeScanner}
+        onClose={() => setShowBarcodeScanner(false)}
+        onScan={(barcode) => {
+          setLocalSearch(barcode);
+          setSearchQuery(barcode);
+          setShowBarcodeScanner(false);
+        }}
+      />
+
+      {showGiftCardRedeem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }}>
+          <div className="card p-6 w-full max-w-md">
+            <h2 className="font-semibold text-base mb-4">Redeem Gift Card</h2>
+            <div className="mb-4">
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Gift Card Code</label>
+              <input
+                value={giftCardCode}
+                onChange={(e) => setGiftCardCode(e.target.value.toUpperCase())}
+                placeholder="Enter code"
+              />
+            </div>
+            <div className="mb-4">
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Amount to Redeem</label>
+              <input
+                type="number"
+                step="0.01"
+                value={giftCardAmount}
+                onChange={(e) => setGiftCardAmount(e.target.value)}
+                placeholder="Enter amount"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowGiftCardRedeem(false); setGiftCardCode(""); setGiftCardAmount(""); }} className="btn-ghost flex-1">Cancel</button>
+              <button
+                onClick={async () => {
+                  const amount = parseFloat(giftCardAmount);
+                  if (!giftCardCode || !amount) return;
+                  try {
+                    const result = await dbRedeemGiftCard(giftCardCode, amount, activeStoreId);
+                    if (result.success) {
+                      alert(`Redeemed ${curr}${amount}. Remaining balance: ${curr}${result.balance}`);
+                      // Apply as discount or payment
+                      setAppliedCoupon({
+                        id: "gift_card",
+                        store_id: activeStoreId,
+                        code: giftCardCode,
+                        discount_type: "fixed",
+                        discount_value: amount,
+                        min_order_amount: 0,
+                        max_uses: 1,
+                        used_count: 0,
+                        valid_from: new Date().toISOString(),
+                        valid_until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                        active: true,
+                      });
+                      setShowGiftCardRedeem(false);
+                      setGiftCardCode("");
+                      setGiftCardAmount("");
+                    } else {
+                      alert("Invalid gift card or insufficient balance");
+                    }
+                  } catch (err) {
+                    alert("Failed to redeem gift card");
+                  }
+                }}
+                className="btn-accent flex-1"
+                disabled={!giftCardCode || !giftCardAmount}
+              >
+                Redeem
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <PremiumUpgradeModal
         isOpen={showUpgradeModal}

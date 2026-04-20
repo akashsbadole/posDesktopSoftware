@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { exportProductsCsv, exportOrdersCsv, importProductsCsv, getSalesReport, exportBackup, exportToTally, exportToQuickbooks } from "@/lib/db";
 import EnhancedReports from "@/components/EnhancedReports";
-import { useSettingsStore, useStaffStore } from "@/lib/stores";
+import { useSettingsStore, useStaffStore, useStoresStore } from "@/lib/stores";
 
 interface SalesReport {
   start_date: string;
@@ -25,16 +25,33 @@ export default function ReportsScreen() {
   const [message, setMessage] = useState("");
   const [showEnhanced, setShowEnhanced] = useState(false);
   const [salarySummary, setSalarySummary] = useState<{ total: number, count: number } | null>(null);
+  const [multiStore, setMultiStore] = useState(false);
 
   const handleGenerateReport = async () => {
     setLoading(true);
     try {
-      const r = await getSalesReport(startDate, endDate, activeStoreId);
+      let r: SalesReport;
+      if (multiStore) {
+        // Aggregate from all stores
+        const allStores = useStoresStore.getState().stores;
+        const reports = await Promise.all(
+          allStores.map(store => getSalesReport(startDate, endDate, store.id))
+        );
+        r = {
+          start_date: startDate,
+          end_date: endDate,
+          total_revenue: reports.reduce((sum, rep) => sum + rep.total_revenue, 0),
+          total_orders: reports.reduce((sum, rep) => sum + rep.total_orders, 0),
+          avg_order: reports.length > 0 ? reports.reduce((sum, rep) => sum + rep.total_revenue, 0) / reports.reduce((sum, rep) => sum + rep.total_orders, 0) : 0,
+        };
+      } else {
+        r = await getSalesReport(startDate, endDate, activeStoreId);
+      }
       setReport(r);
 
       // Calculate salaries in same range
       const salaries = useStaffStore.getState().salaries.filter(s =>
-        s.store_id === activeStoreId &&
+        (multiStore || s.store_id === activeStoreId) &&
         s.created_at.split('T')[0] >= startDate &&
         s.created_at.split('T')[0] <= endDate
       );
@@ -151,6 +168,12 @@ export default function ReportsScreen() {
               <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>To</label>
               <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
                 style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)" }} />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+                <input type="checkbox" checked={multiStore} onChange={(e) => setMultiStore(e.target.checked)} />
+                Include all stores (multi-location report)
+              </label>
             </div>
           </div>
           <button onClick={handleGenerateReport} disabled={loading}

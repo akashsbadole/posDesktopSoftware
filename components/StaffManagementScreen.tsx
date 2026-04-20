@@ -46,6 +46,7 @@ export default function StaffManagementScreen() {
     email: "",
     role: "cashier",
     hourly_rate: 0,
+    commission_rate: 0,
     store_id: activeStoreId,
   });
 
@@ -81,6 +82,7 @@ export default function StaffManagementScreen() {
       email: "",
       role: "cashier",
       hourly_rate: 0,
+      commission_rate: 0,
       store_id: activeStoreId
     });
   };
@@ -165,7 +167,7 @@ export default function StaffManagementScreen() {
               onClick={() => {
                 const orgId = useAuthStore.getState().organization?.id || "";
                 setEditingUser(null);
-                setUserFormData({ id: "", organization_id: orgId, name: "", email: "", role: "cashier", hourly_rate: 0, store_id: activeStoreId });
+                setUserFormData({ id: "", organization_id: orgId, name: "", email: "", role: "cashier", hourly_rate: 0, commission_rate: 0, store_id: activeStoreId });
                 setShowAddUser(true);
               }}
               className="btn-accent flex items-center gap-2"
@@ -221,6 +223,10 @@ export default function StaffManagementScreen() {
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-400">Hourly Rate</span>
                     <span className="font-mono text-accent">{settings?.currency_symbol}{u.hourly_rate?.toFixed(2) || "0.00"}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Commission</span>
+                    <span className="font-mono text-accent">{u.commission_rate?.toFixed(2) || "0.00"}%</span>
                   </div>
                 </div>
               </div>
@@ -446,6 +452,21 @@ export default function StaffManagementScreen() {
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">This rate will be used to calculate salary based on clock-in hours.</p>
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase font-bold text-gray-500 mb-2 block">Commission Rate (%)</label>
+                <div className="relative">
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-mono">%</span>
+                  <input
+                    type="number"
+                    className="pr-8 font-mono"
+                    placeholder="0"
+                    value={userFormData.commission_rate || ""}
+                    onChange={(e) => setUserFormData({ ...userFormData, commission_rate: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">Percentage commission on sales attributed to this staff member.</p>
               </div>
 
               <div className="pt-4 flex gap-3">
