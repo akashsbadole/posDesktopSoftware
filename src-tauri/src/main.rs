@@ -28,7 +28,13 @@ static DB: Lazy<Mutex<Database>> = Lazy::new(|| {
 
     eprintln!("[POS] Database path: {:?}", db_path);
 
-    let database = Database::new(&db_path).expect("Failed to initialize database");
+    let database = match Database::new(&db_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("[POS] Database init error: {:?}", e);
+            panic!("Failed to initialize database: {:?}", e);
+        }
+    };
     Mutex::new(database)
 });
 
@@ -105,6 +111,25 @@ fn verify_license_checksum(license: &str) -> bool {
 
     // Check if the provided checksum matches the calculated one
     parts[2] == &hash[..8]
+}
+
+#[tauri::command]
+fn send_notification(
+    app_handle: tauri::AppHandle,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    use tauri::api::notification::Notification;
+    
+    let result = Notification::new(&app_handle.config().tauri.bundle.identifier)
+        .title(&title)
+        .body(&body)
+        .show();
+    
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 #[tauri::command]
@@ -514,6 +539,16 @@ fn verify_pin(pin: String, organization_id: String) -> Result<Option<db::User>, 
 }
 
 #[tauri::command]
+fn login_with_pin_offline(
+    pin: String,
+    organization_id: String,
+) -> Result<Option<db::LoginResult>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.login_with_pin_offline(&pin, &organization_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn change_pin(user_id: String, new_pin: String) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.change_pin(&user_id, &new_pin).map_err(|e| e.to_string())
@@ -663,13 +698,19 @@ fn forgot_password(email: String) -> Result<String, String> {
 
 #[tauri::command]
 fn reset_password(email: String, code: String, new_password: String) -> Result<bool, String> {
-    // For now, we'll accept any code for simplicity
-    // In a real implementation, you'd verify the code from storage
     let db = get_db().lock().map_err(|e| e.to_string())?;
     let email = email.trim();
 
     if code.len() != 6 {
         return Err("Invalid reset code".to_string());
+    }
+
+    // Check if user exists first
+    let user = db.get_user_by_email(&email)
+        .map_err(|e| e.to_string())?;
+    
+    if user.is_none() {
+        return Err("Email not found".to_string());
     }
 
     // Update password
@@ -1952,6 +1993,7 @@ fn main() {
             import_products_csv,
             get_sales_report,
             verify_pin,
+            login_with_pin_offline,
             change_pin,
             get_users,
             upsert_user,
@@ -2083,6 +2125,7 @@ fn main() {
             seed_database,
             reset_database,
             reset_and_seed_database,
+            send_notification,
             get_premium_status,
             is_premium_enabled,
             get_app_version,

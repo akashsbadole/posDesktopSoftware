@@ -68,6 +68,7 @@ const defaultSettings: Settings = {
   license_agreed: false,
   onboarding_completed: false,
   license_key: '',
+  hidden_menus: '',
 };
 
 export const useSettingsStore = create<SettingsState>()(

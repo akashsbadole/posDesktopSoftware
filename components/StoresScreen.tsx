@@ -188,12 +188,18 @@ export default function StoresScreen() {
                       >
                         <Edit2 size={16} />
                       </button>
-                      <button
-                        onClick={() => deleteStore(store.id)}
-                        className="p-2 rounded-lg bg-muted text-foreground hover:bg-red-500/20 hover:text-red-500"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {(user?.role === "admin" || user?.role === "owner") && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Are you sure you want to delete "${store.name}"? This will delete all products and orders in this store.`)) {
+                              deleteStore(store.id);
+                            }
+                          }}
+                          className="p-2 rounded-lg bg-muted text-foreground hover:bg-red-500/20 hover:text-red-500"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   </div>
 

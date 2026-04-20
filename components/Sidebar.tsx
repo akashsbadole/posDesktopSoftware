@@ -219,7 +219,12 @@ export default function Sidebar({
       second: "2-digit",
     });
 
-  const nav = allNavItems.filter((item) => !item.adminOnly || isAdmin).map(item => {
+  const hiddenMenus = settings?.hidden_menus?.split(",").filter(Boolean) || [];
+  const nav = allNavItems.filter((item) => {
+    if (item.adminOnly && !isAdmin) return false;
+    if (hiddenMenus.includes(item.id)) return false;
+    return true;
+  }).map(item => {
     let label = t(item.labelKey);
     if (item.id === 'tables') label = labels.tables;
     if (item.id === 'kds') label = (labels.kitchen || "Kitchen").split('/')[0];

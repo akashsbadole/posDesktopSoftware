@@ -5,6 +5,7 @@ use aes_gcm::{
 };
 use bcrypt;
 use csv;
+
 use rand::Rng;
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
@@ -312,6 +313,8 @@ pub struct Settings {
     pub onboarding_completed: bool,
     #[serde(default)]
     pub license_key: String,
+    #[serde(default)]
+    pub hidden_menus: String,
 }
 
 #[allow(dead_code)]
@@ -767,21 +770,76 @@ pub struct Database {
 
 impl Database {
     pub fn new(path: &Path) -> Result<Self> {
+        eprintln!("[DB] Step 1: Opening connection");
         let conn = Connection::open(path)?;
 
-        conn.execute_batch(
-            "PRAGMA journal_mode=WAL;
-             PRAGMA foreign_keys=ON;
-             PRAGMA synchronous=NORMAL;",
-        )?;
+        // Note: PRAGMA statements removed temporarily due to compatibility issues
+        // These can be re-enabled once WebView2 is stable
 
+        eprintln!("[DB] Step 3: Integrity check");
+        // Run integrity check on startup
+        let integrity: Vec<String> = conn
+            .prepare("PRAGMA integrity_check")?
+            .query_map([], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        if integrity
+            .iter()
+            .any(|s| s.contains("ERROR") || s.contains("PROBLEMS"))
+        {
+            eprintln!(
+                "WARNING: Database integrity issues detected: {:?}",
+                integrity
+            );
+        }
+
+        eprintln!("[DB] Step 4: Create Database struct");
         let db = Database { conn };
-        db.ensure_schema_version_table()?;
-        db.run_migrations()?;
-        db.create_indexes()?;
-        db.seed_if_empty()?;
-        db.init_users()?;
 
+        eprintln!("[DB] Step 5: ensure_schema_version_table");
+        db.ensure_schema_version_table()?;
+
+        // Get current version before migrations
+        eprintln!("[DB] Step 6: get_current_version");
+        let current_version = db.get_current_version().unwrap_or(0);
+        eprintln!("[DB] Current schema version: {}", current_version);
+
+        if current_version == 0 {
+            // New database - run migrations
+            eprintln!("[DB] Running migrations...");
+            db.run_migrations()?;
+            db.create_indexes()?;
+
+            // Check if stores already exist before seeding
+            let store_count: i64 = db
+                .conn
+                .query_row("SELECT COUNT(*) FROM stores", [], |r| r.get(0))
+                .unwrap_or(0);
+
+            if store_count == 0 {
+                eprintln!("[DB] Seeding data...");
+                db.seed_if_empty()?;
+            } else {
+                eprintln!("[DB] Stores already exist ({})", store_count);
+            }
+
+            // Check if users exist before init
+            let user_count: i64 = db
+                .conn
+                .query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0))
+                .unwrap_or(0);
+
+            if user_count == 0 {
+                eprintln!("[DB] Initializing users...");
+                db.init_users()?;
+            } else {
+                eprintln!("[DB] Users already exist ({})", user_count);
+            }
+        } else {
+            eprintln!("[DB] Existing database v{}, skipping seed", current_version);
+        }
+
+        eprintln!("[DB] Step 11: Done!");
         Ok(db)
     }
 
@@ -1960,10 +2018,24 @@ impl Database {
         Ok(())
     }
 
+    fn table_exists(&self, table_name: &str) -> Result<bool> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+            params![table_name],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
     fn seed_if_empty(&self) -> Result<()> {
+        if !self.table_exists("stores")? {
+            eprintln!("[DB] Stores table does not exist, running migrations...");
+            self.run_migrations()?;
+            self.create_indexes()?;
+        }
         let count: i64 = self
             .conn
-            .query_row("SELECT COUNT(*) FROM products", [], |r| r.get(0))?;
+            .query_row("SELECT COUNT(*) FROM stores", [], |r| r.get(0))?;
         if count == 0 {
             self.seed_sample_data()?;
         }
@@ -1971,16 +2043,19 @@ impl Database {
     }
 
     fn seed_sample_data(&self) -> Result<()> {
+        eprintln!("[DB] Seeding stores...");
         // Seed stores
         self.conn.execute(
-            "INSERT INTO stores (id, name, industry) VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO stores (id, name, industry) VALUES (?, ?, ?)",
             params!["default", "Main Store", "food"],
         )?;
         self.conn.execute(
-            "INSERT INTO stores (id, name, industry) VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO stores (id, name, industry) VALUES (?, ?, ?)",
             params!["store2", "Downtown Branch", "retail"],
         )?;
+        eprintln!("[DB] Stores seeded successfully");
 
+        eprintln!("[DB] Seeding tax rates...");
         // Seed tax rates for both stores
         let tax_rates = vec![
             ("tax1", "default", "GST 5%", 5.0, 1),
@@ -1993,11 +2068,13 @@ impl Database {
 
         for (id, store_id, name, rate, is_default) in tax_rates {
             self.conn.execute(
-                "INSERT INTO tax_rates (id, store_id, name, rate, is_default) VALUES (?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO tax_rates (id, store_id, name, rate, is_default) VALUES (?, ?, ?, ?, ?)",
                 params![id, store_id, name, rate, is_default],
             )?;
         }
+        eprintln!("[DB] Tax rates seeded successfully");
 
+        eprintln!("[DB] Seeding products...");
         // Seed products for both stores - expanded with realistic Indian restaurant items
         let products = vec![
             (
@@ -2229,15 +2306,16 @@ impl Database {
         {
             // Seed for default store
             self.conn.execute(
-                "INSERT INTO products (id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, store_id, tags, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO products (id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, store_id, tags, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params![format!("{}_default", id), name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, "default", "popular", 1],
             )?;
             // Seed for store2 with different prices
             self.conn.execute(
-                "INSERT INTO products (id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, store_id, tags, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO products (id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, store_id, tags, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params![format!("{}_store2", id), name, price * 1.1, cost_price, wholesale_price, category, subcategory, stock / 2, format!("BAR{}_S2", id), format!("SKU{}_S2", id), description, tax, "store2", "featured", 0],
             )?;
         }
+        eprintln!("[DB] Products seeded successfully");
 
         // Seed product variants for selected products
         let variants = vec![
@@ -3802,8 +3880,88 @@ impl Database {
                 "2026-04-02T13:45:00Z",
                 None::<String>,
             ),
+            (
+                "order11",
+                "Rajesh Kumar",
+                "+919876543210",
+                "dine_in",
+                "table2",
+                "completed",
+                280.0,
+                50.4,
+                0.0,
+                330.4,
+                "cash",
+                "default",
+                "2026-04-03T12:00:00Z",
+                None::<String>,
+            ),
+            (
+                "order12",
+                "Priya Sharma",
+                "+919876543211",
+                "delivery",
+                "",
+                "completed",
+                450.0,
+                81.0,
+                0.0,
+                531.0,
+                "card",
+                "default",
+                "2026-04-03T13:30:00Z",
+                Some("789 Residential Area, Delhi".to_string()),
+            ),
+            (
+                "order13",
+                "Vikram Singh",
+                "+919876543214",
+                "dine_in",
+                "table3",
+                "completed",
+                320.0,
+                57.6,
+                0.0,
+                377.6,
+                "upi",
+                "store2",
+                "2026-04-03T14:00:00Z",
+                None::<String>,
+            ),
+            (
+                "order14",
+                "Meera Joshi",
+                "+919876543215",
+                "takeaway",
+                "",
+                "completed",
+                180.0,
+                32.4,
+                0.0,
+                212.4,
+                "cash",
+                "default",
+                "2026-04-04T12:30:00Z",
+                None::<String>,
+            ),
+            (
+                "order15",
+                "Sunita Reddy",
+                "+919876543213",
+                "dine_in",
+                "table1",
+                "completed",
+                520.0,
+                93.6,
+                0.0,
+                613.6,
+                "wallet",
+                "default",
+                "2026-04-04T13:45:00Z",
+                None::<String>,
+            ),
         ];
-
+        eprintln!("[DB] Seeding orders...");
         for (
             id,
             customer_name,
@@ -3823,16 +3981,17 @@ impl Database {
         {
             if let Some(address) = delivery_address {
                 self.conn.execute(
-                    "INSERT INTO orders (id, customer_name, customer_phone, order_type, table_id, status, subtotal, tax_amount, discount_amount, total, payment_method, store_id, delivery_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO orders (id, customer_name, customer_phone, order_type, table_id, status, subtotal, tax_amount, discount_amount, total, payment_method, store_id, delivery_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     params![id, customer_name, customer_phone, order_type, table_id, status, subtotal, tax_amount, discount_amount, total, payment_method, store_id, address, created_at],
                 )?;
             } else {
                 self.conn.execute(
-                    "INSERT INTO orders (id, customer_name, customer_phone, order_type, table_id, status, subtotal, tax_amount, discount_amount, total, payment_method, store_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO orders (id, customer_name, customer_phone, order_type, table_id, status, subtotal, tax_amount, discount_amount, total, payment_method, store_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     params![id, customer_name, customer_phone, order_type, table_id, status, subtotal, tax_amount, discount_amount, total, payment_method, store_id, created_at],
                 )?;
             }
         }
+        eprintln!("[DB] Orders seeded successfully");
 
         // Seed order items - expanded to match all orders
         let order_items = vec![
@@ -3947,7 +4106,7 @@ impl Database {
                 50.4,
             ),
             (
-                "order7",
+                "order10",
                 "default",
                 "prod7_default",
                 "Garlic Bread",
@@ -3957,64 +4116,104 @@ impl Database {
                 16.2,
             ),
             (
-                "order7",
+                "order11",
+                "default",
+                "prod2_default",
+                "Chicken Burger",
+                180.0,
+                1,
+                12.0,
+                21.6,
+            ),
+            (
+                "order11",
+                "default",
+                "prod4_default",
+                "French Fries",
+                80.0,
+                1,
+                12.0,
+                9.6,
+            ),
+            (
+                "order12",
+                "default",
+                "prod1_default",
+                "Margherita Pizza",
+                250.0,
+                1,
+                5.0,
+                12.5,
+            ),
+            (
+                "order12",
+                "default",
+                "prod5_default",
+                "Chocolate Cake",
+                120.0,
+                1,
+                18.0,
+                21.6,
+            ),
+            (
+                "order12",
                 "default",
                 "prod3_default",
                 "Coca Cola",
                 40.0,
                 2,
                 18.0,
-                72.0,
+                14.4,
             ),
             (
-                "order8",
+                "order13",
                 "store2",
-                "prod11_store2",
-                "Paneer Tikka",
-                242.0,
+                "prod1_store2",
+                "Margherita Pizza",
+                275.0,
                 1,
                 5.0,
-                43.56,
+                13.75,
             ),
             (
-                "order9",
+                "order14",
                 "default",
-                "prod13_default",
-                "Masala Dosa",
-                120.0,
-                1,
-                5.0,
-                21.6,
-            ),
-            (
-                "order9",
-                "default",
-                "prod10_default",
-                "Filter Coffee",
-                50.0,
-                1,
-                0.0,
-                0.0,
-            ),
-            (
-                "order10",
-                "default",
-                "prod14_default",
-                "Chili Chicken",
-                240.0,
-                1,
-                12.0,
-                43.2,
-            ),
-            (
-                "order10",
-                "default",
-                "prod8_default",
-                "Vanilla Ice Cream",
-                60.0,
+                "prod6_default",
+                "Chicken Biryani",
+                220.0,
                 1,
                 18.0,
-                10.8,
+                39.6,
+            ),
+            (
+                "order15",
+                "default",
+                "prod1_default",
+                "Margherita Pizza",
+                250.0,
+                1,
+                5.0,
+                12.5,
+            ),
+            (
+                "order15",
+                "default",
+                "prod7_default",
+                "Garlic Bread",
+                90.0,
+                1,
+                5.0,
+                4.5,
+            ),
+            (
+                "order15",
+                "default",
+                "prod3_default",
+                "Coca Cola",
+                40.0,
+                1,
+                18.0,
+                7.2,
             ),
         ];
 
@@ -4030,7 +4229,7 @@ impl Database {
         ) in order_items
         {
             self.conn.execute(
-                "INSERT INTO order_items (order_id, store_id, product_id, product_name, price, quantity, tax, discount, discount_type, metadata, done) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO order_items (order_id, store_id, product_id, product_name, price, quantity, tax, discount, discount_type, metadata, done) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params![order_id, store_id, product_id, product_name, price, quantity, tax_amount, 0.0, None::<String>, None::<String>, 0],
             )?;
         }
@@ -4489,8 +4688,8 @@ impl Database {
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
 
         self.conn.execute(
-            "UPDATE users SET password = ?1 WHERE email = ?2",
-            [hashed_password, email.to_string()],
+            "UPDATE users SET password_hash = ?1 WHERE email = ?2",
+            params![hashed_password, email],
         )?;
         Ok(())
     }
@@ -4585,6 +4784,58 @@ impl Database {
             Ok((user, organization, hashed_password)) => {
                 if let Some(h) = hashed_password {
                     if let Ok(verified) = bcrypt::verify(password, &h) {
+                        if verified {
+                            return Ok(Some(LoginResult { user, organization }));
+                        }
+                    }
+                }
+                Ok(None)
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn login_with_pin_offline(
+        &self,
+        pin: &str,
+        organization_id: &str,
+    ) -> Result<Option<LoginResult>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT u.id, u.organization_id, u.name, u.email, u.role, u.store_id, u.pin, o.id, o.name, o.email, o.status, o.created_at
+             FROM users u
+             LEFT JOIN organizations o ON u.organization_id = o.id
+             WHERE u.organization_id = ?1",
+        )?;
+
+        let result = stmt.query_row(params![organization_id], |row| {
+            let hashed_pin: Option<String> = row.get(6)?;
+
+            Ok((
+                User {
+                    id: row.get(0)?,
+                    organization_id: row.get(1)?,
+                    name: row.get(2)?,
+                    email: row.get(3)?,
+                    role: row.get(4)?,
+                    store_id: row.get(5)?,
+                    pin: String::new(),
+                },
+                Organization {
+                    id: row.get(7)?,
+                    name: row.get(8)?,
+                    email: row.get(9)?,
+                    status: row.get(10)?,
+                    created_at: row.get(11)?,
+                },
+                hashed_pin,
+            ))
+        });
+
+        match result {
+            Ok((user, organization, hashed_pin)) => {
+                if let Some(h) = hashed_pin {
+                    if let Ok(verified) = bcrypt::verify(pin, &h) {
                         if verified {
                             return Ok(Some(LoginResult { user, organization }));
                         }
@@ -5611,9 +5862,10 @@ impl Database {
             enable_round_off: true,
             auto_reminders_enabled: false,
             auto_reminder_days: 30,
-            license_agreed: false,
-            onboarding_completed: false,
+            license_agreed: true,
+            onboarding_completed: true,
             license_key: "".to_string(),
+            hidden_menus: "".to_string(),
         }
     }
 

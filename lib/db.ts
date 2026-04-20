@@ -34,7 +34,11 @@ export async function resetAndSeedDatabase(): Promise<void> {
   return sql("seed_database");
 }
 
-// ─── Multi-Tenancy Types ──────────────────────────────────────────────────────
+export async function sendNotification(title: string, body: string): Promise<void> {
+  return sql("send_notification", { title, body });
+}
+
+// ─── Multi-Tenency Types ──────────────────────────────────────────────────────
 export interface Organization {
   id: string;
   name: string;
@@ -413,6 +417,7 @@ export interface Settings {
   license_agreed: boolean;
   onboarding_completed: boolean;
   license_key: string;
+  hidden_menus: string;
 }
 
 export interface TaxRate {
@@ -2055,6 +2060,7 @@ function defaultSettings(): Settings {
     license_agreed: false,
     onboarding_completed: false,
     license_key: "",
+    hidden_menus: "",
   };
 }
 

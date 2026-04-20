@@ -19,6 +19,7 @@ import {
   Key,
   Receipt,
   Lock,
+  LayoutGrid,
 } from "lucide-react";
 import {
   syncToNeon,
@@ -106,9 +107,14 @@ export default function SettingsScreen() {
     ok: boolean;
   } | null>(null);
   const [restoring, setRestoring] = useState(false);
-  const [restoreMsg, setRestoreMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [restoreMsg, setRestoreMsg] = useState<{
+    text: string;
+    ok: boolean;
+  } | null>(null);
   const [seeding, setSeeding] = useState(false);
-  const [seedMsg, setSeedMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [seedMsg, setSeedMsg] = useState<{ text: string; ok: boolean } | null>(
+    null,
+  );
   const [resetting, setResetting] = useState(false);
   const [resetAndSeeding, setResetAndSeeding] = useState(false);
   const [sendingSms, setSendingSms] = useState(false);
@@ -132,8 +138,8 @@ export default function SettingsScreen() {
   );
   const [changingPin, setChangingPin] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-    const restoreFileInputRef = useRef<HTMLInputElement>(null);
-    const [localSettings, setLocalSettings] = useState<Settings>(
+  const restoreFileInputRef = useRef<HTMLInputElement>(null);
+  const [localSettings, setLocalSettings] = useState<Settings>(
     settings || {
       store_name: "My POS Store",
       currency: "USD",
@@ -177,6 +183,7 @@ export default function SettingsScreen() {
       auto_print_kot: false,
       auto_reminders_enabled: false,
       auto_reminder_days: 30,
+      hidden_menus: "",
     },
   );
 
@@ -214,8 +221,6 @@ export default function SettingsScreen() {
 
     const taxRateError = validateTaxRate(localSettings.tax_rate);
     if (taxRateError) newErrors.tax_rate = taxRateError;
-
-
 
     const whatsappUrlError = validateUrl(localSettings.whatsapp_api_url);
     if (whatsappUrlError) newErrors.whatsapp_api_url = whatsappUrlError;
@@ -314,7 +319,7 @@ export default function SettingsScreen() {
 
       try {
         // Try to decompress as gzip
-        jsonString = pako.ungzip(bytes, { to: 'string' });
+        jsonString = pako.ungzip(bytes, { to: "string" });
       } catch {
         // If not gzipped, decode as UTF-8 text
         jsonString = new TextDecoder().decode(bytes);
@@ -329,46 +334,54 @@ export default function SettingsScreen() {
         ok: true,
       });
     } catch (err) {
-      setBackupMsg({ text: `Error: Invalid backup file or import failed`, ok: false });
+      setBackupMsg({
+        text: `Error: Invalid backup file or import failed`,
+        ok: false,
+      });
     }
     setBackingUp(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
-  
-    const handleRestoreBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      setRestoring(true);
-      setRestoreMsg(null);
+
+  const handleRestoreBackup = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setRestoring(true);
+    setRestoreMsg(null);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let jsonString: string;
+
       try {
-        const arrayBuffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        let jsonString: string;
-
-        try {
-          // Try to decompress as gzip
-          jsonString = pako.ungzip(bytes, { to: 'string' });
-        } catch {
-          // If not gzipped, decode as UTF-8 text
-          jsonString = new TextDecoder().decode(bytes);
-        }
-
-        // Validate JSON
-        JSON.parse(jsonString);
-
-        const result = await importBackup(jsonString, activeStoreId);
-        setRestoreMsg({
-          text: `✓ Restored ${result.products_imported} products and ${result.orders_imported} orders`,
-          ok: true,
-        });
-      } catch (err) {
-        setRestoreMsg({ text: `Error: Invalid backup file or restore failed`, ok: false });
+        // Try to decompress as gzip
+        jsonString = pako.ungzip(bytes, { to: "string" });
+      } catch {
+        // If not gzipped, decode as UTF-8 text
+        jsonString = new TextDecoder().decode(bytes);
       }
-      setRestoring(false);
-      if (restoreFileInputRef.current) restoreFileInputRef.current.value = "";
-    };
-  
-    const handleSendTestSms = async () => {
+
+      // Validate JSON
+      JSON.parse(jsonString);
+
+      const result = await importBackup(jsonString, activeStoreId);
+      setRestoreMsg({
+        text: `✓ Restored ${result.products_imported} products and ${result.orders_imported} orders`,
+        ok: true,
+      });
+    } catch (err) {
+      setRestoreMsg({
+        text: `Error: Invalid backup file or restore failed`,
+        ok: false,
+      });
+    }
+    setRestoring(false);
+    if (restoreFileInputRef.current) restoreFileInputRef.current.value = "";
+  };
+
+  const handleSendTestSms = async () => {
     if (!testPhone || !testMessage) {
       setSmsMsg({ text: "Please enter phone number and message", ok: false });
       return;
@@ -412,7 +425,7 @@ export default function SettingsScreen() {
 
   const handleSeedData = async () => {
     const confirmed = window.confirm(
-      "This will populate your database with sample data. Are you sure you want to proceed?"
+      "This will populate your database with sample data. Are you sure you want to proceed?",
     );
     if (!confirmed) return;
 
@@ -429,12 +442,12 @@ export default function SettingsScreen() {
 
   const handleResetDatabase = async () => {
     const confirmed = window.confirm(
-      "WARNING: This will permanently delete ALL data and reset the database to empty state. This action cannot be undone. Are you absolutely sure?"
+      "WARNING: This will permanently delete ALL data and reset the database to empty state. This action cannot be undone. Are you absolutely sure?",
     );
     if (!confirmed) return;
 
     const doubleConfirm = window.confirm(
-      "FINAL WARNING: All products, orders, customers, and settings will be lost forever. Confirm to proceed."
+      "FINAL WARNING: All products, orders, customers, and settings will be lost forever. Confirm to proceed.",
     );
     if (!doubleConfirm) return;
 
@@ -442,7 +455,10 @@ export default function SettingsScreen() {
     setSeedMsg(null);
     try {
       await resetDatabase();
-      setSeedMsg({ text: "✓ Database reset successfully! All data has been cleared.", ok: true });
+      setSeedMsg({
+        text: "✓ Database reset successfully! All data has been cleared.",
+        ok: true,
+      });
     } catch (err) {
       setSeedMsg({ text: `Error: ${err}`, ok: false });
     }
@@ -451,7 +467,7 @@ export default function SettingsScreen() {
 
   const handleResetAndSeed = async () => {
     const confirmed = window.confirm(
-      "This will reset the database and populate it with sample data. All existing data will be lost. Continue?"
+      "This will reset the database and populate it with sample data. All existing data will be lost. Continue?",
     );
     if (!confirmed) return;
 
@@ -459,16 +475,15 @@ export default function SettingsScreen() {
     setSeedMsg(null);
     try {
       await resetAndSeedDatabase();
-      setSeedMsg({ text: "✓ Database reset and seeded successfully! Sample data is now available.", ok: true });
+      setSeedMsg({
+        text: "✓ Database reset and seeded successfully! Sample data is now available.",
+        ok: true,
+      });
     } catch (err) {
       setSeedMsg({ text: `Error: ${err}`, ok: false });
     }
     setResetAndSeeding(false);
   };
-
-
-
-
 
   const { user } = useAuthStore();
 
@@ -507,7 +522,7 @@ export default function SettingsScreen() {
   return (
     <div className="h-full overflow-y-auto p-5">
       <h1 className="font-display text-xl font-bold mb-6">Settings</h1>
-      <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
         {/* Premium Plan Highlight */}
         <div
           className="card p-6 border-2 transition-all"
@@ -787,7 +802,8 @@ export default function SettingsScreen() {
                 onChange={(e) => {
                   const system = e.target.value;
                   updateLocal("tax_system", system);
-                  const systemLabel = taxSystems.find(s => s.id === system)?.label || "Tax";
+                  const systemLabel =
+                    taxSystems.find((s) => s.id === system)?.label || "Tax";
                   updateLocal("tax_name", systemLabel);
                 }}
                 style={{ padding: "10px" }}
@@ -804,7 +820,9 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                {taxSystems.find(s => s.id === localSettings.tax_system)?.label || "Tax"} Rate (%)
+                {taxSystems.find((s) => s.id === localSettings.tax_system)
+                  ?.label || "Tax"}{" "}
+                Rate (%)
               </label>
               <input
                 type="number"
@@ -859,20 +877,21 @@ export default function SettingsScreen() {
               />
             </div>
             <div className="flex items-center justify-between">
-              <label
-                className="text-xs"
-                style={{ color: "#4A4A5A" }}
-              >
+              <label className="text-xs" style={{ color: "#4A4A5A" }}>
                 Tax Inclusive Pricing
               </label>
               <div
                 className="toggle"
-                onClick={() => updateLocal("tax_inclusive", !localSettings.tax_inclusive)}
+                onClick={() =>
+                  updateLocal("tax_inclusive", !localSettings.tax_inclusive)
+                }
               >
                 <div
                   className="toggle-slider"
                   style={{
-                    background: localSettings.tax_inclusive ? "#2ECC71" : "#1E1E26",
+                    background: localSettings.tax_inclusive
+                      ? "#2ECC71"
+                      : "#1E1E26",
                   }}
                 >
                   <div
@@ -898,7 +917,10 @@ export default function SettingsScreen() {
           </div>
           {localSettings.country === "IN" && (
             <div className="mt-3">
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+              <label
+                className="text-xs mb-1 block"
+                style={{ color: "#4A4A5A" }}
+              >
                 UPI ID (for receipts)
               </label>
               <input
@@ -910,7 +932,10 @@ export default function SettingsScreen() {
           )}
           {localSettings.country === "IN" && (
             <div className="mt-3">
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+              <label
+                className="text-xs mb-1 block"
+                style={{ color: "#4A4A5A" }}
+              >
                 Merchant ID (for UPI payments)
               </label>
               <input
@@ -951,21 +976,30 @@ export default function SettingsScreen() {
                 }}
                 className="flex items-center gap-2 px-4 py-3 rounded-lg border transition-all text-left"
                 style={{
-                  background: localSettings.language === lang.code 
-                    ? "rgba(245,200,66,0.15)" 
-                    : "transparent",
-                  borderColor: localSettings.language === lang.code 
-                    ? "#F5C842" 
-                    : "#1E1E26",
-                  color: localSettings.language === lang.code 
-                    ? "#F5C842" 
-                    : "#9090A8",
+                  background:
+                    localSettings.language === lang.code
+                      ? "rgba(245,200,66,0.15)"
+                      : "transparent",
+                  borderColor:
+                    localSettings.language === lang.code
+                      ? "#F5C842"
+                      : "#1E1E26",
+                  color:
+                    localSettings.language === lang.code
+                      ? "#F5C842"
+                      : "#9090A8",
                 }}
               >
-                <span className="text-sm">{lang.code === "en" ? "🇺🇸" : "🇮🇳"}</span>
+                <span className="text-sm">
+                  {lang.code === "en" ? "🇺🇸" : "🇮🇳"}
+                </span>
                 <span className="text-xs font-medium">{lang.name}</span>
                 {localSettings.language === lang.code && (
-                  <Check size={14} className="ml-auto" style={{ color: "#F5C842" }} />
+                  <Check
+                    size={14}
+                    className="ml-auto"
+                    style={{ color: "#F5C842" }}
+                  />
                 )}
               </button>
             ))}
@@ -987,12 +1021,19 @@ export default function SettingsScreen() {
                 Show Logo on Receipt
               </label>
               <button
-                onClick={() => updateLocal("show_logo_on_receipt", !localSettings.show_logo_on_receipt)}
+                onClick={() =>
+                  updateLocal(
+                    "show_logo_on_receipt",
+                    !localSettings.show_logo_on_receipt,
+                  )
+                }
                 style={{
                   width: 44,
                   height: 24,
                   borderRadius: 12,
-                  background: localSettings.show_logo_on_receipt ? "#2ECC71" : "#1E1E26",
+                  background: localSettings.show_logo_on_receipt
+                    ? "#2ECC71"
+                    : "#1E1E26",
                   border: "none",
                   position: "relative",
                   cursor: "pointer",
@@ -1013,12 +1054,17 @@ export default function SettingsScreen() {
               </button>
             </div>
             <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+              <label
+                className="text-xs mb-1 block"
+                style={{ color: "#4A4A5A" }}
+              >
                 Header Text (optional)
               </label>
               <input
                 value={localSettings.receipt_header_text || ""}
-                onChange={(e) => updateLocal("receipt_header_text", e.target.value)}
+                onChange={(e) =>
+                  updateLocal("receipt_header_text", e.target.value)
+                }
                 placeholder="e.g., Welcome to our store!"
               />
             </div>
@@ -1027,12 +1073,19 @@ export default function SettingsScreen() {
                 Show Tax Breakdown
               </label>
               <button
-                onClick={() => updateLocal("show_tax_breakdown", !localSettings.show_tax_breakdown)}
+                onClick={() =>
+                  updateLocal(
+                    "show_tax_breakdown",
+                    !localSettings.show_tax_breakdown,
+                  )
+                }
                 style={{
                   width: 44,
                   height: 24,
                   borderRadius: 12,
-                  background: localSettings.show_tax_breakdown ? "#2ECC71" : "#1E1E26",
+                  background: localSettings.show_tax_breakdown
+                    ? "#2ECC71"
+                    : "#1E1E26",
                   border: "none",
                   position: "relative",
                   cursor: "pointer",
@@ -1057,12 +1110,19 @@ export default function SettingsScreen() {
                 Enable Round Off
               </label>
               <button
-                onClick={() => updateLocal("enable_round_off", !localSettings.enable_round_off)}
+                onClick={() =>
+                  updateLocal(
+                    "enable_round_off",
+                    !localSettings.enable_round_off,
+                  )
+                }
                 style={{
                   width: 44,
                   height: 24,
                   borderRadius: 12,
-                  background: localSettings.enable_round_off ? "#2ECC71" : "#1E1E26",
+                  background: localSettings.enable_round_off
+                    ? "#2ECC71"
+                    : "#1E1E26",
                   border: "none",
                   position: "relative",
                   cursor: "pointer",
@@ -1083,7 +1143,10 @@ export default function SettingsScreen() {
               </button>
             </div>
             <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+              <label
+                className="text-xs mb-1 block"
+                style={{ color: "#4A4A5A" }}
+              >
                 Footer Text
               </label>
               <input
@@ -1103,7 +1166,10 @@ export default function SettingsScreen() {
               <h2 className="font-semibold">Cloud Sync (Neon PostgreSQL)</h2>
             </div>
             {premiumEnabled && lastSyncTime && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1" style={{ color: "#2ECC71", background: "rgba(46,204,113,0.1)" }}>
+              <span
+                className="text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1"
+                style={{ color: "#2ECC71", background: "rgba(46,204,113,0.1)" }}
+              >
                 {syncing && <RefreshCw size={10} className="spin" />}
                 Last Sync: {lastSyncTime}
               </span>
@@ -1117,7 +1183,10 @@ export default function SettingsScreen() {
 
           <div className="space-y-4">
             <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+              <label
+                className="text-xs mb-1 block"
+                style={{ color: "#4A4A5A" }}
+              >
                 Neon Database URL
               </label>
               <input
@@ -1167,7 +1236,10 @@ export default function SettingsScreen() {
                   borderColor: "rgba(245,200,66,0.2)",
                 }}
               >
-                <div className="text-sm font-medium" style={{ color: "#F5C842" }}>
+                <div
+                  className="text-sm font-medium"
+                  style={{ color: "#F5C842" }}
+                >
                   Neon Cloud Sync is a premium feature.
                 </div>
                 <p className="text-xs" style={{ color: "#4A4A5A" }}>
@@ -1338,7 +1410,8 @@ export default function SettingsScreen() {
             <h2 className="font-semibold">Seed Data & Reset</h2>
           </div>
           <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
-            Populate the database with sample data for testing, or reset everything to start fresh.
+            Populate the database with sample data for testing, or reset
+            everything to start fresh.
           </p>
 
           <div className="space-y-2 mb-4">
@@ -1396,6 +1469,88 @@ export default function SettingsScreen() {
               {seedMsg.text}
             </div>
           )}
+        </div>
+
+        {/* Menu Visibility */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <LayoutGrid size={16} style={{ color: "#F5C842" }} />
+            <h2 className="font-semibold">Menu Visibility</h2>
+          </div>
+          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
+            Hide menus you don't need. Hidden menus won't appear in the sidebar.
+          </p>
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { key: "orders", label: "Orders" },
+              { key: "products", label: "Products" },
+              { key: "tables", label: "Tables" },
+              { key: "reservations", label: "Reservations" },
+              { key: "kds", label: "Kitchen (KDS)" },
+              { key: "customers", label: "Customers" },
+              { key: "expenses", label: "Expenses" },
+              { key: "ingredients", label: "Ingredients" },
+              { key: "suppliers", label: "Suppliers" },
+              { key: "purchase_orders", label: "Purchase Orders" },
+              { key: "wallet", label: "Wallet" },
+              { key: "coupons", label: "Coupons" },
+              { key: "inventory_alerts", label: "Inventory Alerts" },
+              { key: "inventory", label: "Inventory" },
+              { key: "refund_requests", label: "Refunds" },
+              { key: "staff", label: "Staff" },
+              { key: "scheduling", label: "Scheduling" },
+              { key: "reconciliation", label: "Reconciliation" },
+              { key: "reports", label: "Reports" },
+              { key: "gst", label: "GST" },
+              { key: "logs", label: "Activity Logs" },
+              { key: "stores", label: "Stores" },
+              { key: "support", label: "Support" },
+            ].map((menu) => {
+              const isHidden = localSettings.hidden_menus
+                ?.split(",")
+                .includes(menu.key);
+              return (
+                <button
+                  key={menu.key}
+                  onClick={() => {
+                    const current =
+                      localSettings.hidden_menus?.split(",").filter(Boolean) ||
+                      [];
+                    if (isHidden) {
+                      updateLocal(
+                        "hidden_menus",
+                        current.filter((k) => k !== menu.key).join(","),
+                      );
+                    } else {
+                      updateLocal(
+                        "hidden_menus",
+                        [...current, menu.key].join(","),
+                      );
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-3 rounded-lg border transition-all text-left"
+                  style={{
+                    background: isHidden
+                      ? "rgba(231,76,60,0.1)"
+                      : "transparent",
+                    borderColor: isHidden ? "#E74C3C" : "#1E1E26",
+                    color: isHidden ? "#E74C3C" : "#9090A8",
+                  }}
+                >
+                  <div
+                    className="w-4 h-4 rounded border flex items-center justify-center"
+                    style={{
+                      borderColor: isHidden ? "#E74C3C" : "#4A4A5A",
+                      background: isHidden ? "#E74C3C" : "transparent",
+                    }}
+                  >
+                    {isHidden && <Check size={10} color="#fff" />}
+                  </div>
+                  <span className="text-xs font-medium">{menu.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Khata / Ledger Reminders */}
@@ -1833,15 +1988,15 @@ export default function SettingsScreen() {
               placeholder="PREM-XXXX-XXXX"
             />
             <p className="text-[10px] mt-2" style={{ color: "#9090A8" }}>
-              Enter your professional license key to unlock premium features. Any
-              key starting with <code className="font-bold">PREM-</code> will
-              enable professional mode.
+              Enter your professional license key to unlock premium features.
+              Any key starting with <code className="font-bold">PREM-</code>{" "}
+              will enable professional mode.
             </p>
           </div>
         </div>
 
         <button
-          className="btn-accent flex items-center gap-2 py-3 px-6 text-sm"
+          className="btn-accent flex items-center gap-2 py-3 px-6 text-sm w-[140px] h-[40px] "
           onClick={handleSave}
         >
           {saved ? (

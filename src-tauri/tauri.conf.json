@@ -41,6 +41,9 @@
           "https://*whatsapp*/*",
           "http://localhost:3000"
         ]
+      },
+      "notification": {
+        "all": true
       }
     },
     "bundle": {
