@@ -8242,3 +8242,47 @@ impl Database {
         Ok(compressed)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+
+    fn setup_test_db() -> Database {
+        let temp_file = NamedTempFile::new().unwrap();
+        Database::new(temp_file.path()).unwrap()
+    }
+
+    #[test]
+    fn test_import_products_csv() {
+        let db = setup_test_db();
+        let csv_data = "id,parent_id,name,price,cost_price,wholesale_price,category,subcategory,stock,barcode,sku,description,tax,status,tags,is_digital,is_favorite,image_url,metadata,variant_value\np1,,Pizza,250.5,150,200,Food,Veg,50.0,BAR001,SKU001,Delicious pizza,5.0,active,popular,false,true,,{},";
+
+        let result = db.import_products_csv(csv_data, "default").unwrap();
+        assert_eq!(result.imported, 1);
+        assert_eq!(result.errors, 0);
+
+        let products = db.get_products("default").unwrap();
+        assert_eq!(products.len(), 1);
+        assert_eq!(products[0].name, "Pizza");
+        assert_eq!(products[0].price, 250.5);
+        assert_eq!(products[0].stock, 50);
+    }
+
+    #[test]
+    fn test_import_customers_csv() {
+        let db = setup_test_db();
+        let csv_data = "id,name,phone,email,loyalty_points,total_spent,visits,group_name,notes,birthday,anniversary,credit_limit,price_tier,loyalty_tier,tax_id\nc1,John Doe,1234567890,john@example.com,100.0,500.5,10.0,VIP,Regular customer,1990-01-01,,1000.0,gold,platinum,GSTIN123";
+
+        let result = db.import_customers_csv(csv_data, "default").unwrap();
+        assert_eq!(result.imported, 1);
+        assert_eq!(result.errors, 0);
+
+        let customers = db.get_customers("default").unwrap();
+        assert_eq!(customers.len(), 1);
+        assert_eq!(customers[0].name, "John Doe");
+        assert_eq!(customers[0].total_spent, 500.5);
+        assert_eq!(customers[0].loyalty_points, 100);
+        assert_eq!(customers[0].visits, 10);
+    }
+}

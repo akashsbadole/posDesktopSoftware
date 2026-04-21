@@ -1,0 +1,3 @@
+id,name,phone,email,loyalty_points,total_spent,visits,group_name,notes,birthday,anniversary,credit_limit,price_tier,loyalty_tier,tax_id
+c1,John Doe,1234567890,john@example.com,100,500.5,10,VIP,Regular customer,1990-01-01,,1000,gold,platinum,GSTIN123
+c2,Jane Smith,0987654321,jane@example.com,50,200,5,,New customer,1995-05-05,,,standard,silver,
