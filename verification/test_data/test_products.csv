@@ -1,0 +1,4 @@
+id,parent_id,name,price,cost_price,wholesale_price,category,subcategory,stock,barcode,sku,description,tax,status,tags,is_digital,is_favorite,image_url,metadata,variant_value
+p1,,Pizza,250.5,150,200,Food,Veg,50,BAR001,SKU001,Delicious pizza,5,active,popular,false,true,,{},
+p1v1,p1,Small Pizza,180,100,150,Food,Veg,20,,SKU001-S,,5,active,,false,false,,{},S
+p2,,Coke,40.0,25,35,Beverage,,100,BAR002,SKU002,Cold drink,18,active,,false,false,,{},
