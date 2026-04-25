@@ -621,39 +621,68 @@ export default function LoginScreen() {
                 opacity: loading || lockoutEnd ? 0.6 : 1,
               }}
             />
-            {error && (
-              <div
-                style={{
-                  color: "#f44336",
-                  marginBottom: 16,
-                  fontSize: 14,
-                  padding: "8px 12px",
-                  background: "rgba(244, 67, 54, 0.1)",
-                  borderRadius: 8,
-                }}
-              >
-                {error}
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={loading || pin.length < 4 || !!lockoutEnd}
-              style={{
-                width: "100%",
-                padding: 14,
-                fontSize: 16,
-                fontWeight: 600,
-                background: pin.length >= 4 && !lockoutEnd ? "#F5C842" : "#999",
-                color: "#0D0D0F",
-                border: "none",
-                borderRadius: 12,
-                cursor:
-                  pin.length >= 4 && !lockoutEnd ? "pointer" : "not-allowed",
-                transition: "all 0.2s",
-              }}
-            >
-              {loading ? "Verifying..." : "Enter POS"}
-            </button>
+             {error && (
+               <div
+                 style={{
+                   color: "#f44336",
+                   marginBottom: 16,
+                   fontSize: 14,
+                   padding: "8px 12px",
+                   background: "rgba(244, 67, 54, 0.1)",
+                   borderRadius: 8,
+                 }}
+               >
+                 {error}
+               </div>
+             )}
+             {/* Default PIN hint */}
+             <details style={{ marginTop: 8, textAlign: "left" }}>
+               <summary
+                 style={{
+                   fontSize: 12,
+                   color: "var(--text-muted)",
+                   cursor: "pointer",
+                   userSelect: "none",
+                 }}
+               >
+                 Default PIN?
+               </summary>
+               <div
+                 style={{
+                   marginTop: 8,
+                   padding: 12,
+                   background: "rgba(46,204,113,0.08)",
+                   borderRadius: 8,
+                   fontSize: 12,
+                   color: "var(--text-muted)",
+                 }}
+               >
+                 <p style={{ marginBottom: 4 }}>
+                   <strong>Default PIN:</strong> 1234 (admin) or 0000 (cashier)
+                 </p>
+                 <p>Use PIN for quick offline access after initial email/password login.</p>
+               </div>
+             </details>
+
+             <button
+               type="submit"
+               disabled={loading || pin.length < 4 || !!lockoutEnd}
+               style={{
+                 width: "100%",
+                 padding: 14,
+                 fontSize: 16,
+                 fontWeight: 600,
+                 background: pin.length >= 4 && !lockoutEnd ? "#F5C842" : "#999",
+                 color: "#0D0D0F",
+                 border: "none",
+                 borderRadius: 12,
+                 cursor:
+                   pin.length >= 4 && !lockoutEnd ? "pointer" : "not-allowed",
+                 transition: "all 0.2s",
+               }}
+             >
+               {loading ? "Verifying..." : "Enter POS"}
+             </button>
             <button
               type="button"
               onClick={() => {
@@ -762,9 +791,37 @@ export default function LoginScreen() {
                     textAlign: "center",
                     fontSize: 18,
                   }}
-                />
-              </div>
-            ) : (
+                 />
+                 {/* Default PIN hint */}
+                 <details style={{ marginTop: 8 }}>
+                   <summary
+                     style={{
+                       fontSize: 11,
+                       color: "var(--text-muted)",
+                       cursor: "pointer",
+                       userSelect: "none",
+                     }}
+                   >
+                     Default PIN?
+                   </summary>
+                   <div
+                     style={{
+                       marginTop: 6,
+                       padding: 10,
+                       background: "rgba(46,204,113,0.08)",
+                       borderRadius: 6,
+                       fontSize: 11,
+                       color: "var(--text-muted)",
+                     }}
+                   >
+                     <p style={{ margin: 0 }}>
+                       Default: <strong>1234</strong> (admin) or <strong>0000</strong> (cashier).
+                       Works after first email/password login.
+                     </p>
+                   </div>
+                 </details>
+               </div>
+             ) : (
               <div style={{ textAlign: "left" }}>
                 <label
                   htmlFor="password"
@@ -882,6 +939,50 @@ export default function LoginScreen() {
                 gap: 12,
               }}
             >
+              {/* First-time user help */}
+              <details style={{ marginTop: 8 }}>
+                <summary
+                  style={{
+                    fontSize: 13,
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    textAlign: "center",
+                    userSelect: "none",
+                  }}
+                >
+                  First time user? Click for default credentials
+                </summary>
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 16,
+                    background: "rgba(245,200,66,0.08)",
+                    border: "1px solid rgba(245,200,66,0.2)",
+                    borderRadius: 12,
+                    fontSize: 13,
+                  }}
+                >
+                  <p style={{ fontWeight: 600, marginBottom: 8, color: "#F5C842" }}>
+                    Fresh Install Default Credentials
+                  </p>
+                  <p style={{ marginBottom: 4 }}>
+                    <strong>Email:</strong> admin@example.com
+                  </p>
+                  <p style={{ marginBottom: 4 }}>
+                    <strong>Password:</strong> admin123
+                  </p>
+                  <p style={{ marginBottom: 4 }}>
+                    <strong>PIN:</strong> 1234
+                  </p>
+                  <p style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>
+                    After first login with email/password, use PIN (1234) for quick access.
+                  </p>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    If these don't work, try "Reset & Seed Database" in Settings.
+                  </p>
+                </div>
+              </details>
+
               <button
                 type="button"
                 onClick={() => setView("forgot")}
@@ -972,6 +1073,37 @@ export default function LoginScreen() {
                 {error}
               </div>
             )}
+            {/* Default PIN hint for fresh installs */}
+            <details style={{ marginTop: 8, textAlign: "left" }}>
+              <summary
+                style={{
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  userSelect: "none",
+                }}
+              >
+                Default PIN?
+              </summary>
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: 12,
+                  background: "rgba(46,204,113,0.08)",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                }}
+              >
+                <p style={{ marginBottom: 4 }}>
+                  <strong>Default PIN:</strong> 1234 (admin) or 0000 (cashier)
+                </p>
+                <p>
+                  First login must be with email & password. PIN works after initial authentication.
+                </p>
+              </div>
+            </details>
+
             <button
               type="submit"
               disabled={loading || pin.length < 4 || !!lockoutEnd}

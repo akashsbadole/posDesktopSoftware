@@ -300,6 +300,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       created_at: new Date().toISOString(),
       synced: false,
       table_id: state.tableId || undefined,
+      customer_phone: state.customerInfo?.phone || '',
       notes: state.notes || undefined,
       user_id: userId,
       user_name: userName,

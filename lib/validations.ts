@@ -195,6 +195,10 @@ export const settingsSchema = z.object({
   enable_round_off: z.boolean(),
   auto_reminders_enabled: z.boolean(),
   auto_reminder_days: z.number().int().min(1).max(365),
+  auto_print_kot: z.boolean(),
+  auto_print_receipt: z.boolean(),
+  receipt_printer_name: z.string().optional().or(z.literal("")),
+  allow_negative_stock: z.boolean(),
   license_agreed: z.boolean(),
   onboarding_completed: z.boolean(),
   license_key: z.string().optional(),
@@ -212,6 +216,10 @@ export const registerSchema = z
     email: emailString,
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirm_password: z.string(),
+    pin: z
+      .string()
+      .length(4, "PIN must be exactly 4 digits")
+      .regex(/^\d{4}$/, "PIN must contain only numbers"),
   })
   .refine((data) => data.password === data.confirm_password, {
     message: "Passwords don't match",

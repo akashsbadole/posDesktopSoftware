@@ -18,6 +18,7 @@ export default function RegistrationScreen({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -39,6 +40,7 @@ export default function RegistrationScreen({
         email: trimmedEmail,
         password: trimmedPassword,
         confirm_password: trimmedConfirmPassword,
+        pin: pin.trim(),
       });
 
       if (!validation.success) {
@@ -58,6 +60,7 @@ export default function RegistrationScreen({
         trimmedOrgName,
         trimmedEmail,
         trimmedPassword,
+        pin,
       );
       if (!success) {
         setError("Registration failed. Email might already be in use.");
@@ -161,6 +164,32 @@ export default function RegistrationScreen({
             />
           </div>
 
+          <div>
+            <label
+              htmlFor="pin"
+              className="block text-sm font-medium text-muted-foreground mb-1"
+            >
+              Station PIN (4 Digits)
+            </label>
+            <input
+              id="pin"
+              type="password"
+              inputMode="numeric"
+              required
+              disabled={loading}
+              value={pin}
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, "").slice(0, 4);
+                setPin(val);
+              }}
+              className="w-full p-3 bg-muted border border-border rounded-xl focus:ring-2 focus:ring-[#F5C842]/50 outline-none disabled:opacity-50 text-center text-2xl tracking-[1em]"
+              placeholder="0000"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Used to quickly unlock the station
+            </p>
+          </div>
+
           {error && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 text-sm rounded-xl">
               {error}
@@ -175,10 +204,7 @@ export default function RegistrationScreen({
             {loading ? "Creating Account..." : "Create Account"}
           </button>
 
-          <div className="p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs rounded-xl">
-            <strong>Default PIN:</strong> 1234 (You'll use this to enter the POS
-            at login)
-          </div>
+
         </form>
 
         <div className="mt-6 text-center">

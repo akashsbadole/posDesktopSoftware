@@ -77,10 +77,17 @@ fn get_db() -> &'static Mutex<Database> {
 
 // ─── Seed Command ──────────────────────────────────────────────────────────────
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 fn seed_database() -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.seed_all().map_err(|e| e.to_string())
+}
+
+#[cfg(not(debug_assertions))]
+#[tauri::command]
+fn seed_database() -> Result<(), String> {
+    Err("Debug command not available in release builds".into())
 }
 
 #[tauri::command]
@@ -94,17 +101,31 @@ async fn get_all_inventory_transactions(
         .map_err(|e: rusqlite::Error| e.to_string())
 }
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 fn reset_database() -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.reset_all().map_err(|e| e.to_string())
 }
 
+#[cfg(not(debug_assertions))]
+#[tauri::command]
+fn reset_database() -> Result<(), String> {
+    Err("Debug command not available in release builds".into())
+}
+
+#[cfg(debug_assertions)]
 #[tauri::command]
 fn reset_and_seed_database() -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.reset_all().map_err(|e| e.to_string())?;
     db.seed_all().map_err(|e| e.to_string())
+}
+
+#[cfg(not(debug_assertions))]
+#[tauri::command]
+fn reset_and_seed_database() -> Result<(), String> {
+    Err("Debug command not available in release builds".into())
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -162,6 +183,31 @@ fn send_notification(
     match result {
         Ok(_) => Ok(()),
         Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+fn check_printer_status(printer_name: String) -> Result<bool, String> {
+    if printer_name.trim().is_empty() {
+        return Ok(false);
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        let output = Command::new("powershell")
+            .args(&["-NoProfile", "-Command", &format!("(Get-Printer -Name '{}').PrinterStatus", printer_name)])
+            .output()
+            .map_err(|e| e.to_string())?;
+        
+        let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        // Status 0 is usually Normal, but we check if it's not empty and doesn't contain error
+        Ok(!status.is_empty() && output.status.success())
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(true) // Fallback for other platforms
     }
 }
 
@@ -726,11 +772,17 @@ fn upsert_user(user: db::User) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn register(org_name: String, email: String, password: String) -> Result<db::LoginResult, String> {
+fn register(
+    org_name: String,
+    email: String,
+    password: String,
+    pin: String,
+) -> Result<db::LoginResult, String> {
     // Trim inputs to remove whitespace
     let org_name = org_name.trim();
     let email = email.trim();
     let password = password.trim();
+    let pin = pin.trim();
 
     // Basic validation
     if org_name.is_empty() {
@@ -745,9 +797,12 @@ fn register(org_name: String, email: String, password: String) -> Result<db::Log
     if password.len() < 6 {
         return Err("Password must be at least 6 characters".to_string());
     }
+    if !pin.is_empty() && (pin.len() < 4 || pin.len() > 6 || !pin.chars().all(|c| c.is_digit(10))) {
+        return Err("PIN must be 4-6 digits".to_string());
+    }
 
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.register(org_name, &email, &password)
+    db.register(org_name, &email, &password, pin)
         .map_err(|e| e.to_string())
 }
 
@@ -847,6 +902,11 @@ fn forgot_password(email: String) -> Result<String, String> {
             .spawn();
     }
 
+    // Store code in DB with 30 minute expiry
+    let expiry = (chrono::Utc::now() + chrono::Duration::minutes(30)).to_rfc3339();
+    db.update_reset_code(&email, &reset_code, &expiry)
+        .map_err(|e| e.to_string())?;
+
     // Return the reset code directly to display in the UI
     Ok(reset_code)
 }
@@ -857,7 +917,15 @@ fn reset_password(email: String, code: String, new_password: String) -> Result<b
     let email = email.trim();
 
     if code.len() != 6 {
-        return Err("Invalid reset code".to_string());
+        return Err("Invalid reset code format".to_string());
+    }
+
+    // Verify code and expiry
+    let is_valid = db
+        .verify_reset_code(&email, &code)
+        .map_err(|e| e.to_string())?;
+    if !is_valid {
+        return Err("Invalid or expired reset code".to_string());
     }
 
     // Check if user exists first
@@ -1204,10 +1272,23 @@ fn get_inventory_alerts(store_id: String) -> Result<Vec<db::InventoryAlert>, Str
 }
 
 #[tauri::command]
-fn check_inventory_alerts(store_id: String) -> Result<Vec<db::InventoryAlert>, String> {
+fn check_inventory_alerts(
+    app_handle: tauri::AppHandle,
+    store_id: String,
+) -> Result<Vec<db::InventoryAlert>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.check_inventory_alerts(&store_id)
-        .map_err(|e| e.to_string())
+    let alerts = db.check_inventory_alerts(&store_id).map_err(|e| e.to_string())?;
+
+    // Send notifications for new alerts
+    for alert in &alerts {
+        let _ = send_notification(
+            app_handle.clone(),
+            "Low Stock Alert".to_string(),
+            format!("Product '{}' is low: {} remaining.", alert.product_name, alert.current_stock),
+        );
+    }
+
+    Ok(alerts)
 }
 
 #[tauri::command]
@@ -2280,6 +2361,7 @@ fn main() {
             reset_database,
             reset_and_seed_database,
             send_notification,
+            check_printer_status,
             get_premium_status,
             is_premium_enabled,
             get_app_version,

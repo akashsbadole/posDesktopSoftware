@@ -1171,6 +1171,109 @@ export default function SettingsScreen() {
           </div>
         </div>
 
+        {/* Hardware & Printing */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Receipt size={16} style={{ color: "#F5C842" }} />
+            <h2 className="font-semibold">Hardware & Printing</h2>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm font-medium block">
+                  Auto-print KOT
+                </label>
+                <p className="text-[10px]" style={{ color: "#4A4A5A" }}>
+                  Automatically trigger kitchen ticket on checkout/hold
+                </p>
+              </div>
+              <button
+                onClick={() =>
+                  updateLocal("auto_print_kot", !localSettings.auto_print_kot)
+                }
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  background: localSettings.auto_print_kot
+                    ? "#2ECC71"
+                    : "#1E1E26",
+                  border: "none",
+                  position: "relative",
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    background: "#fff",
+                    position: "absolute",
+                    top: 2,
+                    left: localSettings.auto_print_kot ? 22 : 2,
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm font-medium block">
+                  Auto-print Receipt
+                </label>
+                <p className="text-[10px]" style={{ color: "#4A4A5A" }}>
+                  Automatically trigger customer receipt on checkout
+                </p>
+              </div>
+              <button
+                onClick={() =>
+                  updateLocal(
+                    "auto_print_receipt",
+                    !localSettings.auto_print_receipt,
+                  )
+                }
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  background: localSettings.auto_print_receipt
+                    ? "#2ECC71"
+                    : "#1E1E26",
+                  border: "none",
+                  position: "relative",
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    background: "#fff",
+                    position: "absolute",
+                    top: 2,
+                    left: localSettings.auto_print_receipt ? 22 : 2,
+                    transition: "left 0.2s",
+                  }}
+                />
+              </button>
+            </div>
+
+            <div className="pt-2 border-t border-[#1E1E26]">
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                Receipt Printer Name (System)
+              </label>
+              <input
+                value={localSettings.receipt_printer_name || ""}
+                onChange={(e) => updateLocal("receipt_printer_name", e.target.value)}
+                placeholder="Default Printer"
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Cloud Sync Section */}
         <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
@@ -1194,6 +1297,34 @@ export default function SettingsScreen() {
             )}
           </div>
 
+          {/* Setup guide for users who haven't configured Neon */}
+          {premiumEnabled && !localSettings.neon_url && (
+            <div className="mb-6 p-4 rounded-lg border" style={{
+              background: "rgba(245,200,66,0.08)",
+              borderColor: "rgba(245,200,66,0.3)",
+            }}>
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5">
+                  <Database size={16} style={{ color: "#F5C842" }} />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold mb-2" style={{ color: "#F5C842" }}>
+                    Set Up Cloud Sync
+                  </h3>
+                  <div className="text-xs space-y-2" style={{ color: "#4A4A5A" }}>
+                    <p>To enable cloud sync across your devices:</p>
+                    <ol className="list-decimal list-inside space-y-1 ml-2">
+                      <li>Create a free Neon database at <a href="https://neon.tech" target="_blank" rel="noopener noreferrer" style={{ color: "#F5C842", textDecoration: "underline" }}>neon.tech</a></li>
+                      <li>Copy your database connection string (starts with <code className="px-1 rounded bg-[#1E1E26]">postgres://</code>)</li>
+                      <li>Paste it in the Neon Database URL field below</li>
+                      <li>Click "Push to Cloud" to upload your data</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4">
             <div>
               <label
@@ -1208,10 +1339,19 @@ export default function SettingsScreen() {
                 placeholder="postgres://user:pass@host/db"
                 type="password"
                 disabled={!premiumEnabled}
+                style={{
+                  borderColor: premiumEnabled && !localSettings.neon_url ? "#F5C842" : undefined
+                }}
               />
               <p className="text-[10px] mt-1" style={{ color: "#9090A8" }}>
-                Cloud sync allows you to access your data from multiple devices.
+                Your Neon PostgreSQL connection string. Found in your Neon dashboard.
               </p>
+              {premiumEnabled && !localSettings.neon_url && (
+                <div className="text-xs mt-2 flex items-start gap-1" style={{ color: "#F5C842" }}>
+                  <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
+                  <span>Neon URL is required for cloud sync. Get your connection string from <a href="https://neon.tech" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>neon.tech</a> dashboard.</span>
+                </div>
+              )}
             </div>
 
             {premiumEnabled ? (
@@ -1220,6 +1360,7 @@ export default function SettingsScreen() {
                   onClick={handleSyncUp}
                   disabled={syncing || !localSettings.neon_url}
                   className="btn-success flex items-center gap-2 text-sm flex-1 justify-center"
+                  title={!localSettings.neon_url ? "Configure Neon URL first" : "Push local data to cloud"}
                 >
                   {syncing ? (
                     <RefreshCw size={14} className="spin" />
@@ -1232,6 +1373,7 @@ export default function SettingsScreen() {
                   onClick={handleSyncDown}
                   disabled={syncing || !localSettings.neon_url}
                   className="btn-ghost flex items-center gap-2 text-sm flex-1 justify-center"
+                  title={!localSettings.neon_url ? "Configure Neon URL first" : "Pull data from cloud"}
                 >
                   {syncing ? (
                     <RefreshCw size={14} className="spin" />
@@ -1283,6 +1425,11 @@ export default function SettingsScreen() {
                 }}
               >
                 {syncMsg.text}
+                {!syncMsg.ok && syncMsg.text.includes("Neon database URL") && (
+                  <div className="mt-2 text-xs" style={{ color: "#F5C842" }}>
+                    <strong>How to fix:</strong> Get your Neon URL from <a href="https://neon.tech" target="_blank" rel="noopener noreferrer" style={{ color: "#F5C842", textDecoration: "underline" }}>neon.tech</a> → Project → Connection Details → "Connection String"
+                  </div>
+                )}
               </div>
             )}
           </div>

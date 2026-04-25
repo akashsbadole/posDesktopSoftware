@@ -745,6 +745,15 @@ export default function POSScreen() {
       const rec = generateReceipt(order, settings);
       setReceipt(rec);
       setLastOrder(order);
+
+      // Auto-printing logic
+      if (settings?.auto_print_receipt) {
+        printReceipt(rec).catch((e) => uiLogger.error("Auto-print receipt failed", e));
+      }
+      if (settings?.auto_print_kot) {
+        const kotText = generateKOTText(order);
+        printReceipt(kotText).catch((e) => uiLogger.error("Auto-print KOT failed", e));
+      }
       clearCart();
       setAppliedCoupon(null);
       setCouponCode("");
@@ -782,6 +791,13 @@ export default function POSScreen() {
 
     try {
       await dbHoldOrder(order, activeStoreId);
+
+      // Auto-print KOT on hold
+      if (settings?.auto_print_kot) {
+        const kotText = generateKOTText(order);
+        printReceipt(kotText).catch((e) => uiLogger.error("Auto-print KOT failed on hold", e));
+      }
+
       alert("Order held successfully!");
       clearCart();
       await loadHeldOrders();

@@ -229,6 +229,7 @@ export interface Order {
   delivery_status: "pending" | "out_for_delivery" | "delivered" | "cancelled";
   delivery_address: string;
   delivery_phone: string;
+  customer_phone?: string;
   created_at: string;
   synced?: boolean;
   table_id?: string;
@@ -405,6 +406,9 @@ export interface Settings {
   tax_inclusive: boolean;
   tax_breakdown: string;
   auto_print_kot: boolean;
+  auto_print_receipt: boolean;
+  receipt_printer_name: string;
+  allow_negative_stock: boolean;
   upi_id: string;
   // Receipt customization
   show_logo_on_receipt: boolean;
@@ -1070,11 +1074,13 @@ export async function dbRegister(
   orgName: string,
   email: string,
   password: string,
+  pin: string,
 ): Promise<{ user: User; organization: Organization }> {
   return sql<{ user: User; organization: Organization }>("register", {
     orgName,
     email,
     password,
+    pin,
   });
 }
 
@@ -2041,7 +2047,7 @@ export function generateReceipt(
   } else {
     lines.push(center("Thank you! Visit again."));
   }
-  lines.push(center("Powered by AppIXEN"));
+  lines.push(center("Powered by Appixen"));
   lines.push("=".repeat(W));
 
   return lines.filter(Boolean).join("\n");
@@ -2125,6 +2131,9 @@ function defaultSettings(): Settings {
     tax_inclusive: false,
     tax_breakdown: "[]",
     auto_print_kot: false,
+    auto_print_receipt: false,
+    receipt_printer_name: "",
+    allow_negative_stock: true,
     upi_id: "",
     show_logo_on_receipt: true,
     receipt_header_text: "",

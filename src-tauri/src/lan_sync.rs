@@ -26,6 +26,10 @@ pub struct LanOrder {
     pub customer_name: String,
     pub status: String,
     pub order_type: String,
+    pub delivery_address: String,
+    pub delivery_phone: String,
+    pub table_id: String,
+    pub customer_phone: String,
     pub created_at: String,
 }
 

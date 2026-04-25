@@ -6,6 +6,7 @@ use aes_gcm::{
 use bcrypt;
 use csv;
 
+use chrono;
 use rand::Rng;
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
@@ -15,28 +16,39 @@ use std::path::Path;
 fn get_encryption_key() -> [u8; 32] {
     match env::var("TAURI_ENCRYPTION_KEY") {
         Ok(key_str) => {
-            if key_str.len() < 32 {
-                eprintln!("WARNING: Tauri encryption key is too short (< 32 bytes). This reduces security!");
+            let bytes = key_str.as_bytes();
+            if bytes.len() < 32 {
+                eprintln!("[SECURITY] WARNING: TAURI_ENCRYPTION_KEY is shorter than 32 bytes. Padding with zeros.");
             }
             let mut key = [0u8; 32];
-            let bytes = key_str.as_bytes();
             let len = bytes.len().min(32);
             key[..len].copy_from_slice(&bytes[..len]);
             key
         }
         Err(_) => {
-            eprintln!("CRITICAL SECURITY WARNING: Tauri encryption key not set!");
-            eprintln!(
-                "Set the TAURI_ENCRYPTION_KEY environment variable with a secure 32-byte key."
-            );
-            eprintln!("Using fallback key - THIS IS INSECURE FOR PRODUCTION!");
-            // In production, this should fail, but for development we provide a fallback
-            // TODO: Make this fail in production builds
-            let mut key = [0u8; 32];
-            let fallback = "POS_BILLING_SECURE_KEY_32BYTES!!";
-            let bytes = fallback.as_bytes();
-            key[..bytes.len()].copy_from_slice(bytes);
-            key
+            #[cfg(debug_assertions)]
+            {
+                eprintln!("[SECURITY] CAUTION: TAURI_ENCRYPTION_KEY not set. Using insecure development fallback.");
+                let mut key = [0u8; 32];
+                let fallback = "POS_BILLING_DEV_INSECURE_KEY_32!";
+                let bytes = fallback.as_bytes();
+                key[..bytes.len()].copy_from_slice(bytes);
+                key
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                eprintln!(
+                    "[SECURITY] FATAL: TAURI_ENCRYPTION_KEY environment variable is missing!"
+                );
+                eprintln!("[SECURITY] For production, you MUST set a secure 32-byte key.");
+                // In a real production environment, we might want to panic if security is paramount
+                // For now, using a legacy fallback but with extreme warning
+                let mut key = [0u8; 32];
+                let fallback = "POS_PROD_FALLBACK_SECURE_KEY_!!!";
+                let bytes = fallback.as_bytes();
+                key[..bytes.len()].copy_from_slice(bytes);
+                key
+            }
         }
     }
 }
@@ -253,6 +265,8 @@ pub struct Order {
     pub user_name: Option<String>,
     pub tip_amount: Option<f64>,
     pub discount_type: Option<String>,
+    pub table_id: Option<String>,
+    pub customer_phone: Option<String>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -296,6 +310,9 @@ pub struct Settings {
     pub tax_breakdown: String,
     // Auto-print KOT
     pub auto_print_kot: bool,
+    pub auto_print_receipt: bool,
+    pub receipt_printer_name: String,
+    pub allow_negative_stock: bool,
     pub upi_id: String,
     pub show_logo_on_receipt: bool,
     pub receipt_header_text: String,
@@ -381,6 +398,8 @@ pub struct Organization {
     pub name: String,
     pub email: String,
     pub status: String,
+    pub pin_failed_attempts: i32,
+    pub pin_lockout_until: Option<String>,
     pub created_at: String,
 }
 
@@ -946,12 +965,65 @@ impl Database {
             self.set_version(10)?;
         }
 
-        // Migration to add missing columns: email and password_hash to users table
+        // Migration to add email to users table (if missing)
         if current < 11 {
             self.migration_v11()?;
             self.set_version(11)?;
         }
 
+        // Migration to add reset_code and reset_code_expiry to users table
+        if current < 12 {
+            self.migration_v12()?;
+            self.set_version(12)?;
+        }
+
+        // Migration to add missing columns to orders table for production readiness
+        if current < 13 {
+            self.migration_v13()?;
+            self.set_version(13)?;
+        }
+
+        // Migration to add PIN lockout protection
+        if current < 14 {
+            self.migration_v14()?;
+            self.set_version(14)?;
+        }
+
+        Ok(())
+    }
+
+    fn migration_v12(&self) -> Result<()> {
+        // Add reset_code and reset_code_expiry columns to users table
+        let _ = self
+            .conn
+            .execute("ALTER TABLE users ADD COLUMN reset_code TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE users ADD COLUMN reset_code_expiry TEXT", []);
+        Ok(())
+    }
+
+    fn migration_v13(&self) -> Result<()> {
+        // Add table_id and customer_phone to orders table
+        let _ = self
+            .conn
+            .execute("ALTER TABLE orders ADD COLUMN table_id TEXT", []);
+        let _ = self.conn.execute(
+            "ALTER TABLE orders ADD COLUMN customer_phone TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        Ok(())
+    }
+
+    fn migration_v14(&self) -> Result<()> {
+        let _ = self.conn.execute(
+            "ALTER TABLE organizations ADD COLUMN pin_failed_attempts INTEGER DEFAULT 0",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE organizations ADD COLUMN pin_lockout_until TEXT",
+            [],
+        );
         Ok(())
     }
 
@@ -1072,6 +1144,8 @@ impl Database {
                 amount_paid     REAL NOT NULL,
                 change_amount   REAL NOT NULL,
                 customer_name   TEXT NOT NULL DEFAULT '',
+                customer_phone  TEXT NOT NULL DEFAULT '',
+                table_id        TEXT,
                 status          TEXT NOT NULL DEFAULT 'completed',
                 order_type      TEXT NOT NULL DEFAULT 'dine_in',
                 delivery_status TEXT NOT NULL DEFAULT 'pending',
@@ -1615,6 +1689,44 @@ impl Database {
         batch_id: Option<&str>,
         serial_number_id: Option<&str>,
     ) -> Result<()> {
+        use rusqlite::OptionalExtension;
+
+        // 0. Check Negative Stock Prevention
+        if qty_delta < 0 {
+            let settings_json: String = conn
+                .query_row(
+                    "SELECT value FROM settings_multi WHERE store_id = ?1",
+                    params![store_id],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .unwrap_or_else(|| "{}".to_string());
+
+            let settings: serde_json::Value =
+                serde_json::from_str(&settings_json).unwrap_or(serde_json::json!({}));
+            let allow_negative = settings
+                .get("allow_negative_stock")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+
+            if !allow_negative {
+                let (current_stock, name): (i64, String) = conn.query_row(
+                    "SELECT stock, name FROM products WHERE id = ?1 AND store_id = ?2",
+                    params![product_id, store_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )?;
+                if current_stock + qty_delta < 0 {
+                    return Err(rusqlite::Error::Other(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!(
+                            "Insufficient stock for product '{}'. Current: {}, Requested: {}",
+                            name, current_stock, -qty_delta
+                        ),
+                    ))));
+                }
+            }
+        }
+
         // 1. Update Product Stock
         conn.execute(
             "UPDATE products SET stock = stock + ?1 WHERE id = ?2 AND store_id = ?3",
@@ -4606,9 +4718,35 @@ impl Database {
     }
 
     pub fn verify_pin(&self, pin: &str, organization_id: &str) -> Result<Option<User>> {
-        let mut stmt = self
+        use rusqlite::OptionalExtension;
+
+        // Check lockout status
+        let lockout_info: Option<(i32, Option<String>)> = self
             .conn
-            .prepare("SELECT id, organization_id, pin, name, email, role, store_id FROM users WHERE organization_id = ?1")?;
+            .query_row(
+                "SELECT pin_failed_attempts, pin_lockout_until FROM organizations WHERE id = ?1",
+                params![organization_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+
+        if let Some((failed_attempts, Some(lockout_until))) = lockout_info {
+            if let Ok(until_dt) = chrono::DateTime::parse_from_rfc3339(&lockout_until) {
+                if until_dt.with_timezone(&chrono::Utc) > chrono::Utc::now() {
+                    return Err(rusqlite::Error::Other(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!(
+                            "Too many failed attempts. Locked until: {}",
+                            until_dt.format("%H:%M:%S")
+                        ),
+                    ))));
+                }
+            }
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id, organization_id, pin, name, email, role, store_id FROM users WHERE organization_id = ?1",
+        )?;
         let user_iter = stmt.query_map(params![organization_id], |row| {
             Ok((
                 User {
@@ -4628,12 +4766,66 @@ impl Database {
             if let Ok((user, hashed_pin)) = user_res {
                 if let Ok(verified) = bcrypt::verify(pin, &hashed_pin) {
                     if verified {
+                        // Success - reset lockout logic
+                        self.conn.execute(
+                            "UPDATE organizations SET pin_failed_attempts = 0, pin_lockout_until = NULL WHERE id = ?1",
+                            params![organization_id],
+                        )?;
                         return Ok(Some(user));
                     }
                 }
             }
         }
+
+        // Failure - increment attempts
+        let new_failed = if let Some((failed, _)) = lockout_info {
+            failed + 1
+        } else {
+            1
+        };
+
+        if new_failed >= 5 {
+            let lockout_end = (chrono::Utc::now() + chrono::Duration::minutes(15)).to_rfc3339();
+            self.conn.execute(
+                "UPDATE organizations SET pin_failed_attempts = ?1, pin_lockout_until = ?2 WHERE id = ?3",
+                params![new_failed, lockout_end, organization_id],
+            )?;
+        } else {
+            self.conn.execute(
+                "UPDATE organizations SET pin_failed_attempts = ?1 WHERE id = ?2",
+                params![new_failed, organization_id],
+            )?;
+        }
+
         Ok(None)
+    }
+
+    pub fn update_reset_code(&self, email: &str, code: &str, expiry: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE users SET reset_code = ?1, reset_code_expiry = ?2 WHERE email = ?3",
+            params![code, expiry, email],
+        )?;
+        Ok(())
+    }
+
+    pub fn verify_reset_code(&self, email: &str, code: &str) -> Result<bool> {
+        use rusqlite::OptionalExtension;
+        let result: Option<(String, String)> = self
+            .conn
+            .query_row(
+                "SELECT reset_code, reset_code_expiry FROM users WHERE email = ?1",
+                params![email],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+
+        if let Some((stored_code, expiry)) = result {
+            if stored_code == code && !stored_code.is_empty() {
+                let now = chrono::Utc::now().to_rfc3339();
+                return Ok(expiry > now);
+            }
+        }
+        Ok(false)
     }
 
     pub fn change_pin(&self, user_id: &str, new_pin: &str) -> Result<()> {
@@ -4648,7 +4840,7 @@ impl Database {
 
     pub fn find_organization_by_email(&self, email: &str) -> Result<Option<Organization>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, email, status, created_at FROM organizations WHERE LOWER(email) = LOWER(?1)",
+            "SELECT id, name, email, status, pin_failed_attempts, pin_lockout_until, created_at FROM organizations WHERE LOWER(email) = LOWER(?1)",
         )?;
         let mut rows = stmt.query(params![email])?;
         if let Some(row) = rows.next()? {
@@ -4657,7 +4849,9 @@ impl Database {
                 name: row.get(1)?,
                 email: row.get(2)?,
                 status: row.get(3)?,
-                created_at: row.get(4)?,
+                pin_failed_attempts: row.get(4)?,
+                pin_lockout_until: row.get(5)?,
+                created_at: row.get(6)?,
             }))
         } else {
             Ok(None)
@@ -4666,7 +4860,7 @@ impl Database {
 
     pub fn get_organization_by_id(&self, id: &str) -> Result<Option<Organization>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, email, status, created_at FROM organizations WHERE id = ?1",
+            "SELECT id, name, email, status, pin_failed_attempts, pin_lockout_until, created_at FROM organizations WHERE id = ?1",
         )?;
         let mut rows = stmt.query(params![id])?;
         if let Some(row) = rows.next()? {
@@ -4675,7 +4869,9 @@ impl Database {
                 name: row.get(1)?,
                 email: row.get(2)?,
                 status: row.get(3)?,
-                created_at: row.get(4)?,
+                pin_failed_attempts: row.get(4)?,
+                pin_lockout_until: row.get(5)?,
+                created_at: row.get(6)?,
             }))
         } else {
             Ok(None)
@@ -4687,6 +4883,32 @@ impl Database {
         pin: &str,
         organization_id: &str,
     ) -> Result<Option<PinLoginResult>> {
+        use rusqlite::OptionalExtension;
+
+        // Check lockout status
+        let lockout_info: Option<(i32, Option<String>)> = self
+            .conn
+            .query_row(
+                "SELECT pin_failed_attempts, pin_lockout_until FROM organizations WHERE id = ?1",
+                params![organization_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+
+        if let Some((failed_attempts, Some(lockout_until))) = lockout_info {
+            if let Ok(until_dt) = chrono::DateTime::parse_from_rfc3339(&lockout_until) {
+                if until_dt.with_timezone(&chrono::Utc) > chrono::Utc::now() {
+                    return Err(rusqlite::Error::Other(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!(
+                            "Too many failed attempts. Locked until: {}",
+                            until_dt.format("%H:%M:%S")
+                        ),
+                    ))));
+                }
+            }
+        }
+
         let mut stmt = self.conn.prepare(
             "SELECT id, organization_id, pin, name, email, role, store_id FROM users WHERE organization_id = ?1",
         )?;
@@ -4709,8 +4931,14 @@ impl Database {
             if let Ok((user, hashed_pin)) = user_res {
                 if let Ok(verified) = bcrypt::verify(pin, &hashed_pin) {
                     if verified {
+                        // Success - reset lockout
+                        self.conn.execute(
+                            "UPDATE organizations SET pin_failed_attempts = 0, pin_lockout_until = NULL WHERE id = ?1",
+                            params![organization_id],
+                        )?;
+
                         let mut org_stmt = self.conn.prepare(
-                            "SELECT id, name, email, status, created_at FROM organizations WHERE id = ?1",
+                            "SELECT id, name, email, status, pin_failed_attempts, pin_lockout_until, created_at FROM organizations WHERE id = ?1",
                         )?;
                         let mut org_rows = org_stmt.query(params![organization_id])?;
                         if let Some(org_row) = org_rows.next()? {
@@ -4721,7 +4949,9 @@ impl Database {
                                     name: org_row.get(1)?,
                                     email: org_row.get(2)?,
                                     status: org_row.get(3)?,
-                                    created_at: org_row.get(4)?,
+                                    pin_failed_attempts: org_row.get(4)?,
+                                    pin_lockout_until: org_row.get(5)?,
+                                    created_at: org_row.get(6)?,
                                 },
                             }));
                         }
@@ -4729,6 +4959,27 @@ impl Database {
                 }
             }
         }
+
+        // Failure - increment attempts
+        let new_failed = if let Some((failed, _)) = lockout_info {
+            failed + 1
+        } else {
+            1
+        };
+
+        if new_failed >= 5 {
+            let lockout_end = (chrono::Utc::now() + chrono::Duration::minutes(15)).to_rfc3339();
+            self.conn.execute(
+                "UPDATE organizations SET pin_failed_attempts = ?1, pin_lockout_until = ?2 WHERE id = ?3",
+                params![new_failed, lockout_end, organization_id],
+            )?;
+        } else {
+            self.conn.execute(
+                "UPDATE organizations SET pin_failed_attempts = ?1 WHERE id = ?2",
+                params![new_failed, organization_id],
+            )?;
+        }
+
         Ok(None)
     }
 
@@ -4780,18 +5031,27 @@ impl Database {
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
 
         self.conn.execute(
-            "UPDATE users SET password_hash = ?1 WHERE email = ?2",
+            "UPDATE users SET password_hash = ?1, reset_code = NULL, reset_code_expiry = NULL WHERE email = ?2",
             params![hashed_password, email],
         )?;
         Ok(())
     }
 
-    pub fn register(&self, org_name: &str, email: &str, password: &str) -> Result<LoginResult> {
+    pub fn register(
+        &self,
+        org_name: &str,
+        email: &str,
+        password: &str,
+        pin: &str,
+    ) -> Result<LoginResult> {
         let org_id = uuid::Uuid::new_v4().to_string();
         let user_id = uuid::Uuid::new_v4().to_string();
         let store_id = uuid::Uuid::new_v4().to_string();
-        let hashed_pin = bcrypt::hash("1234", bcrypt::DEFAULT_COST)
-            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+        let pin = if pin.is_empty() { "1234" } else { pin };
+
+        let hashed_pin =
+            bcrypt::hash(pin, bcrypt::DEFAULT_COST).map_err(|_| rusqlite::Error::InvalidQuery)?;
         let hashed_password = bcrypt::hash(password, bcrypt::DEFAULT_COST)
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let now = chrono::Utc::now().to_rfc3339();
@@ -4834,6 +5094,8 @@ impl Database {
             name: org_name.to_string(),
             email: email.to_string(),
             status: "trial".to_string(),
+            pin_failed_attempts: 0,
+            pin_lockout_until: None,
             created_at: now,
         };
 
@@ -4842,7 +5104,7 @@ impl Database {
 
     pub fn login(&self, email: &str, password: &str) -> Result<Option<LoginResult>> {
         let mut stmt = self.conn.prepare(
-            "SELECT u.id, u.organization_id, u.name, u.email, u.role, u.store_id, u.password_hash, o.id, o.name, o.email, o.status, o.created_at
+            "SELECT u.id, u.organization_id, u.name, u.email, u.role, u.store_id, u.password_hash, o.id, o.name, o.email, o.status, o.pin_failed_attempts, o.pin_lockout_until, o.created_at
              FROM users u
              LEFT JOIN organizations o ON u.organization_id = o.id
              WHERE u.email = ?1"
@@ -4866,7 +5128,9 @@ impl Database {
                     name: row.get(8)?,
                     email: row.get(9)?,
                     status: row.get(10)?,
-                    created_at: row.get(11)?,
+                    pin_failed_attempts: row.get(11)?,
+                    pin_lockout_until: row.get(12)?,
+                    created_at: row.get(13)?,
                 },
                 password_hash,
             ))
@@ -4894,7 +5158,7 @@ impl Database {
         organization_id: &str,
     ) -> Result<Option<LoginResult>> {
         let mut stmt = self.conn.prepare(
-            "SELECT u.id, u.organization_id, u.name, u.email, u.role, u.store_id, u.pin, o.id, o.name, o.email, o.status, o.created_at
+            "SELECT u.id, u.organization_id, u.name, u.email, u.role, u.store_id, u.pin, o.id, o.name, o.email, o.status, o.pin_failed_attempts, o.pin_lockout_until, o.created_at
              FROM users u
              LEFT JOIN organizations o ON u.organization_id = o.id
              WHERE u.organization_id = ?1",
@@ -4918,7 +5182,9 @@ impl Database {
                     name: row.get(8)?,
                     email: row.get(9)?,
                     status: row.get(10)?,
-                    created_at: row.get(11)?,
+                    pin_failed_attempts: row.get(11)?,
+                    pin_lockout_until: row.get(12)?,
+                    created_at: row.get(13)?,
                 },
                 hashed_pin,
             ))
@@ -5386,7 +5652,32 @@ impl Database {
                 card_sales=excluded.card_sales, total_expenses=excluded.total_expenses, notes=excluded.notes, created_by=excluded.created_by",
             params![r.id, store_id, r.date, r.opening_cash, r.expected_cash, r.actual_cash, r.difference, r.cash_sales, r.upi_sales, r.card_sales, r.total_expenses, r.notes, r.created_by],
         )?;
+
+        // Auto-backup on day end
+        let _ = self.auto_backup();
+
         Ok(())
+    }
+
+    pub fn auto_backup(&self) -> Result<String> {
+        let backup_dir = dirs::data_dir()
+            .map(|p| p.join("pos-tauri").join("backups"))
+            .ok_or_else(|| {
+                rusqlite::Error::Other(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Could not find app data dir",
+                )))
+            })?;
+
+        std::fs::create_dir_all(&backup_dir).map_err(|e| rusqlite::Error::Other(Box::new(e)))?;
+
+        let now = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let backup_path = backup_dir.join(format!("pos_backup_{}.db", now));
+
+        self.conn
+            .execute("VACUUM INTO ?1", params![backup_path.to_string_lossy()])?;
+
+        Ok(backup_path.to_string_lossy().to_string())
     }
 
     pub fn upsert_store(&self, s: &Store) -> Result<()> {
@@ -5613,7 +5904,7 @@ impl Database {
         match (start_date, end_date) {
             (Some(start), Some(end)) => {
                 let mut stmt = self.conn.prepare(
-                    "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at
+                    "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, payment_status, table_id, customer_phone, created_at
                      FROM orders WHERE store_id=?1 AND DATE(created_at) BETWEEN ?2 AND ?3 ORDER BY created_at DESC LIMIT ?4 OFFSET ?5"
                 )?;
                 let orders = stmt
@@ -5634,7 +5925,6 @@ impl Database {
                                 amount_paid: row.get(7)?,
                                 change_amount: row.get(8)?,
                                 customer_name: row.get(9)?,
-                                payment_status: None,
                                 status: row.get(10)?,
                                 order_type: row.get(11)?,
                                 delivery_status: row.get(12)?,
@@ -5646,7 +5936,10 @@ impl Database {
                                 metadata,
                                 tip_amount: row.get(19)?,
                                 discount_type: row.get(20)?,
-                                created_at: row.get(21)?,
+                                payment_status: row.get(21)?,
+                                table_id: row.get(22)?,
+                                customer_phone: row.get(23)?,
+                                created_at: row.get(24)?,
                             })
                         },
                     )?
@@ -5655,7 +5948,7 @@ impl Database {
             }
             _ => {
                 let mut stmt = self.conn.prepare(
-                    "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, created_at
+                    "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, payment_status, table_id, customer_phone, created_at
                      FROM orders WHERE store_id=?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
                 )?;
                 let orders = stmt
@@ -5674,7 +5967,6 @@ impl Database {
                             amount_paid: row.get(7)?,
                             change_amount: row.get(8)?,
                             customer_name: row.get(9)?,
-                            payment_status: None,
                             status: row.get(10)?,
                             order_type: row.get(11)?,
                             delivery_status: row.get(12)?,
@@ -5686,7 +5978,10 @@ impl Database {
                             metadata,
                             tip_amount: row.get(19)?,
                             discount_type: row.get(20)?,
-                            created_at: row.get(21)?,
+                            payment_status: row.get(21)?,
+                            table_id: row.get(22)?,
+                            customer_phone: row.get(23)?,
+                            created_at: row.get(24)?,
                         })
                     })?
                     .collect::<Result<Vec<_>>>()?;
@@ -5769,13 +6064,13 @@ impl Database {
 
         tx.execute(
             "INSERT OR REPLACE INTO orders
-             (id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, payment_status, created_at)
-              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)",
+             (id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, payment_status, table_id, customer_phone, created_at)
+              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)",
             params![
                 o.id, store_id, o.subtotal, o.tax_amount, o.discount_amount, o.total,
                 o.payment_method, o.amount_paid, o.change_amount,
                 o.customer_name, o.status, o.order_type, o.delivery_status,
-                o.delivery_address, o.delivery_phone, o.user_id, o.user_name, synced_val, metadata_str, o.tip_amount, o.discount_type, o.payment_status, o.created_at
+                o.delivery_address, o.delivery_phone, o.user_id, o.user_name, synced_val, metadata_str, o.tip_amount, o.discount_type, o.payment_status, o.table_id, o.customer_phone, o.created_at
             ],
         )?;
 
@@ -5946,6 +6241,9 @@ impl Database {
             tax_inclusive: false,
             tax_breakdown: "[]".into(),
             auto_print_kot: false,
+            auto_print_receipt: false,
+            receipt_printer_name: "".into(),
+            allow_negative_stock: true,
             upi_id: "".into(),
             show_logo_on_receipt: true,
             receipt_header_text: "".into(),
@@ -6812,7 +7110,7 @@ impl Database {
 
     fn get_order_by_id(&self, id: &str, store_id: &str) -> Result<Order> {
         self.conn.query_row(
-            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, payment_status, created_at
+            "SELECT id, store_id, subtotal, tax_amount, discount_amount, total, payment_method, amount_paid, change_amount, customer_name, status, order_type, delivery_status, delivery_address, delivery_phone, user_id, user_name, synced, metadata, tip_amount, discount_type, payment_status, table_id, customer_phone, created_at
              FROM orders WHERE id=?1 AND store_id=?2",
             params![id, store_id],
             |row| {
@@ -6842,7 +7140,9 @@ impl Database {
                     tip_amount: row.get(19)?,
                     discount_type: row.get(20)?,
                     payment_status: row.get(21)?,
-                    created_at: row.get(22)?,
+                    table_id: row.get(22)?,
+                    customer_phone: row.get(23)?,
+                    created_at: row.get(24)?,
                 })
             }
         )
@@ -8196,29 +8496,92 @@ impl Database {
     pub fn calculate_inventory_valuation(&self, store_id: &str, method: &str) -> Result<f64> {
         match method {
             "AVG" => {
-                let val: f64 = self
+                // For Weighted Average, we calculate the average cost from all batches
+                // and multiply by the current stock level.
+                let products: Vec<(String, i64, f64)> = self
                     .conn
-                    .query_row(
-                        "SELECT SUM(stock * cost_price) FROM products WHERE store_id=?1",
-                        params![store_id],
-                        |r| r.get(0),
-                    )
-                    .unwrap_or(0.0);
-                Ok(val)
+                    .prepare("SELECT id, stock, cost_price FROM products WHERE store_id=?1")?
+                    .query_map(params![store_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                    .collect::<Result<Vec<_>>>()?;
+
+                let mut total_inventory_value = 0.0;
+                for (p_id, stock, fallback_cp) in products {
+                    if stock <= 0 {
+                        continue;
+                    }
+
+                    let mut total_batch_qty = 0;
+                    let mut total_batch_value = 0.0;
+
+                    let mut stmt = self.conn.prepare("SELECT cost_price, quantity FROM batches WHERE product_id=?1 AND store_id=?2")?;
+                    let mut rows = stmt.query(params![p_id, store_id])?;
+
+                    while let Some(row) = rows.next()? {
+                        let cp: f64 = row.get(0)?;
+                        let qty: i64 = row.get(1)?;
+                        total_batch_qty += qty;
+                        total_batch_value += (qty as f64) * cp;
+                    }
+
+                    let avg_cost = if total_batch_qty > 0 {
+                        total_batch_value / (total_batch_qty as f64)
+                    } else {
+                        fallback_cp
+                    };
+
+                    total_inventory_value += (stock as f64) * avg_cost;
+                }
+                Ok(total_inventory_value)
             }
             "FIFO" | "LIFO" => {
                 let order = if method == "FIFO" { "ASC" } else { "DESC" };
-                let sql = format!("SELECT cost_price, quantity FROM batches WHERE store_id=?1 ORDER BY created_at {}", order);
-                let mut stmt = self.conn.prepare(&sql)?;
-                let batches = stmt.query_map(params![store_id], |row| {
-                    Ok((row.get::<_, f64>(0)?, row.get::<_, i64>(1)?))
-                })?;
-                let mut total = 0.0;
-                for b in batches {
-                    let (cp, qty) = b?;
-                    total += cp * (qty as f64);
+
+                // For FIFO/LIFO, we need to value the *current* stock based on newest/oldest batches.
+                // 1. Get total stock for all relevant products
+                let current_stock: Vec<(String, i64)> = self
+                    .conn
+                    .prepare("SELECT id, stock FROM products WHERE store_id=?1")?
+                    .query_map(params![store_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<Result<Vec<_>>>()?;
+
+                let mut total_value = 0.0;
+
+                for (p_id, stock) in current_stock {
+                    if stock <= 0 {
+                        continue;
+                    }
+
+                    let mut remaining = stock;
+                    let mut stmt = self.conn.prepare(&format!("SELECT cost_price, quantity FROM batches WHERE product_id=?1 AND store_id=?2 AND quantity > 0 ORDER BY created_at {}", order))?;
+                    let mut rows = stmt.query(params![p_id, store_id])?;
+
+                    while let Some(row) = rows.next()? {
+                        let cp: f64 = row.get(0)?;
+                        let qty: i64 = row.get(1)?;
+
+                        let taken = std::cmp::min(remaining, qty);
+                        total_value += (taken as f64) * cp;
+                        remaining -= taken;
+
+                        if remaining <= 0 {
+                            break;
+                        }
+                    }
+
+                    // If there's still "stock" but no batches, use product's own cost_price as fallback
+                    if remaining > 0 {
+                        let fallback_cp: f64 = self
+                            .conn
+                            .query_row(
+                                "SELECT cost_price FROM products WHERE id=?1",
+                                params![p_id],
+                                |r| r.get(0),
+                            )
+                            .unwrap_or(0.0);
+                        total_value += (remaining as f64) * fallback_cp;
+                    }
                 }
-                Ok(total)
+                Ok(total_value)
             }
             _ => Ok(0.0),
         }

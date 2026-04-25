@@ -130,6 +130,8 @@ async fn ensure_neon_schema(connection_string: &str) -> Result<(), String> {
             tip_amount      REAL,
             discount_type   TEXT,
             metadata        TEXT,
+            table_id        TEXT,
+            customer_phone  TEXT,
             created_at      TEXT NOT NULL,
             device_id       TEXT NOT NULL DEFAULT 'local'
         )
@@ -385,8 +387,8 @@ pub async fn sync_orders_to_neon(connection_string: &str, orders: &[Order]) -> S
              (id, items, subtotal, tax_amount, discount_amount, total,
               payment_method, amount_paid, change_amount, customer_name, payment_status,
               status, order_type, delivery_status, delivery_address, delivery_phone,
-              user_id, user_name, tip_amount, discount_type, metadata, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+              user_id, user_name, tip_amount, discount_type, metadata, table_id, customer_phone, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
              ON CONFLICT (id) DO UPDATE SET
                items=excluded.items, subtotal=excluded.subtotal, tax_amount=excluded.tax_amount,
                discount_amount=excluded.discount_amount, total=excluded.total, payment_method=excluded.payment_method,
@@ -395,6 +397,7 @@ pub async fn sync_orders_to_neon(connection_string: &str, orders: &[Order]) -> S
                delivery_status=excluded.delivery_status, delivery_address=excluded.delivery_address,
                delivery_phone=excluded.delivery_phone, user_id=excluded.user_id, user_name=excluded.user_name,
                tip_amount=excluded.tip_amount, discount_type=excluded.discount_type, metadata=excluded.metadata,
+               table_id=excluded.table_id, customer_phone=excluded.customer_phone,
                created_at=excluded.created_at",
             vec![
                 serde_json::json!(order.id),
@@ -418,6 +421,8 @@ pub async fn sync_orders_to_neon(connection_string: &str, orders: &[Order]) -> S
                 serde_json::json!(order.tip_amount),
                 serde_json::json!(order.discount_type),
                 serde_json::json!(metadata_json),
+                serde_json::json!(order.table_id),
+                serde_json::json!(order.customer_phone),
                 serde_json::json!(order.created_at),
             ],
         ).await;

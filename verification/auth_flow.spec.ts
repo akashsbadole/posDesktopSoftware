@@ -21,6 +21,7 @@ test.describe('Authentication - Login and Registration', () => {
     await page.fill('#email', 'test@example.com');
     await page.fill('#password', 'password123');
     await page.fill('#confirmPassword', 'password123');
+    await page.fill('#pin', '1234');
 
     // Submit registration
     await page.click('button:has-text("Create Account")');
@@ -80,6 +81,7 @@ test.describe('Authentication - Login and Registration', () => {
     await page.fill('#email', 'login@test.com');
     await page.fill('#password', 'password123');
     await page.fill('#confirmPassword', 'password123');
+    await page.fill('#pin', '1234');
     await page.click('button:has-text("Create Account")');
 
     // Wait for PIN view and enter PIN
@@ -158,6 +160,7 @@ test.describe('Authentication - Login and Registration', () => {
     await page.fill('#email', 'pin@test.com');
     await page.fill('#password', 'password123');
     await page.fill('#confirmPassword', 'password123');
+    await page.fill('#pin', '1234');
     await page.click('button:has-text("Create Account")');
 
     // Try invalid PIN
@@ -176,6 +179,7 @@ test.describe('Authentication - Login and Registration', () => {
     await page.fill('#email', 'lockout@test.com');
     await page.fill('#password', 'password123');
     await page.fill('#confirmPassword', 'password123');
+    await page.fill('#pin', '1234');
     await page.click('button:has-text("Create Account")');
 
     await page.waitForSelector('#pin-input');
@@ -206,6 +210,7 @@ test.describe('Authentication - Login and Registration', () => {
     await page.fill('#email', 'switch@test.com');
     await page.fill('#password', 'password123');
     await page.fill('#confirmPassword', 'password123');
+    await page.fill('#pin', '1234');
     await page.click('button:has-text("Create Account")');
 
     await page.waitForSelector('#pin-input');
@@ -254,6 +259,7 @@ test.describe('Authentication - Login and Registration', () => {
     await page.fill('#email', 'invalid-email-format');
     await page.fill('#password', 'password123');
     await page.fill('#confirmPassword', 'password123');
+    await page.fill('#pin', '1234');
 
     await page.click('button:has-text("Create Account")');
 
@@ -269,6 +275,7 @@ test.describe('Authentication - Login and Registration', () => {
     await page.fill('#email', 'loading@test.com');
     await page.fill('#password', 'password123');
     await page.fill('#confirmPassword', 'password123');
+    await page.fill('#pin', '1234');
 
     // Click submit and check loading state
     const submitButton = page.locator('button[type="submit"]');

@@ -14,8 +14,9 @@ import {
   setOrganizationId,
   verifyPinOffline,
   getOrganizationById,
+  findOrganizationByEmail as dbFindOrganizationByEmail,
 } from "@/lib/db";
-import { findOrganizationByEmail, getUserByEmail } from "@/lib/utils/offline";
+import { findOrganizationByEmail as offlineFindOrganizationByEmail } from "@/lib/utils/offline";
 import { authRateLimiter } from "@/lib/rateLimiter";
 import { authLogger } from "@/lib/logger";
 import { isOfflineMode } from "@/lib/utils/offline";
@@ -36,7 +37,7 @@ interface AuthState {
     pin: string,
     organizationId: string,
   ) => Promise<boolean>;
-  register: (orgName: string, email: string, pass: string) => Promise<boolean>;
+  register: (orgName: string, email: string, pass: string, pin: string) => Promise<boolean>;
   forgotPassword: (email: string) => Promise<string | boolean>;
   resetPassword: (
     email: string,
@@ -148,7 +149,7 @@ export const useAuthStore = create<AuthState>()(
         }
         return false;
       },
-      loginWithPinOnly: async (email: string, pin: string) => {
+       loginWithPinOnly: async (email: string, pin: string) => {
         console.log("[authStore.loginWithPinOnly] Attempting PIN-only login with email:", email);
 
         const trimmedEmail = email.trim().toLowerCase();
@@ -161,11 +162,17 @@ export const useAuthStore = create<AuthState>()(
 
         if (!isOfflineMode()) {
           try {
-            const org = await findOrganizationByEmail(trimmedEmail);
-            if (!org) {
+            // In Tauri mode, fetch organization from database
+            const orgResult = await dbFindOrganizationByEmail(trimmedEmail);
+            if (!orgResult) {
               authLogger.warn("PIN-only login: organization not found for email", { email: trimmedEmail });
               return false;
             }
+            const org = {
+              id: orgResult.id,
+              name: orgResult.name,
+              email: orgResult.email,
+            };
 
             const rateLimitKey = `pin_${org.id}`;
             const rateLimitResult = authRateLimiter.recordAttempt(rateLimitKey, false);
@@ -225,7 +232,7 @@ export const useAuthStore = create<AuthState>()(
           }
         } else {
           try {
-            const org = findOrganizationByEmail(trimmedEmail);
+            const org = offlineFindOrganizationByEmail(trimmedEmail);
             if (!org) {
               authLogger.warn("PIN-only login: organization not found for email", { email: trimmedEmail });
               return false;
@@ -342,8 +349,8 @@ export const useAuthStore = create<AuthState>()(
           return false;
         }
       },
-      register: async (orgName: string, email: string, pass: string) => {
-        const res = await dbRegister(orgName, email, pass);
+      register: async (orgName: string, email: string, pass: string, pin: string) => {
+        const res = await dbRegister(orgName, email, pass, pin);
         if (res) {
           setOrganizationId(res.organization.id);
           if (res.user.store_id) {

@@ -26,6 +26,15 @@ class CloudSyncService {
       return;
     }
 
+    // Check if Neon URL is configured
+    const neonUrl = useSettingsStore.getState().settings?.neon_url;
+    if (!neonUrl || neonUrl.trim() === "") {
+      dbLogger.info("Cloud sync service init blocked - Neon URL not configured", {
+        storeId,
+      });
+      return;
+    }
+
     dbLogger.info("Initializing cloud sync service", { storeId });
     this.isInitialized = true;
 

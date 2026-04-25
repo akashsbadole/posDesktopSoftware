@@ -98,8 +98,14 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       const now = Date.now();
       // If last sync was more than 1 minute ago, sync again
       if (now - lastSync > 60000) {
-        dbLogger.info("Auto-syncing after network restoration");
-        get().bidirectionalSync("default");
+        // Check if Neon URL is configured
+        const neonUrl = useSettingsStore.getState().settings?.neon_url;
+        if (!neonUrl || neonUrl.trim() === "") {
+          dbLogger.info("Auto-sync skipped - Neon URL not configured");
+        } else {
+          dbLogger.info("Auto-syncing after network restoration");
+          get().bidirectionalSync("default");
+        }
       }
     }
   },
@@ -116,6 +122,19 @@ export const useSyncStore = create<SyncState>((set, get) => ({
           syncError: error,
         });
         dbLogger.warn("Cloud sync blocked - Premium required", { storeId });
+        return false;
+      }
+
+      // Check if Neon URL is configured
+      const neonUrl = useSettingsStore.getState().settings?.neon_url;
+      if (!neonUrl || neonUrl.trim() === "") {
+        const error = "Neon database URL not configured. Set it in Settings > Cloud Sync.";
+        set({
+          isSyncing: false,
+          syncStatus: "error",
+          syncError: error,
+        });
+        dbLogger.warn("Cloud sync blocked - Neon URL missing", { storeId });
         return false;
       }
 
@@ -166,6 +185,19 @@ export const useSyncStore = create<SyncState>((set, get) => ({
           syncError: error,
         });
         dbLogger.warn("Cloud sync blocked - Premium required", { storeId });
+        return false;
+      }
+
+      // Check if Neon URL is configured
+      const neonUrl = useSettingsStore.getState().settings?.neon_url;
+      if (!neonUrl || neonUrl.trim() === "") {
+        const error = "Neon database URL not configured. Set it in Settings > Cloud Sync.";
+        set({
+          isSyncing: false,
+          syncStatus: "error",
+          syncError: error,
+        });
+        dbLogger.warn("Cloud sync blocked - Neon URL missing", { storeId });
         return false;
       }
 
@@ -232,6 +264,21 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         return false;
       }
 
+      // Check if Neon URL is configured
+      const neonUrl = useSettingsStore.getState().settings?.neon_url;
+      if (!neonUrl || neonUrl.trim() === "") {
+        const error = "Neon database URL not configured. Set it in Settings > Cloud Sync.";
+        set({
+          isSyncing: false,
+          syncStatus: "error",
+          syncError: error,
+        });
+        dbLogger.warn("Bidirectional sync blocked - Neon URL missing", {
+          storeId,
+        });
+        return false;
+      }
+
       set({ isSyncing: true, syncStatus: "syncing" });
       dbLogger.info("Starting bidirectional sync", { storeId });
 
@@ -277,6 +324,13 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (queue.length === 0) return;
 
     dbLogger.info("Processing pending sync queue", { count: queue.length });
+
+    // Check if Neon URL is configured before attempting any sync
+    const neonUrl = useSettingsStore.getState().settings?.neon_url;
+    if (!neonUrl || neonUrl.trim() === "") {
+      dbLogger.info("Skipping pending queue - Neon URL not configured");
+      return;
+    }
 
     for (const item of queue) {
       const [action, storeId] = item.split(':');
