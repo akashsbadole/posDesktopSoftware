@@ -112,18 +112,6 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   syncToCloud: async (storeId: string) => {
     try {
-      // Check if premium enabled
-      const isPremium = useSettingsStore.getState().premiumEnabled;
-      if (!isPremium) {
-        const error = "Cloud sync requires Premium license";
-        set({
-          isSyncing: false,
-          syncStatus: "error",
-          syncError: error,
-        });
-        dbLogger.warn("Cloud sync blocked - Premium required", { storeId });
-        return false;
-      }
 
       // Check if Neon URL is configured
       const neonUrl = useSettingsStore.getState().settings?.neon_url;
@@ -175,19 +163,6 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   syncFromCloud: async (storeId: string) => {
     try {
-      // Check if premium enabled
-      const isPremium = useSettingsStore.getState().premiumEnabled;
-      if (!isPremium) {
-        const error = "Cloud sync requires Premium license";
-        set({
-          isSyncing: false,
-          syncStatus: "error",
-          syncError: error,
-        });
-        dbLogger.warn("Cloud sync blocked - Premium required", { storeId });
-        return false;
-      }
-
       // Check if Neon URL is configured
       const neonUrl = useSettingsStore.getState().settings?.neon_url;
       if (!neonUrl || neonUrl.trim() === "") {
@@ -249,20 +224,6 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
 
     try {
-      // Check if premium enabled
-      const isPremium = useSettingsStore.getState().premiumEnabled;
-      if (!isPremium) {
-        const error = "Cloud sync requires Premium license";
-        set({
-          isSyncing: false,
-          syncStatus: "error",
-          syncError: error,
-        });
-        dbLogger.warn("Bidirectional sync blocked - Premium required", {
-          storeId,
-        });
-        return false;
-      }
 
       // Check if Neon URL is configured
       const neonUrl = useSettingsStore.getState().settings?.neon_url;

@@ -35,7 +35,6 @@ import {
   seedDatabase,
   resetDatabase,
   resetAndSeedDatabase,
-  isPremiumEnabled,
 } from "@/lib/db";
 import { useSettingsStore, useAuthStore } from "@/lib/stores";
 import pako from "pako";
@@ -91,8 +90,6 @@ export default function SettingsScreen() {
     saveSettings,
     isDarkMode,
     setDarkMode,
-    premiumEnabled,
-    premiumStatus,
     lastSyncTime,
     setLastSyncTime,
     isSyncing,
@@ -546,43 +543,25 @@ export default function SettingsScreen() {
         <div
           className="card p-6 border-2 transition-all"
           style={{
-            borderColor: premiumEnabled ? "#2ECC71" : "#F5C842",
-            background: premiumEnabled
-              ? "rgba(46,204,113,0.05)"
-              : "rgba(245,200,66,0.05)",
+            borderColor: "#2ECC71",
+            background: "rgba(46,204,113,0.05)",
           }}
         >
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div
                 className="w-12 h-12 rounded-2xl flex items-center justify-center"
-                style={{ background: premiumEnabled ? "#2ECC71" : "#F5C842" }}
+                style={{ background: "#2ECC71" }}
               >
                 <Key size={24} color="#0D0D0F" />
               </div>
               <div>
-                <h2 className="text-lg font-bold">
-                  {premiumEnabled ? "Professional Plan Active" : "Free Plan"}
-                </h2>
+                <h2 className="text-lg font-bold">Completely Free Forever</h2>
                 <p className="text-xs" style={{ color: "#4A4A5A" }}>
-                  {premiumEnabled
-                    ? "You have access to all professional features."
-                    : "All features are free - no upgrade needed!"}
+                  All features included - no subscriptions, no hidden fees!
                 </p>
               </div>
             </div>
-            {!premiumEnabled && (
-              <button
-                onClick={() =>
-                  window.open(
-                    "mailto:info@appixen.com?subject=Premium Features Upgrade",
-                  )
-                }
-                className="btn-warning px-6 py-2 font-bold"
-              >
-                Upgrade Now
-              </button>
-            )}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
@@ -590,41 +569,31 @@ export default function SettingsScreen() {
               {
                 label: "Cloud Sync (Neon)",
                 desc: "Real-time backup & multi-device sync",
-                premium: true,
               },
               {
                 label: "Multi-Store",
                 desc: "Manage all branches from one app",
-                premium: true,
               },
               {
                 label: "Advanced Inventory",
                 desc: "Ingredients, POs & Suppliers",
-                premium: true,
               },
               {
                 label: "Loyalty & CRM",
                 desc: "Customer Wallet & Points system",
-                premium: true,
               },
               {
                 label: "Staff Payroll",
                 desc: "Salary calculations & scheduling",
-                premium: true,
               },
               {
                 label: "SMS & WhatsApp",
                 desc: "Automated digital receipts",
-                premium: true,
               },
             ].map((f, i) => (
               <div key={i} className="flex gap-2">
                 <div className="mt-1">
-                  {premiumEnabled ? (
-                    <Check size={14} className="text-[#2ECC71]" />
-                  ) : (
-                    <Lock size={12} className="text-[#F5C842]" />
-                  )}
+                  <Check size={14} className="text-[#2ECC71]" />
                 </div>
                 <div>
                   <div className="text-[11px] font-bold">{f.label}</div>
@@ -1262,12 +1231,17 @@ export default function SettingsScreen() {
             </div>
 
             <div className="pt-2 border-t border-[#1E1E26]">
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+              <label
+                className="text-xs mb-1 block"
+                style={{ color: "#4A4A5A" }}
+              >
                 Receipt Printer Name (System)
               </label>
               <input
                 value={localSettings.receipt_printer_name || ""}
-                onChange={(e) => updateLocal("receipt_printer_name", e.target.value)}
+                onChange={(e) =>
+                  updateLocal("receipt_printer_name", e.target.value)
+                }
                 placeholder="Default Printer"
               />
             </div>
@@ -1281,7 +1255,7 @@ export default function SettingsScreen() {
               <RefreshCw size={16} style={{ color: "#F5C842" }} />
               <h2 className="font-semibold">Cloud Sync (Neon PostgreSQL)</h2>
             </div>
-            {premiumEnabled && lastSyncTime && (
+            {lastSyncTime && (
               <span
                 className="text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1"
                 style={{ color: "#2ECC71", background: "rgba(46,204,113,0.1)" }}
@@ -1290,32 +1264,55 @@ export default function SettingsScreen() {
                 Last Sync: {lastSyncTime}
               </span>
             )}
-            {!premiumEnabled && (
-              <span className="badge-warning text-[10px] px-2 py-0.5 rounded-full uppercase font-bold">
-                Premium Feature
-              </span>
-            )}
           </div>
 
           {/* Setup guide for users who haven't configured Neon */}
-          {premiumEnabled && !localSettings.neon_url && (
-            <div className="mb-6 p-4 rounded-lg border" style={{
-              background: "rgba(245,200,66,0.08)",
-              borderColor: "rgba(245,200,66,0.3)",
-            }}>
+          {!localSettings.neon_url && (
+            <div
+              className="mb-6 p-4 rounded-lg border"
+              style={{
+                background: "rgba(245,200,66,0.08)",
+                borderColor: "rgba(245,200,66,0.3)",
+              }}
+            >
               <div className="flex items-start gap-3">
                 <div className="mt-0.5">
                   <Database size={16} style={{ color: "#F5C842" }} />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-sm font-semibold mb-2" style={{ color: "#F5C842" }}>
+                  <h3
+                    className="text-sm font-semibold mb-2"
+                    style={{ color: "#F5C842" }}
+                  >
                     Set Up Cloud Sync
                   </h3>
-                  <div className="text-xs space-y-2" style={{ color: "#4A4A5A" }}>
+                  <div
+                    className="text-xs space-y-2"
+                    style={{ color: "#4A4A5A" }}
+                  >
                     <p>To enable cloud sync across your devices:</p>
                     <ol className="list-decimal list-inside space-y-1 ml-2">
-                      <li>Create a free Neon database at <a href="https://neon.tech" target="_blank" rel="noopener noreferrer" style={{ color: "#F5C842", textDecoration: "underline" }}>neon.tech</a></li>
-                      <li>Copy your database connection string (starts with <code className="px-1 rounded bg-[#1E1E26]">postgres://</code>)</li>
+                      <li>
+                        Create a free Neon database at{" "}
+                        <a
+                          href="https://neon.tech"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            color: "#F5C842",
+                            textDecoration: "underline",
+                          }}
+                        >
+                          neon.tech
+                        </a>
+                      </li>
+                      <li>
+                        Copy your database connection string (starts with{" "}
+                        <code className="px-1 rounded bg-[#1E1E26]">
+                          postgres://
+                        </code>
+                        )
+                      </li>
                       <li>Paste it in the Neon Database URL field below</li>
                       <li>Click "Push to Cloud" to upload your data</li>
                     </ol>
@@ -1338,80 +1335,73 @@ export default function SettingsScreen() {
                 onChange={(e) => updateLocal("neon_url", e.target.value)}
                 placeholder="postgres://user:pass@host/db"
                 type="password"
-                disabled={!premiumEnabled}
                 style={{
-                  borderColor: premiumEnabled && !localSettings.neon_url ? "#F5C842" : undefined
+                  borderColor: !localSettings.neon_url ? "#F5C842" : undefined,
                 }}
               />
               <p className="text-[10px] mt-1" style={{ color: "#9090A8" }}>
-                Your Neon PostgreSQL connection string. Found in your Neon dashboard.
+                Your Neon PostgreSQL connection string. Found in your Neon
+                dashboard.
               </p>
-              {premiumEnabled && !localSettings.neon_url && (
-                <div className="text-xs mt-2 flex items-start gap-1" style={{ color: "#F5C842" }}>
+              {!localSettings.neon_url && (
+                <div
+                  className="text-xs mt-2 flex items-start gap-1"
+                  style={{ color: "#F5C842" }}
+                >
                   <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
-                  <span>Neon URL is required for cloud sync. Get your connection string from <a href="https://neon.tech" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>neon.tech</a> dashboard.</span>
+                  <span>
+                    Neon URL is required for cloud sync. Get your connection
+                    string from{" "}
+                    <a
+                      href="https://neon.tech"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ textDecoration: "underline" }}
+                    >
+                      neon.tech
+                    </a>{" "}
+                    dashboard.
+                  </span>
                 </div>
               )}
             </div>
 
-            {premiumEnabled ? (
-              <div className="flex gap-2">
-                <button
-                  onClick={handleSyncUp}
-                  disabled={syncing || !localSettings.neon_url}
-                  className="btn-success flex items-center gap-2 text-sm flex-1 justify-center"
-                  title={!localSettings.neon_url ? "Configure Neon URL first" : "Push local data to cloud"}
-                >
-                  {syncing ? (
-                    <RefreshCw size={14} className="spin" />
-                  ) : (
-                    <CloudUpload size={14} />
-                  )}
-                  Push to Cloud
-                </button>
-                <button
-                  onClick={handleSyncDown}
-                  disabled={syncing || !localSettings.neon_url}
-                  className="btn-ghost flex items-center gap-2 text-sm flex-1 justify-center"
-                  title={!localSettings.neon_url ? "Configure Neon URL first" : "Pull data from cloud"}
-                >
-                  {syncing ? (
-                    <RefreshCw size={14} className="spin" />
-                  ) : (
-                    <CloudDownload size={14} />
-                  )}
-                  Pull from Cloud
-                </button>
-              </div>
-            ) : (
-              <div
-                className="border rounded-lg p-4 text-center space-y-3"
-                style={{
-                  background: "rgba(245,200,66,0.05)",
-                  borderColor: "rgba(245,200,66,0.2)",
-                }}
+            <div className="flex gap-2">
+              <button
+                onClick={handleSyncUp}
+                disabled={syncing || !localSettings.neon_url}
+                className="btn-success flex items-center gap-2 text-sm flex-1 justify-center"
+                title={
+                  !localSettings.neon_url
+                    ? "Configure Neon URL first"
+                    : "Push local data to cloud"
+                }
               >
-                <div
-                  className="text-sm font-medium"
-                  style={{ color: "#F5C842" }}
-                >
-                  Neon Cloud Sync is a premium feature.
-                </div>
-                <p className="text-xs" style={{ color: "#4A4A5A" }}>
-                  Sync your data across all devices and branches in real-time.
-                </p>
-                <button
-                  onClick={() =>
-                    window.open(
-                      "mailto:info@appixen.com?subject=Premium Features Upgrade",
-                    )
-                  }
-                  className="btn-warning text-xs py-2 px-4"
-                >
-                  Upgrade Now
-                </button>
-              </div>
-            )}
+                {syncing ? (
+                  <RefreshCw size={14} className="spin" />
+                ) : (
+                  <CloudUpload size={14} />
+                )}
+                Push to Cloud
+              </button>
+              <button
+                onClick={handleSyncDown}
+                disabled={syncing || !localSettings.neon_url}
+                className="btn-ghost flex items-center gap-2 text-sm flex-1 justify-center"
+                title={
+                  !localSettings.neon_url
+                    ? "Configure Neon URL first"
+                    : "Pull data from cloud"
+                }
+              >
+                {syncing ? (
+                  <RefreshCw size={14} className="spin" />
+                ) : (
+                  <CloudDownload size={14} />
+                )}
+                Pull from Cloud
+              </button>
+            </div>
 
             {syncMsg && (
               <div
@@ -1427,7 +1417,16 @@ export default function SettingsScreen() {
                 {syncMsg.text}
                 {!syncMsg.ok && syncMsg.text.includes("Neon database URL") && (
                   <div className="mt-2 text-xs" style={{ color: "#F5C842" }}>
-                    <strong>How to fix:</strong> Get your Neon URL from <a href="https://neon.tech" target="_blank" rel="noopener noreferrer" style={{ color: "#F5C842", textDecoration: "underline" }}>neon.tech</a> → Project → Connection Details → "Connection String"
+                    <strong>How to fix:</strong> Get your Neon URL from{" "}
+                    <a
+                      href="https://neon.tech"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "#F5C842", textDecoration: "underline" }}
+                    >
+                      neon.tech
+                    </a>{" "}
+                    → Project → Connection Details → "Connection String"
                   </div>
                 )}
               </div>
@@ -2130,29 +2129,6 @@ export default function SettingsScreen() {
               {pinMsg.text}
             </div>
           )}
-        </div>
-
-        {/* Subscription & License */}
-        <div className="card p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Key size={16} style={{ color: "#F5C842" }} />
-            <h2 className="font-semibold">Subscription & License</h2>
-          </div>
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
-              License Key
-            </label>
-            <input
-              value={localSettings.license_key || ""}
-              onChange={(e) => updateLocal("license_key", e.target.value)}
-              placeholder="PREM-XXXX-XXXX"
-            />
-            <p className="text-[10px] mt-2" style={{ color: "#9090A8" }}>
-              Enter your professional license key to unlock premium features.
-              Any key starting with <code className="font-bold">PREM-</code>{" "}
-              will enable professional mode.
-            </p>
-          </div>
         </div>
 
         {/* Desktop Shortcut */}

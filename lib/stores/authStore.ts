@@ -174,6 +174,9 @@ export const useAuthStore = create<AuthState>()(
               email: orgResult.email,
             };
 
+            // Set global organization context for Tauri commands (injects organizationId)
+            setOrganizationId(org.id);
+
             const rateLimitKey = `pin_${org.id}`;
             const rateLimitResult = authRateLimiter.recordAttempt(rateLimitKey, false);
 
@@ -238,6 +241,9 @@ export const useAuthStore = create<AuthState>()(
               return false;
             }
 
+            // Set global organization context for Tauri commands (injects organizationId)
+            setOrganizationId(org.id);
+
             const rateLimitKey = `pin_offline_${org.id}`;
             const rateLimitResult = authRateLimiter.recordAttempt(rateLimitKey, false);
 
@@ -295,6 +301,9 @@ export const useAuthStore = create<AuthState>()(
           authLogger.warn("PIN-only login only available in offline mode");
           return false;
         }
+
+        // Set global organization context for Tauri commands (injects organizationId)
+        setOrganizationId(organizationId);
 
         // Check rate limiting
         const rateLimitKey = `pin_offline_${organizationId}`;

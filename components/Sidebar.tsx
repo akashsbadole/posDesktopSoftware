@@ -31,7 +31,6 @@ import { Screen } from "@/app/page";
 import { User } from "@/lib/db";
 import { useAuthStore, useSettingsStore, useStoresStore } from "@/lib/stores";
 import { getIndustryLabels } from "@/lib/industry";
-import PremiumUpgradeModal from "./PremiumUpgradeModal";
 import { useTranslation } from "@/lib/i18n";
 
 const allNavItems = [
@@ -195,14 +194,12 @@ export default function Sidebar({
   onLock?: () => void;
 }) {
   const { logout } = useAuthStore();
-  const { activeStoreId, setActiveStore, settings, premiumEnabled } = useSettingsStore();
+  const { activeStoreId, setActiveStore, settings } = useSettingsStore();
   const { stores, fetchStores } = useStoresStore();
   const t = useTranslation();
   const isAdmin = user?.role === "admin";
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [showStoreSwitcher, setShowStoreSwitcher] = useState(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [pendingFeature, setPendingFeature] = useState("");
 
   useEffect(() => {
     fetchStores();
@@ -275,20 +272,14 @@ export default function Sidebar({
                     <button
                       key={s.id}
                       onClick={() => {
-                        if (!premiumEnabled && s.id !== 'default') {
-                           setPendingFeature("Multi-Store");
-                           setShowUpgradeModal(true);
-                           return;
-                        }
                         setActiveStore(s.id);
                         setShowStoreSwitcher(false);
                       }}
                       className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-[#1E1E26]"
                       style={{ color: s.id === activeStoreId ? "#F5C842" : "#9090A8" }}
-                    >
-                      {s.name}
-                      {!premiumEnabled && s.id !== 'default' && <Lock size={8} className="inline ml-1" />}
-                    </button>
+                     >
+                       {s.name}
+                     </button>
                   ))
                ) : (
                   <div className="px-3 py-2 text-xs text-[#4A4A5A]">No stores found</div>
@@ -335,14 +326,9 @@ export default function Sidebar({
           })
           .map(({ id, label, icon: Icon, premium }) => {
           const active = activeScreen === id;
-          const isLocked = premium && !premiumEnabled;
+          const isLocked = false;
 
           const handleClick = () => {
-            if (isLocked) {
-              setPendingFeature(label);
-              setShowUpgradeModal(true);
-              return;
-            }
             setScreen(id);
           };
 
@@ -401,12 +387,6 @@ export default function Sidebar({
           <span style={{ fontSize: 8, fontWeight: 600 }}>Logout</span>
         </button>
       </div>
-
-      <PremiumUpgradeModal
-        isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
-        featureName={pendingFeature}
-      />
     </aside>
   );
 }

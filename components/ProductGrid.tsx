@@ -15,7 +15,6 @@ interface ProductGridProps {
   onSelectBatch?: (product: Product) => void;
   onSelectSerial?: (product: Product) => void;
   labels: { [key: string]: string };
-  premiumEnabled: boolean;
 }
 
 export default function ProductGrid({
@@ -27,7 +26,6 @@ export default function ProductGrid({
   onSelectBatch,
   onSelectSerial,
   labels,
-  premiumEnabled,
 }: ProductGridProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [focusedProductIndex, setFocusedProductIndex] = useState<number>(-1);
@@ -51,8 +49,7 @@ export default function ProductGrid({
     return 5;
   }, []);
 
-  const totalItems =
-    filteredProducts.length + (premiumEnabled ? combos.length : 0);
+  const totalItems = filteredProducts.length + combos.length;
 
   const getNewIndex = useGridNavigation(
     totalItems,
@@ -162,38 +159,37 @@ export default function ProductGrid({
           style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
         >
           {/* Combo Products */}
-          {premiumEnabled &&
-            combos.map((combo, index) => (
-              <div
-                key={`combo-${combo.id}`}
-                className={`relative p-3 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
-                  focusedProductIndex === index && isGridFocused
-                    ? "ring-2 ring-blue-500 bg-blue-50"
-                    : "border-gray-200 hover:border-gray-300"
-                }`}
-                onClick={() => onAddCombo(combo)}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <Package className="w-4 h-4 text-purple-600" />
-                  <span className="text-xs font-medium text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                    COMBO
-                  </span>
-                </div>
-                <h3 className="font-medium text-sm text-gray-900 mb-1 line-clamp-2">
-                  {combo.name}
-                </h3>
-                <p className="text-lg font-bold text-gray-900">
-                  ₹{combo.combo_price.toFixed(2)}
-                </p>
-                <div className="text-xs text-gray-500 mt-1">
-                  {combo.items.length} items
-                </div>
+          {combos.map((combo, index) => (
+            <div
+              key={`combo-${combo.id}`}
+              className={`relative p-3 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
+                focusedProductIndex === index && isGridFocused
+                  ? "ring-2 ring-blue-500 bg-blue-50"
+                  : "border-gray-200 hover:border-gray-300"
+              }`}
+              onClick={() => onAddCombo(combo)}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <Package className="w-4 h-4 text-purple-600" />
+                <span className="text-xs font-medium text-purple-600 bg-purple-100 px-2 py-1 rounded">
+                  COMBO
+                </span>
               </div>
-            ))}
+              <h3 className="font-medium text-sm text-gray-900 mb-1 line-clamp-2">
+                {combo.name}
+              </h3>
+              <p className="text-lg font-bold text-gray-900">
+                ₹{combo.combo_price.toFixed(2)}
+              </p>
+              <div className="text-xs text-gray-500 mt-1">
+                {combo.items.length} items
+              </div>
+            </div>
+          ))}
 
           {/* Regular Products */}
           {filteredProducts.map((product, index) => {
-            const actualIndex = premiumEnabled ? combos.length + index : index;
+            const actualIndex = combos.length + index;
             return (
               <div
                 key={product.id}

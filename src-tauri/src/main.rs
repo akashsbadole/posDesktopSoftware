@@ -2193,6 +2193,11 @@ async fn sync_from_neon(store_id: String) -> Result<neon::SyncResult, String> {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 fn main() {
+    // Force database initialization BEFORE app window is created
+    eprintln!("[POS] Initializing database...");
+    let _ = get_db();
+    eprintln!("[POS] Database initialized successfully");
+
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             get_products,

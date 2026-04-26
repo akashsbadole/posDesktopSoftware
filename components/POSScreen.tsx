@@ -79,7 +79,6 @@ import PinModal from "./PinModal";
 import { getIndustryLabels } from "@/lib/industry";
 import { v4 as uuid } from "uuid";
 import BarcodeScannerModal from "@/components/BarcodeScannerModal";
-import PremiumUpgradeModal from "./PremiumUpgradeModal";
 import { Lock } from "lucide-react";
 import { Order } from "@/lib/db";
 
@@ -147,7 +146,7 @@ export default function POSScreen() {
 
   const { combos, fetchCombos, getActiveCombos } = useCombosStore();
 
-  const { settings, fetchSettings, premiumEnabled } = useSettingsStore();
+  const { settings, fetchSettings } = useSettingsStore();
   const { user } = useAuthStore();
 
   const [receipt, setReceipt] = useState<string | null>(null);
@@ -206,8 +205,6 @@ export default function POSScreen() {
   const [isEditingCustomer, setIsEditingCustomer] = useState(false);
   const [localSearch, setLocalSearch] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [pendingFeature, setPendingFeature] = useState("");
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [showGiftCardRedeem, setShowGiftCardRedeem] = useState(false);
   const [giftCardCode, setGiftCardCode] = useState("");
@@ -338,7 +335,7 @@ export default function POSScreen() {
 
   const getNewIndex = useGridNavigation(
     filtered.length,
-    () => {},
+    () => { },
     getGridColumns(),
   );
 
@@ -499,7 +496,7 @@ export default function POSScreen() {
     const discountPercent =
       totalIndividualPrice > 0
         ? ((totalIndividualPrice - combo.combo_price) / totalIndividualPrice) *
-          100
+        100
         : 0;
 
     combo.items.forEach((item) => {
@@ -923,11 +920,6 @@ export default function POSScreen() {
 
   const handleWhatsAppShare = async () => {
     if (!receipt) return;
-    if (!premiumEnabled) {
-      setPendingFeature("WhatsApp Sharing");
-      setShowUpgradeModal(true);
-      return;
-    }
     try {
       await openWhatsAppShare(receipt);
     } catch {
@@ -1081,11 +1073,11 @@ export default function POSScreen() {
                     try {
                       imgSrc =
                         typeof window !== "undefined" &&
-                        (window as unknown as { __TAURI_METADATA__: unknown })
-                          .__TAURI_METADATA__
+                          (window as unknown as { __TAURI_METADATA__: unknown })
+                            .__TAURI_METADATA__
                           ? convertFileSrc(path)
                           : path;
-                    } catch (e) {}
+                    } catch (e) { }
 
                     return (
                       <div key={i} className="flex justify-center mb-6">
@@ -1169,12 +1161,7 @@ export default function POSScreen() {
                 aria-label="Share receipt on WhatsApp"
               >
                 <MessageCircle size={16} aria-hidden="true" />
-                {!premiumEnabled && (
-                  <Lock
-                    size={8}
-                    className="absolute top-2 right-2 text-[#F5C842]"
-                  />
-                )}
+
               </button>
               <button
                 className="btn-ghost py-3 px-3 flex items-center gap-1.5"
@@ -1191,13 +1178,8 @@ export default function POSScreen() {
                 <Save size={16} aria-hidden="true" />
               </button>
               <button
-                className={`btn-ghost py-3 px-3 flex items-center gap-1.5 relative ${!premiumEnabled ? "opacity-50" : ""}`}
+                className={`btn-ghost py-3 px-3 flex items-center gap-1.5 relative opacity-50"}`}
                 onClick={async () => {
-                  if (!premiumEnabled) {
-                    setPendingFeature("SMS Notifications");
-                    setShowUpgradeModal(true);
-                    return;
-                  }
                   if (lastOrder?.delivery_phone) {
                     try {
                       await sendSmsNotification(
@@ -1216,12 +1198,7 @@ export default function POSScreen() {
                 aria-label="Share receipt via SMS"
               >
                 <Smartphone size={16} aria-hidden="true" />
-                {!premiumEnabled && (
-                  <Lock
-                    size={8}
-                    className="absolute top-2 right-2 text-[#F5C842]"
-                  />
-                )}
+
               </button>
             </div>
           </div>
@@ -1526,7 +1503,7 @@ export default function POSScreen() {
                         style={{ color: "#F5C842", fontSize: 14 }}
                       >
                         {curr}
-                        {p.price}
+                        {p.price.toFixed(2)}
                       </div>
                       <div style={{ color: "#4A4A5A", fontSize: 10 }}>
                         Stock: {p.stock}
@@ -2392,7 +2369,7 @@ export default function POSScreen() {
                   disabled={
                     Math.abs(
                       finalTotal -
-                        splitPayments.reduce((s, p) => s + p.amount, 0),
+                      splitPayments.reduce((s, p) => s + p.amount, 0),
                     ) > 0.01
                   }
                   onClick={() => setShowSplitPaymentModal(false)}
@@ -2475,7 +2452,7 @@ export default function POSScreen() {
                     user?.name || "System",
                   );
                   clearCart();
-                } catch (e) {}
+                } catch (e) { }
                 setShowPinModal(null);
                 setShowVoidReasonModal(false);
                 setVoidReason("");
@@ -2489,7 +2466,7 @@ export default function POSScreen() {
                     user?.name || "System",
                   );
                   await openCashDrawer();
-                } catch (e) {}
+                } catch (e) { }
                 setShowPinModal(null);
               }
             }}
@@ -2654,13 +2631,12 @@ export default function POSScreen() {
                       setTable(t.id, t.name);
                       setShowTableModal(false);
                     }}
-                    className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all ${
-                      tableId === t.id
-                        ? "bg-[#F5C842]/10 border-[#F5C842] text-[#F5C842]"
-                        : t.status === "occupied"
-                          ? "bg-red-500/5 border-red-500/20 text-red-500 opacity-60"
-                          : "bg-[#141418] border-[#1E1E26] text-gray-400 hover:border-[#F5C842]"
-                    }`}
+                    className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all ${tableId === t.id
+                      ? "bg-[#F5C842]/10 border-[#F5C842] text-[#F5C842]"
+                      : t.status === "occupied"
+                        ? "bg-red-500/5 border-red-500/20 text-red-500 opacity-60"
+                        : "bg-[#141418] border-[#1E1E26] text-gray-400 hover:border-[#F5C842]"
+                      }`}
                   >
                     <span className="text-lg font-bold">{t.name}</span>
                     <span className="text-[10px] uppercase font-bold opacity-60 mt-1">
@@ -2813,10 +2789,10 @@ export default function POSScreen() {
                 try {
                   imgSrc =
                     typeof window !== "undefined" &&
-                    (window as any).__TAURI_METADATA__
+                      (window as any).__TAURI_METADATA__
                       ? convertFileSrc(path)
                       : path;
-                } catch (e) {}
+                } catch (e) { }
 
                 return (
                   <div key={i} className="flex justify-center mb-4">
@@ -2989,12 +2965,6 @@ export default function POSScreen() {
           </div>
         </div>
       )}
-
-      <PremiumUpgradeModal
-        isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
-        featureName={pendingFeature}
-      />
     </>
   );
 }

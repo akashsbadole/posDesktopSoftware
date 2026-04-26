@@ -26,11 +26,10 @@ import { dbLogger } from "@/lib/logger";
 export function CloudOfflineIntegration() {
   const { isAuthenticated, organization } = useAuthStore();
   const { isOnline } = useSyncStore();
-  const { premiumEnabled } = useSettingsStore();
 
   // Initialize cloud sync service on login (premium users only)
   useEffect(() => {
-    if (isAuthenticated && organization && premiumEnabled) {
+    if (isAuthenticated && organization) {
       dbLogger.info(
         "Authenticated premium user detected, initializing cloud sync",
         {
@@ -51,12 +50,12 @@ export function CloudOfflineIntegration() {
       return () => {
         cloudSyncService.cleanup();
       };
-    } else if (isAuthenticated && !premiumEnabled) {
+    } else if (isAuthenticated) {
       dbLogger.info("Free user logged in - cloud sync not available", {
         orgId: organization?.id,
       });
     }
-  }, [isAuthenticated, organization, isOnline, premiumEnabled]);
+  }, [isAuthenticated, organization, isOnline]);
 
   // Monitor online status changes
   useEffect(() => {

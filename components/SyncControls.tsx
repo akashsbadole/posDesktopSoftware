@@ -35,7 +35,6 @@ export const SyncControls = () => {
   } = useSyncStore();
 
   const { organization } = useAuthStore();
-  const { premiumEnabled } = useSettingsStore();
   const [showDetails, setShowDetails] = useState(false);
   const [autoSync, setAutoSync] = useState(true);
   const storeId = organization?.id || "default";
@@ -67,22 +66,6 @@ export const SyncControls = () => {
     if (diffHours < 24) return `${diffHours}h ago`;
     return date.toLocaleDateString();
   };
-
-  // Show premium gate if user doesn't have premium license
-  if (!premiumEnabled) {
-    return (
-      <div className="flex items-center gap-2 p-2 bg-amber-50 rounded-lg border border-amber-200">
-        <div className="flex items-center gap-2 px-3 py-2 bg-amber-100 text-amber-800 rounded text-xs font-medium">
-          <Lock size={14} />
-          <span>Cloud Sync</span>
-        </div>
-        <span className="text-xs text-amber-700">Premium Feature</span>
-        <button className="ml-auto px-3 py-1 text-xs bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors font-medium">
-          Upgrade
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-200">
@@ -239,9 +222,7 @@ export const SyncControls = () => {
       )}
 
       {/* Conflict Resolution Modal */}
-      {conflicts.length > 0 && (
-        <ConflictResolutionModal onClose={() => {}} />
-      )}
+      {conflicts.length > 0 && <ConflictResolutionModal onClose={() => {}} />}
     </div>
   );
 };

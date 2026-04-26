@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { dbGetSettings, dbSaveSettings, Settings, isPremiumEnabled, getPremiumStatus, PremiumStatus } from '@/lib/db';
+import { dbGetSettings, dbSaveSettings, Settings } from '@/lib/db';
 
 interface SettingsState {
   settings: Settings;
@@ -8,8 +8,6 @@ interface SettingsState {
   isLoading: boolean;
   error: string | null;
   isDarkMode: boolean;
-  premiumEnabled: boolean;
-  premiumStatus: PremiumStatus | null;
   lastSyncTime: string | null;
   isSyncing: boolean;
   setLastSyncTime: (time: string) => void;
@@ -19,7 +17,6 @@ interface SettingsState {
   setDarkMode: (isDarkMode: boolean) => void;
   updateCurrency: (currency: string, currencySymbol: string) => Promise<void>;
   setActiveStore: (id: string) => void;
-  checkPremium: () => Promise<void>;
 }
 
 const defaultSettings: Settings = {
@@ -82,8 +79,6 @@ export const useSettingsStore = create<SettingsState>()(
       isLoading: false,
       error: null,
       isDarkMode: false,
-      premiumEnabled: false,
-      premiumStatus: null,
       lastSyncTime: null,
       isSyncing: false,
 
@@ -94,11 +89,8 @@ export const useSettingsStore = create<SettingsState>()(
         set({ isLoading: true, error: null });
         try {
           const settings = await dbGetSettings(get().activeStoreId);
-          const status = await getPremiumStatus();
           set({
             settings,
-            premiumEnabled: status.enabled,
-            premiumStatus: status,
             isLoading: false
           });
         } catch (err) {
@@ -106,13 +98,7 @@ export const useSettingsStore = create<SettingsState>()(
         }
       },
 
-      checkPremium: async () => {
-        const status = await getPremiumStatus();
-        set({
-          premiumEnabled: status.enabled,
-          premiumStatus: status
-        });
-      },
+
 
       saveSettings: async (newSettings: Partial<Settings>) => {
         const updated = { ...get().settings, ...newSettings };

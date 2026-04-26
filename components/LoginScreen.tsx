@@ -415,6 +415,19 @@ export default function LoginScreen() {
           </span>
         </div>
 
+        <div style={{
+          background: "rgba(46, 204, 113, 0.1)",
+          border: "1px solid rgba(46, 204, 113, 0.3)",
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 16,
+          textAlign: "center",
+          fontSize: 12,
+          color: "var(--text-muted)"
+        }}>
+          <strong>✨ Completely Free. Forever. No Subscriptions.</strong>
+        </div>
+
         <h1
           id="login-title"
           style={{

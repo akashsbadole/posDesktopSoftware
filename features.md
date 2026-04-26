@@ -471,7 +471,7 @@ A production-ready Point of Sale (POS) desktop application for restaurants, cafe
 
 ---
 
-## Cloud Sync (Neon PostgreSQL) — PREMIUM
+## Cloud Sync (Neon PostgreSQL)
 
 ### Neon Integration
 - Neon PostgreSQL integration (hosted cloud database)
@@ -506,7 +506,7 @@ A production-ready Point of Sale (POS) desktop application for restaurants, cafe
 
 ---
 
-## LAN Sync — PREMIUM
+## LAN Sync
 
 ### LAN Server
 - Embedded HTTP server for local network sync
@@ -708,32 +708,9 @@ A production-ready Point of Sale (POS) desktop application for restaurants, cafe
 
 ---
 
-## Premium Features
+## All Features Are Completely Free
 
-All premium features are locked behind role check and require license activation:
-
-| Feature | Description | Without License |
-|---------|-------------|-----------------|
-| Cloud Sync (Neon) | Multi-device cloud backup & sync | Read-only demo mode |
-| Multi-Store Management | Manage 3+ stores with stock transfer | 1 store only |
-| Advanced Inventory | Ingredients, recipes, POs | Basic stock tracking only |
-| Staff Scheduling & Payroll | Shift planning, salary management | Basic attendance only |
-| Customer CRM & Loyalty | Full customer database, wallet | Basic customer name capture |
-| Coupons & Promotions | Create & manage discount codes | Manual discounts only |
-| Inventory Alerts | Low stock & out-of-stock notifications | Disabled |
-| Inventory Management Screen | Dedicated inventory dashboard | Hidden |
-| Refund Requests | Full refund workflow | Simple cancel only |
-| Enhanced Reports | Hourly, Staff Performance, Items | Basic reports only |
-| GST Reports | GSTR-1, GSTR-3B export | Disabled |
-| Activity Logs | Full audit trail | Basic logging only |
-| Expense Management | Full expense tracking | Disabled |
-| All Admin Screens | Full administrative access | Locked |
-
-### Trial Period
-- 6-month trial period from installation date
-- All premium features unlocked during trial
-- After trial: premium features require license key
-- Grace period option to purchase before full lock
+This POS system is 100% free forever. No subscriptions, no hidden fees, no per-user charges. All features listed above are included without any limitations or license requirements.
 
 ---
 

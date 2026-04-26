@@ -17,15 +17,6 @@ class CloudSyncService {
   async initialize(storeId: string) {
     if (this.isInitialized) return;
 
-    // Check if premium enabled
-    const isPremium = useSettingsStore.getState().premiumEnabled;
-    if (!isPremium) {
-      dbLogger.info("Cloud sync service init blocked - Premium required", {
-        storeId,
-      });
-      return;
-    }
-
     // Check if Neon URL is configured
     const neonUrl = useSettingsStore.getState().settings?.neon_url;
     if (!neonUrl || neonUrl.trim() === "") {

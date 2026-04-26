@@ -38,8 +38,6 @@ import OnboardingModal from "@/components/OnboardingModal";
 import CloudOfflineIntegration from "@/components/CloudOfflineIntegration";
 import { dbGetPendingOrdersCount, setOrganizationId } from "@/lib/db";
 import { useAuthStore, useSettingsStore } from "@/lib/stores";
-import { PREMIUM_SCREENS } from "@/lib/constants";
-import PremiumUpgradeModal from "@/components/PremiumUpgradeModal";
 
 export type Screen =
   | "pos"
@@ -110,20 +108,18 @@ export default function Home() {
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
   const [showRecovery, setShowRecovery] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const { user, organization, isAuthenticated, logout, lock } = useAuthStore();
   const {
     activeStoreId,
     settings,
     fetchSettings,
-    premiumEnabled,
     setLastSyncTime,
     setIsSyncing,
   } = useSettingsStore();
 
   useEffect(() => {
-    if (isAuthenticated && premiumEnabled && settings?.neon_url) {
+    if (isAuthenticated && settings?.neon_url) {
       const syncInterval = setInterval(
         async () => {
           try {
@@ -145,7 +141,6 @@ export default function Home() {
     }
   }, [
     isAuthenticated,
-    premiumEnabled,
     settings?.neon_url,
     activeStoreId,
     setLastSyncTime,
@@ -196,16 +191,11 @@ export default function Home() {
       const customEvent = e as CustomEvent<string>;
       const targetScreen = customEvent.detail as Screen;
 
-      if (PREMIUM_SCREENS.includes(targetScreen) && !premiumEnabled) {
-        setShowUpgradeModal(true);
-        return;
-      }
-
       setScreen(targetScreen);
     };
     window.addEventListener("navigate", handleNavigation);
     return () => window.removeEventListener("navigate", handleNavigation);
-  }, [isAuthenticated, premiumEnabled]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -237,11 +227,6 @@ export default function Home() {
       if (screen) {
         e.preventDefault();
 
-        if (PREMIUM_SCREENS.includes(screen) && !premiumEnabled) {
-          setShowUpgradeModal(true);
-          return;
-        }
-
         if (!adminScreens.includes(screen) || user?.role === "admin") {
           setScreen(screen);
         }
@@ -249,7 +234,7 @@ export default function Home() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isAuthenticated, showShortcuts, user, premiumEnabled]);
+  }, [isAuthenticated, showShortcuts, user]);
 
   const handleLock = () => {
     setIsLocked(true);
@@ -381,10 +366,6 @@ export default function Home() {
           isOpen={showShortcuts}
           onClose={() => setShowShortcuts(false)}
           showPOS={screen === "pos"}
-        />
-        <PremiumUpgradeModal
-          isOpen={showUpgradeModal}
-          onClose={() => setShowUpgradeModal(false)}
         />
       </div>
     </ErrorBoundary>

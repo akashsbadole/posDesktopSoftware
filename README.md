@@ -43,7 +43,7 @@ This POS application is **completely free** and open source. If you find it valu
 - **Donate**: Support ongoing development via [Buy Me a Coffee](https://www.buymeacoffee.com/akashbadole)
 - **Patreon-Style Support**: Join our community for exclusive benefits
 
-### Premium Services
+### Additional Services
 - **Custom Development**: Tailored integrations and features
 - **Training Programs**: Online courses, webinars, and certification
 - **Consulting Services**: Business optimization and menu engineering
@@ -53,9 +53,8 @@ This POS application is **completely free** and open source. If you find it valu
 ### Hardware & Partnerships
 - **Hardware Bundles**: Recommended POS computers, printers, and accessories
 - **Affiliate Marketing**: Earn commissions promoting complementary products
-- **SaaS Add-ons**: Cloud-based premium features and analytics
 
-Contact us at info@appixen.com for premium services and partnerships.
+Contact us at info@appixen.com for services and partnerships.
 
 ---
 

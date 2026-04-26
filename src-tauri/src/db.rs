@@ -8,7 +8,7 @@ use csv;
 
 use chrono;
 use rand::Rng;
-use rusqlite::{params, Connection, OptionalExtension, Result};
+use rusqlite::{params, types::Type, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::Path;
@@ -829,11 +829,15 @@ impl Database {
         let current_version = db.get_current_version().unwrap_or(0);
         eprintln!("[DB] Current schema version: {}", current_version);
 
+        // Run migrations to ensure schema is up to date
+        eprintln!("[DB] Running migrations...");
+        db.run_migrations()?;
+        // Ensure essential tables exist even if migrations were skipped or tables were dropped
+        db.ensure_essential_tables()?;
+        db.create_indexes()?;
+
         if current_version == 0 {
-            // New database - run migrations
-            eprintln!("[DB] Running migrations...");
-            db.run_migrations()?;
-            db.create_indexes()?;
+            // New database - seed data
 
             // Check if stores already exist before seeding
             let store_count: i64 = db
@@ -860,8 +864,6 @@ impl Database {
             } else {
                 eprintln!("[DB] Users already exist ({})", user_count);
             }
-        } else {
-            eprintln!("[DB] Existing database v{}, skipping seed", current_version);
         }
 
         eprintln!("[DB] Step 11: Done!");
@@ -889,6 +891,39 @@ impl Database {
         self.conn.execute(
             "INSERT INTO schema_version (version) VALUES (?1)",
             params![version],
+        )?;
+        Ok(())
+    }
+
+    /// Safety net to ensure essential tables exist.
+    /// This is idempotent and guards against missing tables due to manual deletion or upgrade issues.
+    fn ensure_essential_tables(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS products (
+                id          TEXT NOT NULL,
+                store_id    TEXT NOT NULL DEFAULT 'default',
+                name        TEXT NOT NULL,
+                price       REAL NOT NULL DEFAULT 0,
+                cost_price  REAL NOT NULL DEFAULT 0,
+                wholesale_price REAL NOT NULL DEFAULT 0,
+                category    TEXT NOT NULL DEFAULT 'General',
+                subcategory TEXT,
+                stock       INTEGER NOT NULL DEFAULT 0,
+                barcode     TEXT NOT NULL DEFAULT '',
+                sku         TEXT,
+                description TEXT,
+                tax         REAL NOT NULL DEFAULT 18,
+                status      TEXT NOT NULL DEFAULT 'active',
+                tags        TEXT NOT NULL DEFAULT '',
+                is_digital  INTEGER NOT NULL DEFAULT 0,
+                is_favorite INTEGER NOT NULL DEFAULT 0,
+                image_url   TEXT NOT NULL DEFAULT '',
+                metadata    TEXT,
+                base_unit   TEXT,
+                conversion_factor REAL,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (id, store_id)
+            )"
         )?;
         Ok(())
     }
@@ -1005,29 +1040,83 @@ impl Database {
 
     fn migration_v13(&self) -> Result<()> {
         // Add table_id and customer_phone to orders table
-        let _ = self
-            .conn
-            .execute("ALTER TABLE orders ADD COLUMN table_id TEXT", []);
-        let _ = self.conn.execute(
-            "ALTER TABLE orders ADD COLUMN customer_phone TEXT NOT NULL DEFAULT ''",
+        // Check if table_id column exists, add if not
+        let column_exists: Result<i64, _> = self.conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('orders') WHERE name='table_id'",
             [],
+            |row| row.get(0),
         );
+
+        match column_exists {
+            Ok(0) | Err(_) => {
+                let _ = self
+                    .conn
+                    .execute("ALTER TABLE orders ADD COLUMN table_id TEXT", []);
+            }
+            _ => {}
+        }
+
+        // Check if customer_phone column exists, add if not
+        let column_exists: Result<i64, _> = self.conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('orders') WHERE name='customer_phone'",
+            [],
+            |row| row.get(0),
+        );
+
+        match column_exists {
+            Ok(0) | Err(_) => {
+                let _ = self.conn.execute(
+                    "ALTER TABLE orders ADD COLUMN customer_phone TEXT NOT NULL DEFAULT ''",
+                    [],
+                );
+            }
+            _ => {}
+        }
         Ok(())
     }
 
     fn migration_v14(&self) -> Result<()> {
-        let _ = self.conn.execute(
-            "ALTER TABLE organizations ADD COLUMN pin_failed_attempts INTEGER DEFAULT 0",
+        // Check if pin_failed_attempts column exists, add if not
+        let column_exists: Result<i64, _> = self.conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('organizations') WHERE name='pin_failed_attempts'",
             [],
+            |row| row.get(0),
         );
-        let _ = self.conn.execute(
-            "ALTER TABLE organizations ADD COLUMN pin_lockout_until TEXT",
+
+        match column_exists {
+            Ok(0) | Err(_) => {
+                // Column doesn't exist or error checking, try to add it
+                let _ = self.conn.execute(
+                    "ALTER TABLE organizations ADD COLUMN pin_failed_attempts INTEGER DEFAULT 0",
+                    [],
+                );
+            }
+            _ => {}
+        }
+
+        // Check if pin_lockout_until column exists, add if not
+        let column_exists: Result<i64, _> = self.conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('organizations') WHERE name='pin_lockout_until'",
             [],
+            |row| row.get(0),
         );
+
+        match column_exists {
+            Ok(0) | Err(_) => {
+                // Column doesn't exist or error checking, try to add it
+                let _ = self.conn.execute(
+                    "ALTER TABLE organizations ADD COLUMN pin_lockout_until TEXT",
+                    [],
+                );
+            }
+            _ => {}
+        }
+
         Ok(())
     }
 
     fn migration_v1(&self) -> Result<()> {
+        eprintln!("[DB] Running migration_v1: Creating initial tables...");
         self.conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS stores (
@@ -1716,13 +1805,17 @@ impl Database {
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )?;
                 if current_stock + qty_delta < 0 {
-                    return Err(rusqlite::Error::Other(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!(
-                            "Insufficient stock for product '{}'. Current: {}, Requested: {}",
-                            name, current_stock, -qty_delta
-                        ),
-                    ))));
+                    return Err(rusqlite::Error::FromSqlConversionFailure(
+                        usize::MAX,
+                        Type::Null,
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!(
+                                "Insufficient stock for product '{}'. Current: {}, Requested: {}",
+                                name, current_stock, -qty_delta
+                            ),
+                        )),
+                    ));
                 }
             }
         }
@@ -2079,7 +2172,8 @@ impl Database {
     }
 
     pub fn seed_all(&self) -> Result<()> {
-        self.seed_if_empty()?;
+        // Force seed data even if tables exist
+        self.seed_sample_data()?;
         Ok(())
     }
 
@@ -2161,6 +2255,9 @@ impl Database {
     }
 
     fn seed_sample_data(&self) -> Result<()> {
+        // Disable foreign keys during seeding
+        self.conn.execute("PRAGMA foreign_keys = OFF", [])?;
+        
         eprintln!("[DB] Seeding stores...");
         // Seed stores
         self.conn.execute(
@@ -2424,13 +2521,13 @@ impl Database {
         {
             // Seed for default store
             self.conn.execute(
-                "INSERT OR IGNORE INTO products (id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, store_id, tags, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                params![format!("{}_default", id), name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, "default", "popular", 1],
+                "INSERT OR IGNORE INTO products (id, store_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, tags, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                params![format!("{}_default", id), "default", name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, "popular", 1],
             )?;
             // Seed for store2 with different prices
             self.conn.execute(
-                "INSERT OR IGNORE INTO products (id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, store_id, tags, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                params![format!("{}_store2", id), name, price * 1.1, cost_price, wholesale_price, category, subcategory, stock / 2, format!("BAR{}_S2", id), format!("SKU{}_S2", id), description, tax, "store2", "featured", 0],
+                "INSERT OR IGNORE INTO products (id, store_id, name, price, cost_price, wholesale_price, category, subcategory, stock, barcode, sku, description, tax, tags, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                params![format!("{}_store2", id), "store2", name, price * 1.1, cost_price, wholesale_price, category, subcategory, stock / 2, format!("BAR{}_S2", id), format!("SKU{}_S2", id), description, tax, "featured", 0],
             )?;
         }
         eprintln!("[DB] Products seeded successfully");
@@ -4665,6 +4762,9 @@ impl Database {
             params!["rec1", "2026-04-01", 507.4, 0.0, 0.0, 507.4, 510.0, 2.6, "cashier", "2026-04-01T18:00:00Z"],
         )?;
 
+        // Re-enable foreign keys
+        self.conn.execute("PRAGMA foreign_keys = ON", [])?;
+
         Ok(())
     }
 
@@ -4730,16 +4830,20 @@ impl Database {
             )
             .optional()?;
 
-        if let Some((failed_attempts, Some(lockout_until))) = lockout_info {
+        if let Some((_failed_attempts, Some(ref lockout_until))) = lockout_info {
             if let Ok(until_dt) = chrono::DateTime::parse_from_rfc3339(&lockout_until) {
                 if until_dt.with_timezone(&chrono::Utc) > chrono::Utc::now() {
-                    return Err(rusqlite::Error::Other(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!(
-                            "Too many failed attempts. Locked until: {}",
-                            until_dt.format("%H:%M:%S")
-                        ),
-                    ))));
+                    return Err(rusqlite::Error::FromSqlConversionFailure(
+                        usize::MAX,
+                        Type::Null,
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!(
+                                "Too many failed attempts. Locked until: {}",
+                                until_dt.format("%H:%M:%S")
+                            ),
+                        )),
+                    ));
                 }
             }
         }
@@ -4895,16 +4999,20 @@ impl Database {
             )
             .optional()?;
 
-        if let Some((failed_attempts, Some(lockout_until))) = lockout_info {
+        if let Some((_failed_attempts, Some(ref lockout_until))) = lockout_info {
             if let Ok(until_dt) = chrono::DateTime::parse_from_rfc3339(&lockout_until) {
                 if until_dt.with_timezone(&chrono::Utc) > chrono::Utc::now() {
-                    return Err(rusqlite::Error::Other(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!(
-                            "Too many failed attempts. Locked until: {}",
-                            until_dt.format("%H:%M:%S")
-                        ),
-                    ))));
+                    return Err(rusqlite::Error::FromSqlConversionFailure(
+                        usize::MAX,
+                        Type::Null,
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!(
+                                "Too many failed attempts. Locked until: {}",
+                                until_dt.format("%H:%M:%S")
+                            ),
+                        )),
+                    ));
                 }
             }
         }
@@ -5663,13 +5771,19 @@ impl Database {
         let backup_dir = dirs::data_dir()
             .map(|p| p.join("pos-tauri").join("backups"))
             .ok_or_else(|| {
-                rusqlite::Error::Other(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Could not find app data dir",
-                )))
+                rusqlite::Error::FromSqlConversionFailure(
+                    usize::MAX,
+                    Type::Null,
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "Could not find app data dir",
+                    )),
+                )
             })?;
 
-        std::fs::create_dir_all(&backup_dir).map_err(|e| rusqlite::Error::Other(Box::new(e)))?;
+        std::fs::create_dir_all(&backup_dir).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(usize::MAX, Type::Null, Box::new(e))
+        })?;
 
         let now = chrono::Local::now().format("%Y%m%d_%H%M%S");
         let backup_path = backup_dir.join(format!("pos_backup_{}.db", now));

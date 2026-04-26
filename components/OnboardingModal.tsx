@@ -173,9 +173,8 @@ export default function OnboardingModal() {
           {[1, 2, 3, 4, 5, 6].map((s) => (
             <div
               key={s}
-              className={`h-full transition-all duration-500 ${
-                s <= step ? "bg-[#F5C842]" : "bg-transparent"
-              }`}
+              className={`h-full transition-all duration-500 ${s <= step ? "bg-[#F5C842]" : "bg-transparent"
+                }`}
               style={{ width: "16.66%" }}
             />
           ))}
@@ -198,7 +197,7 @@ export default function OnboardingModal() {
                 <p className="font-bold text-lg">MIT License - 100% Free Forever</p>
                 <p>Copyright (c) 2025 Appixen</p>
                 <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 my-2">
-                  <p className="font-bold text-green-400">✨ Completely Free - No Hidden Costs</p>
+                  <p className="font-bold text-green-400">✨ 100% Free Forever - No Hidden Costs - No Subscriptions</p>
                 </div>
                 <p>Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:</p>
                 <p><strong>What's FREE:</strong></p>
@@ -207,8 +206,14 @@ export default function OnboardingModal() {
                   <li>No trial period - full features from day one</li>
                   <li>No hidden charges - everything included</li>
                   <li>Unlimited users, products, and orders</li>
-                  <li>All premium features unlocked at no cost</li>
+                  <li>All features unlocked at no cost</li>
                   <li>Cloud sync across devices - free</li>
+                  <li>Multi-store support - unlimited stores</li>
+                  <li>Offline operation - works without internet</li>
+                  <li>Advanced reporting - free analytics</li>
+                  <li>Customer CRM - free loyalty management</li>
+                  <li>Staff management - free scheduling</li>
+                  <li>Tax compliance - GST, sales tax, VAT - all free</li>
                 </ul>
                 <p>The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.</p>
                 <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.</p>
@@ -219,11 +224,10 @@ export default function OnboardingModal() {
                 className="flex items-center gap-3 p-4 rounded-xl border border-border hover:bg-muted/50 transition-colors cursor-pointer group"
               >
                 <div
-                  className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                    agreedToLicense
-                      ? "bg-[#F5C842] border-[#F5C842]"
-                      : "border-muted-foreground group-hover:border-[#F5C842]"
-                  }`}
+                  className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${agreedToLicense
+                    ? "bg-[#F5C842] border-[#F5C842]"
+                    : "border-muted-foreground group-hover:border-[#F5C842]"
+                    }`}
                 >
                   {agreedToLicense && (
                     <Check size={16} className="text-[#0D0D0F]" />
@@ -260,19 +264,17 @@ export default function OnboardingModal() {
                         industry: ind.id as StoreType["industry"],
                       })
                     }
-                    className={`p-4 rounded-2xl border-2 transition-all text-left group ${
-                      formData.industry === ind.id
-                        ? "border-[#F5C842] bg-[#F5C842]/5 shadow-lg shadow-[#F5C842]/10"
-                        : "border-border hover:border-border/80 bg-muted/30"
-                    }`}
+                    className={`p-4 rounded-2xl border-2 transition-all text-left group ${formData.industry === ind.id
+                      ? "border-[#F5C842] bg-[#F5C842]/5 shadow-lg shadow-[#F5C842]/10"
+                      : "border-border hover:border-border/80 bg-muted/30"
+                      }`}
                   >
                     <ind.icon
                       size={24}
-                      className={`mb-3 transition-colors ${
-                        formData.industry === ind.id
-                          ? "text-[#F5C842]"
-                          : "text-muted-foreground group-hover:text-foreground"
-                      }`}
+                      className={`mb-3 transition-colors ${formData.industry === ind.id
+                        ? "text-[#F5C842]"
+                        : "text-muted-foreground group-hover:text-foreground"
+                        }`}
                     />
                     <h3 className="font-bold text-sm mb-1">{ind.label}</h3>
                     <p className="text-[10px] text-muted-foreground leading-tight">
@@ -515,11 +517,10 @@ export default function OnboardingModal() {
                         onClick={() =>
                           setFormData({ ...formData, primaryColor: color })
                         }
-                        className={`w-10 h-10 rounded-full border-2 transition-transform hover:scale-110 active:scale-95 ${
-                          formData.primaryColor === color
-                            ? "border-foreground scale-110"
-                            : "border-transparent"
-                        }`}
+                        className={`w-10 h-10 rounded-full border-2 transition-transform hover:scale-110 active:scale-95 ${formData.primaryColor === color
+                          ? "border-foreground scale-110"
+                          : "border-transparent"
+                          }`}
                         style={{ backgroundColor: color }}
                       />
                     ))}
