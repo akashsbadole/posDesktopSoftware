@@ -94,7 +94,10 @@ export default function OnboardingModal() {
         const arrayBuffer = await file.arrayBuffer();
         const data = Array.from(new Uint8Array(arrayBuffer));
         const filename = `logo_${Date.now()}.${file.name.split(".").pop()}`;
-        const path = await invoke<string>("save_image", { data, filename });
+        const isTauri = typeof window !== 'undefined' && '__TAURI_IPC__' in window;
+        const path = isTauri
+          ? await invoke<string>("save_image", { data, filename })
+          : URL.createObjectURL(file);
         setFormData({ ...formData, logoUrl: path });
       } catch (error) {
         console.error("Failed to upload image:", error);
