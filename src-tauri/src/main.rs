@@ -91,6 +91,41 @@ fn get_db() -> &'static Mutex<Database> {
     &*DB
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Session {
+    pub user_id: String,
+    pub organization_id: String,
+    pub role: String,
+    pub store_id: Option<String>,
+}
+
+static SESSION: Lazy<Mutex<Option<Session>>> = Lazy::new(|| Mutex::new(None));
+
+fn set_session(session: Session) {
+    if let Ok(mut s) = SESSION.lock() {
+        *s = Some(session);
+    }
+}
+
+fn clear_session() {
+    if let Ok(mut s) = SESSION.lock() {
+        *s = None;
+    }
+}
+
+fn require_auth() -> Result<Session, String> {
+    let s = SESSION.lock().map_err(|e| e.to_string())?;
+    s.clone().ok_or_else(|| "Not authenticated".to_string())
+}
+
+fn require_admin() -> Result<Session, String> {
+    let session = require_auth()?;
+    if session.role != "admin" && session.role != "owner" {
+        return Err("Admin access required".to_string());
+    }
+    Ok(session)
+}
+
 // ─── Seed Command ──────────────────────────────────────────────────────────────
 
 #[cfg(debug_assertions)]
@@ -118,6 +153,7 @@ fn get_all_inventory_transactions(
 #[cfg(debug_assertions)]
 #[tauri::command]
 fn reset_database() -> Result<(), String> {
+    require_admin()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.reset_all().map_err(|e| e.to_string())
 }
@@ -447,6 +483,7 @@ fn get_product_variants(
 
 #[tauri::command]
 fn save_product_variant(variant: db::ProductVariant, store_id: String) -> Result<(), String> {
+    require_auth()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.save_product_variant(&variant, &store_id)
         .map_err(|e| e.to_string())
@@ -454,6 +491,7 @@ fn save_product_variant(variant: db::ProductVariant, store_id: String) -> Result
 
 #[tauri::command]
 fn delete_product_variant(id: String, store_id: String) -> Result<(), String> {
+    require_auth()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.delete_product_variant(&id, &store_id)
         .map_err(|e| e.to_string())
@@ -474,6 +512,7 @@ fn delete_product(id: String, store_id: String) -> Result<(), String> {
 
 #[tauri::command]
 fn update_stock(id: String, delta: i64, store_id: String, user_id: String) -> Result<(), String> {
+    require_auth()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.update_stock(&id, delta, &store_id, &user_id)
         .map_err(|e| e.to_string())
@@ -598,6 +637,7 @@ fn get_orders(
 
 #[tauri::command]
 fn save_order(order: db::Order, store_id: String) -> Result<(), String> {
+    require_auth()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.save_order(&order, &store_id).map_err(|e| {
         if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
@@ -646,6 +686,7 @@ fn get_settings(store_id: String) -> Result<db::Settings, String> {
 #[allow(non_snake_case)]
 #[tauri::command]
 fn save_settings(settings: db::Settings, store_id: String) -> Result<(), String> {
+    require_auth()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.save_settings(&settings, &store_id)
         .map_err(|e| e.to_string())
@@ -742,8 +783,17 @@ fn login_with_pin_offline(
     organization_id: String,
 ) -> Result<Option<db::LoginResult>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.login_with_pin_offline(&pin, &organization_id)
-        .map_err(|e| e.to_string())
+    let result = db.login_with_pin_offline(&pin, &organization_id)
+        .map_err(|e| e.to_string())?;
+    if let Some(ref lr) = result {
+        set_session(Session {
+            user_id: lr.user.id.clone(),
+            organization_id: lr.organization.id.clone(),
+            role: lr.user.role.clone(),
+            store_id: lr.user.store_id.clone(),
+        });
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -752,8 +802,17 @@ fn verify_pin_offline(
     organization_id: String,
 ) -> Result<Option<db::PinLoginResult>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.verify_pin_offline(&pin, &organization_id)
-        .map_err(|e| e.to_string())
+    let result = db.verify_pin_offline(&pin, &organization_id)
+        .map_err(|e| e.to_string())?;
+    if let Some(ref lr) = result {
+        set_session(Session {
+            user_id: lr.user.id.clone(),
+            organization_id: lr.organization.id.clone(),
+            role: lr.user.role.clone(),
+            store_id: lr.user.store_id.clone(),
+        });
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -783,12 +842,14 @@ fn get_users(organization_id: String) -> Result<Vec<db::User>, String> {
 
 #[tauri::command]
 fn upsert_user(user: db::User) -> Result<(), String> {
+    require_admin()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.upsert_user(&user).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn delete_user(id: String) -> Result<(), String> {
+    require_admin()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.delete_user(&id).map_err(|e| e.to_string())
 }
@@ -824,14 +885,42 @@ fn register(
     }
 
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.register(org_name, &email, &password, pin)
-        .map_err(|e| e.to_string())
+    let result = db.register(org_name, &email, &password, pin)
+        .map_err(|e| e.to_string())?;
+    set_session(Session {
+        user_id: result.user.id.clone(),
+        organization_id: result.organization.id.clone(),
+        role: result.user.role.clone(),
+        store_id: result.user.store_id.clone(),
+    });
+    Ok(result)
 }
 
 #[tauri::command]
 fn login(email: String, password: String) -> Result<Option<db::LoginResult>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.login(&email, &password).map_err(|e| e.to_string())
+    let result = db.login(&email, &password).map_err(|e| e.to_string())?;
+    if let Some(ref lr) = result {
+        set_session(Session {
+            user_id: lr.user.id.clone(),
+            organization_id: lr.organization.id.clone(),
+            role: lr.user.role.clone(),
+            store_id: lr.user.store_id.clone(),
+        });
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+fn logout() -> Result<(), String> {
+    clear_session();
+    Ok(())
+}
+
+#[tauri::command]
+fn get_current_session() -> Result<Option<Session>, String> {
+    let s = SESSION.lock().map_err(|e| e.to_string())?;
+    Ok(s.clone())
 }
 
 #[tauri::command]
@@ -987,12 +1076,14 @@ fn forgot_user(email: String) -> Result<String, String> {
 
 #[tauri::command]
 fn export_backup(store_id: String) -> Result<String, String> {
+    require_auth()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.export_backup(&store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn import_backup(backup_json: String, store_id: String) -> Result<db::ImportResult, String> {
+    require_admin()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.import_backup(&backup_json, &store_id)
         .map_err(|e| e.to_string())
@@ -1080,12 +1171,14 @@ fn get_salaries(storeId: String) -> Result<Vec<db::StaffSalary>, String> {
 
 #[tauri::command]
 fn save_salary(salary: db::StaffSalary) -> Result<(), String> {
+    require_admin()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.save_salary(&salary, &salary.store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn delete_salary(id: String, storeId: String) -> Result<(), String> {
+    require_admin()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.delete_salary(&id, &storeId).map_err(|e| e.to_string())
 }
@@ -1888,6 +1981,7 @@ fn save_day_end_reconciliation(
     reconciliation: db::DayEndReconciliation,
     store_id: String,
 ) -> Result<(), String> {
+    require_auth()?;
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.save_day_end_reconciliation(&reconciliation, &store_id)
         .map_err(|e| e.to_string())
@@ -2400,6 +2494,8 @@ fn main() {
             delete_user,
             register,
             login,
+            logout,
+            get_current_session,
             forgot_password,
             reset_password,
             forgot_user,
