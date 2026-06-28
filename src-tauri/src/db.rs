@@ -10,44 +10,35 @@ use chrono;
 use rand::Rng;
 use rusqlite::{params, types::Type, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::env;
 use std::path::Path;
 
 fn get_encryption_key() -> [u8; 32] {
+    use sha2::{Digest, Sha256};
     match env::var("TAURI_ENCRYPTION_KEY") {
         Ok(key_str) => {
-            let bytes = key_str.as_bytes();
-            if bytes.len() < 32 {
-                eprintln!("[SECURITY] WARNING: TAURI_ENCRYPTION_KEY is shorter than 32 bytes. Padding with zeros.");
-            }
+            let mut hasher = Sha256::new();
+            hasher.update(key_str.as_bytes());
+            let result = hasher.finalize();
             let mut key = [0u8; 32];
-            let len = bytes.len().min(32);
-            key[..len].copy_from_slice(&bytes[..len]);
+            key.copy_from_slice(&result);
             key
         }
         Err(_) => {
             #[cfg(debug_assertions)]
             {
-                eprintln!("[SECURITY] CAUTION: TAURI_ENCRYPTION_KEY not set. Using insecure development fallback.");
+                eprintln!("[SECURITY] CAUTION: TAURI_ENCRYPTION_KEY not set. Using derived development fallback.");
+                let mut hasher = Sha256::new();
+                hasher.update(b"POS_BILLING_DEV_FALLBACK");
+                let result = hasher.finalize();
                 let mut key = [0u8; 32];
-                let fallback = "POS_BILLING_DEV_INSECURE_KEY_32!";
-                let bytes = fallback.as_bytes();
-                key[..bytes.len()].copy_from_slice(bytes);
+                key.copy_from_slice(&result);
                 key
             }
             #[cfg(not(debug_assertions))]
             {
-                eprintln!(
-                    "[SECURITY] FATAL: TAURI_ENCRYPTION_KEY environment variable is missing!"
-                );
-                eprintln!("[SECURITY] For production, you MUST set a secure 32-byte key.");
-                // In a real production environment, we might want to panic if security is paramount
-                // For now, using a legacy fallback but with extreme warning
-                let mut key = [0u8; 32];
-                let fallback = "POS_PROD_FALLBACK_SECURE_KEY_!!!";
-                let bytes = fallback.as_bytes();
-                key[..bytes.len()].copy_from_slice(bytes);
-                key
+                panic!("[SECURITY] TAURI_ENCRYPTION_KEY environment variable is required in production. Set a secure 32-byte key and restart.");
             }
         }
     }
@@ -962,6 +953,12 @@ impl Database {
         if current < 3 {
             self.migration_v3()?;
             self.set_version(3)?;
+        }
+
+        // Migration to recreate products table with composite primary key (id, store_id)
+        if current < 4 {
+            self.migration_v4()?;
+            self.set_version(4)?;
         }
 
         // Migration to add KDS status and timestamps to order_items
@@ -4904,7 +4901,21 @@ impl Database {
         Ok(None)
     }
 
+    fn get_salt() -> String {
+        std::env::var("LICENSE_SECRET_SALT")
+            .unwrap_or_else(|_| "POS_BILLING_SECRET_SALT_2026".to_string())
+    }
+
+    fn hash_code(code: &str) -> String {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(code.as_bytes());
+        hasher.update(Self::get_salt().as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+
     pub fn update_reset_code(&self, email: &str, code: &str, expiry: &str) -> Result<()> {
+        // code is already hashed by caller
         self.conn.execute(
             "UPDATE users SET reset_code = ?1, reset_code_expiry = ?2 WHERE email = ?3",
             params![code, expiry, email],
@@ -4923,8 +4934,12 @@ impl Database {
             )
             .optional()?;
 
-        if let Some((stored_code, expiry)) = result {
-            if stored_code == code && !stored_code.is_empty() {
+        if let Some((stored_hash, expiry)) = result {
+            if stored_hash.is_empty() {
+                return Ok(false);
+            }
+            let code_hash = Self::hash_code(code);
+            if stored_hash == code_hash {
                 let now = chrono::Utc::now().to_rfc3339();
                 return Ok(expiry > now);
             }
@@ -5300,12 +5315,34 @@ impl Database {
 
         match result {
             Ok((user, organization, hashed_pin)) => {
+                // Check lockout before attempting PIN verification
+                if let Some(lockout_until) = &organization.pin_lockout_until {
+                    if let Ok(lockout_time) = lockout_until.parse::<chrono::NaiveDateTime>() {
+                        if chrono::Utc::now().naive_utc() < lockout_time {
+                            return Ok(None);
+                        }
+                    }
+                }
                 if let Some(h) = hashed_pin {
                     if let Ok(verified) = bcrypt::verify(pin, &h) {
                         if verified {
                             return Ok(Some(LoginResult { user, organization }));
                         }
                     }
+                }
+                // Increment failed attempts on failed PIN
+                let attempts: i32 = organization.pin_failed_attempts + 1;
+                if attempts >= 5 {
+                    let lockout_time = chrono::Utc::now().naive_utc() + chrono::Duration::minutes(15);
+                    let _ = self.conn.execute(
+                        "UPDATE organizations SET pin_failed_attempts = ?1, pin_lockout_until = ?2 WHERE id = ?3",
+                        params![attempts, lockout_time.format("%Y-%m-%d %H:%M:%S").to_string(), organization.id],
+                    );
+                } else {
+                    let _ = self.conn.execute(
+                        "UPDATE organizations SET pin_failed_attempts = ?1 WHERE id = ?2",
+                        params![attempts, organization.id],
+                    );
                 }
                 Ok(None)
             }

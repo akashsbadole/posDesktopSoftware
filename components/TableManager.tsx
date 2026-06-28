@@ -4,6 +4,7 @@ import { Table } from "@/lib/db";
 import { v4 as uuid } from "uuid";
 import { Plus, Trash2, Users, X, Check, GripVertical } from "lucide-react";
 import { useTablesStore, useSettingsStore, useStoresStore, useCartStore } from "@/lib/stores";
+import { useTranslation } from "@/lib/i18n";
 
 interface TableManagerProps {
   onClose?: () => void;
@@ -19,6 +20,7 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
   const { clearCart, setTable, setOrderType } = useCartStore();
   const [editingTable, setEditingTable] = useState<Table | null>(null);
   const [showModal, setShowModal] = useState(isOpen);
+  const t = useTranslation();
 
   const activeStore = stores.find(s => s.id === activeStoreId);
   const labels = getIndustryLabels(activeStore?.industry || 'food');
@@ -47,7 +49,7 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this table?")) return;
+    if (!confirm(t("tables.confirmDelete"))) return;
     await deleteTable(id);
   };
 
@@ -116,15 +118,15 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
      >
        <div className="card w-[700px] max-h-[80vh] overflow-hidden flex flex-col fade-in" role="dialog" aria-modal="true" aria-labelledby="table-manager-title">
          <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--border)" }}>
-           <h2 id="table-manager-title" className="font-display text-base font-semibold flex items-center gap-2">
-             <Users size={20} style={{ color: "#F5C842" }} /> {labels.table} Manager
+            <h2 id="table-manager-title" className="font-display text-base font-semibold flex items-center gap-2">
+              <Users size={20} style={{ color: "#F5C842" }} /> {t("tables.title", { label: labels.table })}
            </h2>
               <button onClick={handleClose} className="btn-ghost py-1 px-3"><X size={18} /></button>
          </div>
 
         <div className="flex-1 overflow-y-auto p-4">
           {isLoading ? (
-            <div className="flex items-center justify-center h-32" style={{ color: "#4A4A5A" }}>Loading...</div>
+            <div className="flex items-center justify-center h-32" style={{ color: "#4A4A5A" }}>{t("common.loading")}</div>
           ) : (
             <div className="grid grid-cols-4 gap-3">
               {tables.map((table) => (
@@ -133,13 +135,13 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
                     <span className="font-semibold">{table.name}</span>
                     <span className="w-2 h-2 rounded-full" style={{ background: getStatusText(table.status) }} />
                   </div>
-                  <div className="text-xs mb-2" style={{ color: "#9090A8" }}>Capacity: {table.capacity}</div>
+                  <div className="text-xs mb-2" style={{ color: "#9090A8" }}>{t("tables.capacity")} {table.capacity}</div>
                   <div className="text-xs px-2 py-1 rounded mb-2" style={{ background: getStatusBg(table.status), color: getStatusText(table.status) }}>
                     {table.status}
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={() => setEditingTable({ ...table })} className="btn-ghost text-xs py-1 px-2 flex-1">Edit</button>
-                    <button onClick={() => handleDelete(table.id)} className="btn-ghost text-xs py-1 px-2" title={`Delete ${labels.table}`} style={{ color: "#E74C3C" }}><Trash2 size={12} /></button>
+                    <button onClick={() => setEditingTable({ ...table })} className="btn-ghost text-xs py-1 px-2 flex-1">{t("common.edit")}</button>
+                    <button onClick={() => handleDelete(table.id)} className="btn-ghost text-xs py-1 px-2" title={`${t("common.delete")} ${labels.table}`} style={{ color: "#E74C3C" }}><Trash2 size={12} /></button>
                   </div>
                   {table.status === "available" && (
                     <div className="mt-2 space-y-1">
@@ -148,24 +150,24 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
                         data-testid={`start-order-${table.name}`}
                         className="w-full btn-accent text-xs py-2 font-bold"
                       >
-                        Start Order
+                        {t("tables.startOrder")}
                       </button>
                       <button
                         onClick={() => handleStatusChange(table.id, "occupied")}
                         className="w-full btn-ghost text-[10px] py-1 opacity-70"
                       >
-                        Mark Occupied
+                        {t("tables.markOccupied")}
                       </button>
                     </div>
                   )}
                   {table.status === "occupied" && (
-                    <button onClick={() => handleStatusChange(table.id, "available")} className="mt-2 w-full btn-ghost text-xs py-1" style={{ color: "#2ECC71" }}>Mark Available</button>
+                    <button onClick={() => handleStatusChange(table.id, "available")} className="mt-2 w-full btn-ghost text-xs py-1" style={{ color: "#2ECC71" }}>{t("tables.markAvailable")}</button>
                   )}
                 </div>
               ))}
               <button onClick={addNewTable} className="card p-3 border-dashed flex flex-col items-center justify-center" style={{ borderColor: "var(--border)" }}>
                 <Plus size={24} style={{ color: "#4A4A5A" }} />
-                <span className="text-xs mt-1" style={{ color: "#4A4A5A" }}>Add {labels.table}</span>
+                <span className="text-xs mt-1" style={{ color: "#4A4A5A" }}>{t("tables.addTable", { label: labels.table })}</span>
               </button>
             </div>
           )}
@@ -173,30 +175,30 @@ export default function TableManager({ onClose, isOpen = true }: TableManagerPro
 
         {editingTable && (
           <div className="p-4 border-t" style={{ borderColor: "var(--border)" }}>
-            <h3 className="font-semibold mb-3">{tables.find(t => t.id === editingTable.id) ? "Edit" : "Add"} {labels.table}</h3>
+            <h3 className="font-semibold mb-3">{(tables.find(t => t.id === editingTable.id) ? t("common.edit") : t("common.add"))} {labels.table}</h3>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Name</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("common.name")}</label>
                 <input value={editingTable.name} onChange={(e) => setEditingTable({ ...editingTable, name: e.target.value })} />
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Capacity</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("tables.capacityLabel")}</label>
                 <input type="number" value={editingTable.capacity} onChange={(e) => setEditingTable({ ...editingTable, capacity: parseInt(e.target.value) || 1 })} min={1} />
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Status</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("common.status")}</label>
                 <select value={editingTable.status} onChange={(e) => setEditingTable({ ...editingTable, status: e.target.value as Table['status'] })}>
-                  <option value="available">Available</option>
-                  <option value="occupied">Occupied</option>
-                  <option value="reserved">Reserved</option>
+                  <option value="available">{t("tables.statusAvailable")}</option>
+                  <option value="occupied">{t("tables.statusOccupied")}</option>
+                  <option value="reserved">{t("tables.statusReserved")}</option>
                 </select>
               </div>
             </div>
             <div className="flex gap-2 mt-3">
               <button onClick={handleSave} className="btn-accent flex items-center gap-2 py-2 px-4 text-sm">
-                <Check size={14} /> Save
+                <Check size={14} /> {t("common.save")}
               </button>
-              <button onClick={() => setEditingTable(null)} className="btn-ghost py-2 px-4 text-sm">Cancel</button>
+              <button onClick={() => setEditingTable(null)} className="btn-ghost py-2 px-4 text-sm">{t("common.cancel")}</button>
             </div>
           </div>
         )}

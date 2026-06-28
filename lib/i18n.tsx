@@ -6,10 +6,17 @@ import mr from "@/messages/mr.json";
 import te from "@/messages/te.json";
 import ta from "@/messages/ta.json";
 import gu from "@/messages/gu.json";
+import es from "@/messages/es.json";
+import fr from "@/messages/fr.json";
+import pt from "@/messages/pt.json";
+import de from "@/messages/de.json";
+import { useSettingsStore } from "@/lib/stores";
 
-export type Locale = "en" | "hi" | "mr" | "te" | "ta" | "gu";
+export type Locale = "en" | "hi" | "mr" | "te" | "ta" | "gu" | "es" | "fr" | "pt" | "de";
 
-export const locales: Locale[] = ["en", "hi", "mr", "te", "ta", "gu"];
+export const locales: Locale[] = ["en", "hi", "mr", "te", "ta", "gu", "es", "fr", "pt", "de"];
+
+const rtlLocales: Locale[] = [];
 
 export const localeNames: Record<Locale, string> = {
   en: "English",
@@ -18,6 +25,10 @@ export const localeNames: Record<Locale, string> = {
   te: "తెలుగు",
   ta: "தமிழ்",
   gu: "ગુજરાતી",
+  es: "Español",
+  fr: "Français",
+  pt: "Português",
+  de: "Deutsch",
 };
 
 const messages: Record<Locale, typeof en> = {
@@ -27,6 +38,10 @@ const messages: Record<Locale, typeof en> = {
   te,
   ta,
   gu,
+  es,
+  fr,
+  pt,
+  de,
 };
 
 type NestedKeyOf<T> = T extends object
@@ -58,13 +73,19 @@ function getNestedValue(obj: any, path: string): string {
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>("en");
+  const fontScale = useSettingsStore((s) => s.fontScale);
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY) as Locale | null;
     if (stored && locales.includes(stored)) {
       setLocaleState(stored);
+      document.documentElement.lang = stored;
     }
   }, []);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--font-scale", String(fontScale));
+  }, [fontScale]);
 
   const setLocale = useCallback((newLocale: Locale) => {
     setLocaleState(newLocale);
@@ -88,7 +109,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     [locale]
   );
 
-  const dir: "ltr" | "rtl" = "ltr";
+  const dir: "ltr" | "rtl" = rtlLocales.includes(locale) ? "rtl" : "ltr";
 
   return (
     <I18nContext.Provider value={{ locale, setLocale, t, dir }}>

@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { exportProductsCsv, exportOrdersCsv, importProductsCsv, getSalesReport, exportBackup, exportToTally, exportToQuickbooks } from "@/lib/db";
 import EnhancedReports from "@/components/EnhancedReports";
+import { useTranslation } from "@/lib/i18n";
 import { useSettingsStore, useStaffStore, useStoresStore } from "@/lib/stores";
 
 interface SalesReport {
@@ -13,6 +14,7 @@ interface SalesReport {
 }
 
 export default function ReportsScreen() {
+  const t = useTranslation();
   const { activeStoreId, settings } = useSettingsStore();
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
@@ -59,7 +61,7 @@ export default function ReportsScreen() {
       setSalarySummary({ total: totalSalary, count: salaries.length });
 
     } catch (e) {
-      setMessage("Error generating report");
+      setMessage(t("reports.errorGenerating"));
     }
     setLoading(false);
   };
@@ -68,9 +70,9 @@ export default function ReportsScreen() {
     try {
       const csv = await exportProductsCsv(activeStoreId);
       downloadFile(csv, "products.csv", "text/csv");
-      setMessage("Products exported successfully");
+      setMessage(t("reports.productsExported"));
     } catch (e) {
-      setMessage("Error exporting products");
+      setMessage(t("reports.productsExportError"));
     }
   };
 
@@ -78,9 +80,9 @@ export default function ReportsScreen() {
     try {
       const csv = await exportOrdersCsv(activeStoreId);
       downloadFile(csv, "orders.csv", "text/csv");
-      setMessage("Orders exported successfully");
+      setMessage(t("reports.ordersExported"));
     } catch (e) {
-      setMessage("Error exporting orders");
+      setMessage(t("reports.ordersExportError"));
     }
   };
 
@@ -96,9 +98,9 @@ export default function ReportsScreen() {
         const csv = evt.target?.result as string;
         try {
           const result = await importProductsCsv(csv, activeStoreId);
-          setMessage(`Imported ${result.imported} products, ${result.errors} errors`);
+          setMessage(t("reports.importResult", { imported: result.imported, errors: result.errors }));
         } catch (err) {
-          setMessage("Error importing products");
+          setMessage(t("reports.importError"));
         }
       };
       reader.readAsText(file);
@@ -111,9 +113,9 @@ export default function ReportsScreen() {
       const backup = await exportBackup(activeStoreId);
       const timestamp = new Date().toISOString().split("T")[0];
       downloadFile(backup, `pos-backup-${timestamp}.json`, "application/json");
-      setMessage("Backup exported successfully");
+      setMessage(t("reports.backupExported"));
     } catch (e) {
-      setMessage("Error exporting backup");
+      setMessage(t("reports.backupExportError"));
     }
   };
 
@@ -121,9 +123,9 @@ export default function ReportsScreen() {
     try {
       const xml = await exportToTally(startDate, endDate, activeStoreId);
       downloadFile(xml, `tally-export-${startDate}-to-${endDate}.xml`, "application/xml");
-      setMessage("Tally export completed successfully");
+      setMessage(t("reports.tallyExported"));
     } catch (e) {
-      setMessage("Error exporting to Tally");
+      setMessage(t("reports.tallyExportError"));
     }
   };
 
@@ -131,18 +133,18 @@ export default function ReportsScreen() {
     try {
       const json = await exportToQuickbooks(startDate, endDate, activeStoreId);
       downloadFile(json, `quickbooks-export-${startDate}-to-${endDate}.json`, "application/json");
-      setMessage("QuickBooks export completed successfully");
+      setMessage(t("reports.quickbooksExported"));
     } catch (e) {
-      setMessage("Error exporting to QuickBooks");
+      setMessage(t("reports.quickbooksExportError"));
     }
   };
 
   return (
     <div className="h-full overflow-y-auto" style={{ padding: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <h1 className="font-display text-xl font-bold">Reports & Data</h1>
+        <h1 className="font-display text-xl font-bold">{t("reports.title")}</h1>
         <button onClick={() => setShowEnhanced(true)} className="btn-accent py-2 px-4 text-sm">
-          Enhanced Reports
+          {t("reports.enhancedReports")}
         </button>
       </div>
       
@@ -157,54 +159,54 @@ export default function ReportsScreen() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         <div style={{ padding: 20, background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)" }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Sales Report</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>{t("reports.salesReport")}</h3>
           <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
             <div>
-              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>From</label>
+              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>{t("reports.from")}</label>
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
                 style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)" }} />
             </div>
             <div>
-              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>To</label>
+              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>{t("reports.to")}</label>
               <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
                 style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)" }} />
             </div>
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
                 <input type="checkbox" checked={multiStore} onChange={(e) => setMultiStore(e.target.checked)} />
-                Include all stores (multi-location report)
+                {t("reports.includeAllStores")}
               </label>
             </div>
           </div>
           <button onClick={handleGenerateReport} disabled={loading}
             style={{ padding: "10px 20px", background: "#F5C842", color: "#0D0D0F", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>
-            {loading ? "Generating..." : "Generate Report"}
+            {loading ? t("common.generating") : t("reports.generateReport")}
           </button>
           
           {report && (
             <div style={{ marginTop: 20, padding: 16, background: "var(--bg)", borderRadius: 8 }}>
               <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, color: "#666" }}>Period</div>
+                <div style={{ fontSize: 12, color: "#666" }}>{t("reports.period")}</div>
                 <div style={{ fontSize: 14 }}>{report.start_date} to {report.end_date}</div>
               </div>
               <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, color: "#666" }}>Total Revenue</div>
+                <div style={{ fontSize: 12, color: "#666" }}>{t("reports.totalRevenue")}</div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: "#2e7d32" }}>{settings?.currency_symbol || '₹'}{report.total_revenue.toFixed(2)}</div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
-                  <div style={{ fontSize: 12, color: "#666" }}>Total Orders</div>
+                  <div style={{ fontSize: 12, color: "#666" }}>{t("reports.totalOrders")}</div>
                   <div style={{ fontSize: 18, fontWeight: 600 }}>{report.total_orders}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, color: "#666" }}>Avg Order Value</div>
+                  <div style={{ fontSize: 12, color: "#666" }}>{t("reports.avgOrderValue")}</div>
                   <div style={{ fontSize: 18, fontWeight: 600 }}>{settings?.currency_symbol || '₹'}{report.avg_order.toFixed(2)}</div>
                 </div>
               </div>
 
               {salarySummary && salarySummary.total > 0 && (
                 <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
-                   <div style={{ fontSize: 12, color: "#666" }}>Staff Payouts</div>
+                   <div style={{ fontSize: 12, color: "#666" }}>{t("reports.staffPayouts")}</div>
                    <div className="flex justify-between items-end">
                       <div style={{ fontSize: 20, fontWeight: 700, color: "#E74C3C" }}>
                         -{settings?.currency_symbol || '₹'}{salarySummary.total.toFixed(2)}
@@ -212,7 +214,7 @@ export default function ReportsScreen() {
                       <div style={{ fontSize: 12, color: "#9090A8" }}>{salarySummary.count} payments</div>
                    </div>
                    <div style={{ fontSize: 12, marginTop: 8, color: "#2ECC71", fontWeight: 600 }}>
-                      Net Income: {settings?.currency_symbol || '₹'}{(report.total_revenue - salarySummary.total).toFixed(2)}
+                      {t("reports.netIncome")} {settings?.currency_symbol || '₹'}{(report.total_revenue - salarySummary.total).toFixed(2)}
                    </div>
                 </div>
               )}
@@ -221,51 +223,51 @@ export default function ReportsScreen() {
         </div>
 
         <div style={{ padding: 20, background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)" }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Data Management</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>{t("reports.dataManagement")}</h3>
           
           <div style={{ marginBottom: 20 }}>
-            <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Products</h4>
+            <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>{t("reports.products")}</h4>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={handleExportProducts}
                 style={{ padding: "8px 16px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer" }}>
-                Export CSV
+                {t("common.export")} CSV
               </button>
               <button onClick={handleImportProducts}
                 style={{ padding: "8px 16px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer" }}>
-                Import CSV
+                {t("common.import")} CSV
               </button>
             </div>
           </div>
 
           <div>
-            <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Orders</h4>
+            <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>{t("reports.orders")}</h4>
             <button onClick={handleExportOrders}
               style={{ padding: "8px 16px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer" }}>
-              Export CSV
+              {t("common.export")} CSV
             </button>
           </div>
 
           <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid var(--border)" }}>
-            <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Full Backup</h4>
-            <p style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>Export all data as JSON (products, orders, settings)</p>
+            <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>{t("reports.fullBackup")}</h4>
+            <p style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>{t("reports.backupDesc")}</p>
             <button onClick={handleExportBackup}
               style={{ padding: "8px 16px", background: "#2ECC71", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" }}>
-              Export Backup
+              {t("reports.exportBackup")}
             </button>
           </div>
         </div>
         <div style={{ padding: 20, background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)" }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Accounting Export</h3>
-          <p style={{ fontSize: 12, color: "#666", marginBottom: 16 }}>Export transactions for accounting software. Uses the date range from the Sales Report above.</p>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>{t("reports.accountingExport")}</h3>
+          <p style={{ fontSize: 12, color: "#666", marginBottom: 16 }}>{t("reports.accountingDesc")}</p>
           
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
             <div>
-              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>From</label>
+              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>{t("reports.from")}</label>
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
                 style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)" }} />
             </div>
             <div>
-              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>To</label>
+              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>{t("reports.to")}</label>
               <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
                 style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)" }} />
             </div>
@@ -274,11 +276,11 @@ export default function ReportsScreen() {
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={handleExportTally}
               style={{ padding: "10px 20px", background: "#3498DB", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", flex: 1 }}>
-              Export to Tally (XML)
+              {t("reports.exportTally")}
             </button>
             <button onClick={handleExportQuickbooks}
               style={{ padding: "10px 20px", background: "#2ECC71", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", flex: 1 }}>
-              Export to QuickBooks (JSON)
+              {t("reports.exportQuickbooks")}
             </button>
           </div>
         </div>

@@ -164,7 +164,7 @@ fn verify_license_checksum(license: &str) -> bool {
     let hash = format!("{:x}", hasher.finalize());
 
     // Check if the provided checksum matches the calculated one
-    parts[2] == &hash[..8]
+    parts[2] == &hash[..16]
 }
 
 #[tauri::command]
@@ -574,9 +574,11 @@ fn get_orders(
     store_id: String,
     limit: Option<i64>,
     offset: Option<i64>,
+    start_date: Option<String>,
+    end_date: Option<String>,
 ) -> Result<Vec<db::Order>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_orders(&store_id, limit, offset)
+    db.get_orders_by_date_range(&store_id, start_date.as_deref(), end_date.as_deref(), limit, offset)
         .map_err(|e| e.to_string())
 }
 
@@ -829,51 +831,20 @@ fn forgot_password(email: String) -> Result<String, String> {
         .map(|_| (rand::random::<u8>() % 10).to_string())
         .collect();
 
-    // Get user's documents folder for saving the reset code
-    let documents_dir = dirs::document_dir().ok_or("Could not find documents directory")?;
+    // Hash the reset code before storing (never store plaintext)
+    let code_hash = {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(reset_code.as_bytes());
+        hasher.update(get_license_salt().as_bytes());
+        format!("{:x}", hasher.finalize())
+    };
 
-    let reset_file_path = documents_dir.join("pos_reset_code.txt");
-
-    // Create the reset code content
-    let reset_content = format!(
-        "POS Password Reset Code\n\nEmail: {}\nReset Code: {}\n\nThis code is valid for password reset.\nGenerated on: {}\n\nPlease keep this file safe and delete it after use.",
-        email,
-        reset_code,
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
-    );
-
-    // Write to file
-    std::fs::write(&reset_file_path, &reset_content)
-        .map_err(|e| format!("Failed to save reset code to file: {}", e))?;
-
-    // Also try to open the file for the user
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("cmd")
-            .args(&["/c", "start", &reset_file_path.to_string_lossy()])
-            .spawn();
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("open")
-            .arg(&reset_file_path)
-            .spawn();
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let _ = std::process::Command::new("xdg-open")
-            .arg(&reset_file_path)
-            .spawn();
-    }
-
-    // Try to open email client as backup (don't fail if it doesn't work)
+    // Try to open email client with the reset code
     let subject = "Password Reset Code - POS System";
     let body = format!(
-        "Your password reset code is: {}\n\nThis code will expire in 30 minutes.\n\nA copy has also been saved to: {}\n\nIf you didn't request this reset, please ignore this email.",
+        "Your password reset code is: {}\n\nThis code will expire in 30 minutes.\n\nIf you didn't request this reset, please ignore this email.",
         reset_code,
-        reset_file_path.display()
     );
 
     let subject_encoded = urlencoding::encode(subject);
@@ -902,13 +873,13 @@ fn forgot_password(email: String) -> Result<String, String> {
             .spawn();
     }
 
-    // Store code in DB with 30 minute expiry
+    // Store hashed code in DB with 30 minute expiry
     let expiry = (chrono::Utc::now() + chrono::Duration::minutes(30)).to_rfc3339();
-    db.update_reset_code(&email, &reset_code, &expiry)
+    db.update_reset_code(&email, &code_hash, &expiry)
         .map_err(|e| e.to_string())?;
 
-    // Return the reset code directly to display in the UI
-    Ok(reset_code)
+    // Return masked message instead of raw code
+    Ok("A password reset code has been sent to your email. Please check your inbox.".to_string())
 }
 
 #[tauri::command]
@@ -955,53 +926,13 @@ fn forgot_user(email: String) -> Result<String, String> {
     }
 
     let user = user.unwrap();
-    let username = user.email.clone(); // Using email as username
+    let username = user.email.clone();
 
-    // Get user's documents folder for saving the username info
-    let documents_dir = dirs::document_dir().ok_or("Could not find documents directory")?;
-
-    let username_file_path = documents_dir.join("pos_username.txt");
-
-    // Create the username content
-    let username_content = format!(
-        "POS Username Recovery\n\nEmail: {}\nUsername: {}\n\nThis information was requested on: {}\n\nPlease keep this file safe and delete it after use.",
-        email,
-        username,
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
-    );
-
-    // Write to file
-    std::fs::write(&username_file_path, &username_content)
-        .map_err(|e| format!("Failed to save username to file: {}", e))?;
-
-    // Also try to open the file for the user
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("cmd")
-            .args(&["/c", "start", &username_file_path.to_string_lossy()])
-            .spawn();
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("open")
-            .arg(&username_file_path)
-            .spawn();
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let _ = std::process::Command::new("xdg-open")
-            .arg(&username_file_path)
-            .spawn();
-    }
-
-    // Try to open email client as backup (don't fail if it doesn't work)
+    // Try to open email client with the username
     let subject = "Your Username - POS System";
     let body = format!(
-        "Your username is: {}\n\nThis information has also been saved to: {}\n\nIf you didn't request this information, please ignore this email.",
+        "Your username is: {}\n\nIf you didn't request this information, please ignore this email.",
         username,
-        username_file_path.display()
     );
 
     let subject_encoded = urlencoding::encode(subject);
@@ -1030,7 +961,7 @@ fn forgot_user(email: String) -> Result<String, String> {
             .spawn();
     }
 
-    // Return the username directly to display in the UI
+    // Return the username to display in the UI
     Ok(username)
 }
 
@@ -1979,19 +1910,168 @@ fn save_receipt_to_file(receipt: String, file_name: String) -> Result<String, St
     Ok(path.to_string_lossy().to_string())
 }
 
-#[tauri::command]
-fn print_receipt(_receipt: String) -> Result<(), String> {
-    Ok(())
+// ─── ESC/POS Thermal Printer ──────────────────────────────────────────────────────
+
+/// ESC/POS control characters
+const ESC: u8 = 0x1B;
+const GS: u8 = 0x1D;
+
+/// Build ESC/POS formatted bytes from plain text receipt
+fn build_escpos_receipt(text: &str) -> Vec<u8> {
+    let mut out = Vec::new();
+
+    // Initialize printer
+    out.extend_from_slice(&[ESC, b'@']);
+
+    // Set character code table to PC437 (USA/Europe standard)
+    out.extend_from_slice(&[ESC, b't', 0x00]);
+
+    // Center-align the store name
+    out.extend_from_slice(&[ESC, b'a', 0x01]); // center
+
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+
+        if line.is_empty() {
+            out.push(b'\n');
+            i += 1;
+            continue;
+        }
+
+        // Detect header lines (first few lines = store name, address)
+        if i <= 1 {
+            // Bold for store name and header
+            out.extend_from_slice(&[ESC, b'E', 0x01]); // bold on
+            out.extend_from_slice(line.as_bytes());
+            out.extend_from_slice(&[ESC, b'E', 0x00]); // bold off
+            out.push(b'\n');
+            i += 1;
+            continue;
+        }
+
+        // Separator line (dashes or equals)
+        if line.chars().all(|c| c == '-' || c == '=' || c == '_') {
+            out.extend_from_slice(&[ESC, b'a', 0x00]); // left align
+            out.extend_from_slice(line.as_bytes());
+            out.push(b'\n');
+            out.extend_from_slice(&[ESC, b'a', 0x01]); // center again
+            i += 1;
+            continue;
+        }
+
+        // Total line (contains TOTAL or total)
+        let upper = line.to_uppercase();
+        if upper.contains("TOTAL") && i > lines.len() / 2 {
+            out.extend_from_slice(&[ESC, b'a', 0x00]); // left align
+            // Double-height, double-width for total
+            out.extend_from_slice(&[GS, b'!', 0x11]); // double height + double width
+            out.extend_from_slice(&[ESC, b'E', 0x01]); // bold on
+            out.extend_from_slice(line.as_bytes());
+            out.extend_from_slice(&[ESC, b'E', 0x00]); // bold off
+            out.extend_from_slice(&[GS, b'!', 0x00]); // normal size
+            out.push(b'\n');
+            out.extend_from_slice(&[ESC, b'a', 0x01]); // center
+            i += 1;
+            continue;
+        }
+
+        // Line items (contain "x" for quantity) — left align item, right align price
+        if line.contains(" x") && line.len() > 10 {
+            out.extend_from_slice(&[ESC, b'a', 0x00]); // left align
+            out.extend_from_slice(line.as_bytes());
+            out.push(b'\n');
+            out.extend_from_slice(&[ESC, b'a', 0x01]); // center
+            i += 1;
+            continue;
+        }
+
+        // Normal line
+        out.extend_from_slice(line.as_bytes());
+        out.push(b'\n');
+        i += 1;
+    }
+
+    // Feed paper to clear receipt (4 lines)
+    out.extend_from_slice(&[ESC, b'd', 0x04]);
+
+    // Full cut
+    out.extend_from_slice(&[GS, b'V', 0x00]);
+
+    out
+}
+
+/// Send raw bytes to a Windows printer via PowerShell Write-Printer
+fn send_to_printer(data: &[u8], printer_name: &str) -> Result<(), String> {
+    use base64::{Engine as _, engine::general_purpose};
+    let b64 = general_purpose::STANDARD.encode(data);
+    // Escape single quotes in printer name
+    let escaped_printer = printer_name.replace('\'', "''");
+    let script = format!(
+        "$b=[System.Convert]::FromBase64String('{b64}'); Write-Printer -Name '{printer}' -Data $b",
+        b64 = b64,
+        printer = escaped_printer
+    );
+
+    let output = std::process::Command::new("powershell")
+        .args(&["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .map_err(|e| format!("Failed to execute PowerShell: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Printer error: {}", stderr.trim()))
+    }
+}
+
+/// Get the default printer name from Windows
+fn get_default_printer_name() -> Result<String, String> {
+    let output = std::process::Command::new("powershell")
+        .args(&[
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "(Get-Printer -Default).Name",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to query default printer: {}", e))?;
+
+    let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if name.is_empty() {
+        Err("No default printer found".to_string())
+    } else {
+        Ok(name)
+    }
 }
 
 #[tauri::command]
-fn print_to_printer(_receipt: String, _printer_name: Option<String>) -> Result<(), String> {
-    Ok(())
+fn print_receipt(receipt: String) -> Result<(), String> {
+    let printer_name = get_default_printer_name()?;
+    let escpos = build_escpos_receipt(&receipt);
+    send_to_printer(&escpos, &printer_name)
+}
+
+#[tauri::command]
+fn print_to_printer(receipt: String, printer_name: Option<String>) -> Result<(), String> {
+    let name = match printer_name {
+        Some(n) if !n.trim().is_empty() => n,
+        _ => get_default_printer_name()?,
+    };
+    let escpos = build_escpos_receipt(&receipt);
+    send_to_printer(&escpos, &name)
 }
 
 #[tauri::command]
 fn open_cash_drawer() -> Result<(), String> {
-    Ok(())
+    // Cash drawer kick (ESC/POS command: ESC p 0 50 250)
+    let cmd = vec![0x1B, b'p', 0x00, 50, 250];
+    match get_default_printer_name() {
+        Ok(printer) => send_to_printer(&cmd, &printer),
+        Err(_) => Err("No default printer for cash drawer".to_string()),
+    }
 }
 
 // ─── WhatsApp Commands ─────────────────────────────────────────────────────

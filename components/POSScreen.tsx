@@ -47,6 +47,7 @@ import {
   dbHoldOrder,
   openCashDrawer,
   printReceipt,
+  printToPrinter,
   openWhatsAppShare,
   openEmailShare,
   saveReceiptToFile,
@@ -81,12 +82,14 @@ import { v4 as uuid } from "uuid";
 import BarcodeScannerModal from "@/components/BarcodeScannerModal";
 import { Lock } from "lucide-react";
 import { Order } from "@/lib/db";
+import { useTranslation } from "@/lib/i18n";
 
 export default function POSScreen() {
   const { activeStoreId } = useSettingsStore();
   const { stores } = useStoresStore();
   const activeStore = stores.find((s) => s.id === activeStoreId);
   const labels = getIndustryLabels(activeStore?.industry || "food");
+  const t = useTranslation();
 
   const {
     items: cart,
@@ -153,6 +156,7 @@ export default function POSScreen() {
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
   const qrRef = useRef<HTMLDivElement>(null);
+
   const [processing, setProcessing] = useState(false);
   const [metadataPrompt, setMetadataPrompt] = useState<{
     productId: string;
@@ -232,6 +236,8 @@ export default function POSScreen() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) return;
+
       const isInputFocused =
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement;
@@ -276,9 +282,7 @@ export default function POSScreen() {
         if (activeCustomer && walletCustomerId) {
           setPaymentMethod("store_credit");
         } else {
-          alert(
-            "Please select a registered customer for Store Credit / Khata sales.",
-          );
+          alert(t("pos.errors.selectCustomerForCredit"));
           setIsEditingCustomer(true);
         }
       }
@@ -413,7 +417,7 @@ export default function POSScreen() {
           setBatchSelection({ product, batches: availableBatches });
           return;
         } else if (!product.is_digital) {
-          alert("No available batches for this product.");
+          alert(t("pos.errors.noAvailableBatches"));
           return;
         }
       } catch (err) {
@@ -603,7 +607,7 @@ export default function POSScreen() {
       }
     } catch (error) {
       uiLogger.error("Failed to lookup customer", error);
-      alert("Failed to lookup customer by phone number");
+      alert(t("pos.errors.failedToLookupCustomer"));
       setActiveCustomer(null);
       setWalletBalance(0);
       setWalletCustomerId(null);
@@ -652,23 +656,28 @@ export default function POSScreen() {
 
     const newErrors: Record<string, string> = {};
 
-    if (orderType === "delivery") {
-      if (!customerInfo?.phone || customerInfo.phone.trim().length < 7) {
-        newErrors.phone = "Phone number required for delivery";
+      if (orderType === "delivery") {
+        if (!customerInfo?.phone || customerInfo.phone.trim().length < 7) {
+          newErrors.phone = t("pos.errors.phoneRequiredForDelivery");
+        }
+        if (!customerInfo?.address || customerInfo.address.trim().length < 5) {
+          newErrors.address = t("pos.errors.deliveryAddressRequired");
+        }
       }
-      if (!customerInfo?.address || customerInfo.address.trim().length < 5) {
-        newErrors.address = "Delivery address required";
+
+      if (orderType === "dine_in" && !tableId) {
+        alert(t("pos.errors.selectTable"));
+        return;
       }
-    }
 
-    if (paymentMethod === "cash" && (amountPaid || 0) < finalTotal) {
-      newErrors.amount = "Insufficient amount tendered";
-    }
+      if (paymentMethod === "cash" && (amountPaid || 0) < finalTotal) {
+        newErrors.amount = t("pos.errors.insufficientTendered");
+      }
 
-    if (paymentMethod === "split") {
-      const splitTotal = splitPayments.reduce((sum, p) => sum + p.amount, 0);
-      if (Math.abs(splitTotal - finalTotal) > 0.01) {
-        newErrors.split = `Split total (${curr}${splitTotal}) does not match order total (${curr}${finalTotal.toFixed(2)})`;
+      if (paymentMethod === "split") {
+        const splitTotal = splitPayments.reduce((sum, p) => sum + p.amount, 0);
+        if (Math.abs(splitTotal - finalTotal) > 0.01) {
+          newErrors.split = t("pos.errors.splitTotalMismatch", { currency: curr, split: splitTotal.toFixed(2), total: finalTotal.toFixed(2) });
       }
     }
 
@@ -698,54 +707,56 @@ export default function POSScreen() {
     order.total = finalTotal;
 
     try {
+      const rec = generateReceipt(order, settings);
+
       await dbSaveOrder(order, activeStoreId);
 
+      const sideEffects: Promise<void>[] = [];
+
       if (appliedCoupon) {
-        try {
-          await useCoupon(appliedCoupon.code, activeStoreId);
-        } catch (e) {
-          uiLogger.error("Failed to mark coupon used", e);
-        }
+        sideEffects.push(
+          useCoupon(appliedCoupon.code, activeStoreId).catch((e) =>
+            uiLogger.error("Failed to mark coupon used", e),
+          ),
+        );
       }
       if (useWallet && walletCustomerId && walletDeduction > 0) {
-        try {
-          await deductWalletBalance(
-            walletCustomerId,
-            walletDeduction,
-            order.id,
-          );
-        } catch (e) {
-          uiLogger.error("Failed to deduct wallet", e);
-        }
+        sideEffects.push(
+          deductWalletBalance(walletCustomerId, walletDeduction, order.id).catch(
+            (e) => uiLogger.error("Failed to deduct wallet", e),
+          ),
+        );
       }
-
       if (paymentMethod === "store_credit" && walletCustomerId) {
-        try {
-          // Khata sale is essentially a negative wallet balance entry (Udhar)
-          await deductWalletBalance(walletCustomerId, finalTotal, order.id);
-        } catch (e) {
-          uiLogger.error("Failed to record credit sale in wallet", e);
-        }
+        sideEffects.push(
+          deductWalletBalance(walletCustomerId, finalTotal, order.id).catch(
+            (e) => uiLogger.error("Failed to record credit sale in wallet", e),
+          ),
+        );
       }
+      sideEffects.push(
+        openCashDrawer().catch((e) => uiLogger.info("Cash drawer not available")),
+      );
+      await Promise.all(sideEffects);
 
       if (walletCustomerId) {
-        const updatedWallet = await getCustomerWallet(walletCustomerId);
-        setWalletBalance(updatedWallet.balance);
+        try {
+          const updatedWallet = await getCustomerWallet(walletCustomerId);
+          setWalletBalance(updatedWallet.balance);
+        } catch (e) {
+          uiLogger.error("Failed to fetch wallet balance", e);
+        }
       }
 
-      try {
-        await openCashDrawer();
-      } catch (e) {
-        uiLogger.info("Cash drawer not available");
-      }
-
-      const rec = generateReceipt(order, settings);
       setReceipt(rec);
       setLastOrder(order);
 
       // Auto-printing logic
       if (settings?.auto_print_receipt) {
-        printReceipt(rec).catch((e) => uiLogger.error("Auto-print receipt failed", e));
+        const printerName = settings.receipt_printer_name || undefined;
+        printToPrinter(rec, printerName).catch((e) =>
+          uiLogger.error("Auto-print receipt failed", e),
+        );
       }
       if (settings?.auto_print_kot) {
         const kotText = generateKOTText(order);
@@ -766,7 +777,7 @@ export default function POSScreen() {
       await Promise.all([fetchProducts(), loadHeldOrders()]);
     } catch (err) {
       uiLogger.error("Checkout failed", err);
-      alert("Failed to complete order. Please try again.");
+      alert(t("pos.errors.orderFailed"));
     } finally {
       setProcessing(false);
     }
@@ -795,12 +806,12 @@ export default function POSScreen() {
         printReceipt(kotText).catch((e) => uiLogger.error("Auto-print KOT failed on hold", e));
       }
 
-      alert("Order held successfully!");
+      alert(t("common.savedSuccess"));
       clearCart();
       await loadHeldOrders();
     } catch (err) {
       uiLogger.error("Failed to hold order", err);
-      alert("Failed to hold order. Please try again.");
+      alert(t("pos.errors.holdFailed"));
     }
     setProcessing(false);
   };
@@ -821,13 +832,13 @@ export default function POSScreen() {
 
     try {
       const kotText = generateKOTText(order);
-      await printReceipt(kotText);
+      printReceipt(kotText).catch((e) => uiLogger.error("Auto-print KOT failed", e));
       await dbSaveOrder(order, activeStoreId);
-      alert("KOT sent to printer!");
+      alert(t("pos.kot.printed"));
       clearCart();
     } catch (err) {
       uiLogger.error("Failed to print KOT", err);
-      alert("Failed to print KOT - Order not saved");
+      alert(t("pos.kot.printFailed"));
     }
     setProcessing(false);
   };
@@ -835,20 +846,20 @@ export default function POSScreen() {
   const generateKOTText = (order: Order): string => {
     const lines = [
       "=".repeat(32),
-      "KITCHEN ORDER TICKET",
+      t("pos.kot.title"),
       "=".repeat(32),
-      `Order #: ${order.id.slice(0, 8).toUpperCase()}`,
-      `Type: ${order.order_type.toUpperCase()}`,
-      `Table: ${tableName || "N/A"}`,
-      `Customer: ${order.customer_name || "Guest"}`,
-      `Time: ${new Date().toLocaleTimeString()}`,
+      `${t("pos.kot.orderNumber")} ${order.id.slice(0, 8).toUpperCase()}`,
+      `${t("pos.kot.type")} ${order.order_type.toUpperCase()}`,
+      `${t("pos.kot.table")} ${tableName || "N/A"}`,
+      `${t("pos.kot.customer")} ${order.customer_name || "Guest"}`,
+      `${t("pos.kot.time")} ${new Date().toLocaleTimeString()}`,
       "-".repeat(32),
-      "ITEMS:",
+      t("pos.kot.items"),
       ...order.items.map(
         (item, idx) => `${idx + 1}. ${item.product_name} x${item.quantity}`,
       ),
       "-".repeat(32),
-      notes ? `Notes: ${notes}` : "",
+      notes ? `${t("pos.kot.notes")} ${notes}` : "",
       "=".repeat(32),
       "",
     ].filter(Boolean);
@@ -899,7 +910,7 @@ export default function POSScreen() {
   };
 
   const handleDeleteHeldOrder = async (id: string) => {
-    if (!confirm("Delete this held order?")) return;
+    if (!confirm(t("pos.modals.deleteHeldOrder"))) return;
     try {
       await dbDeletePendingOrder(id, activeStoreId);
       await loadHeldOrders();
@@ -912,10 +923,9 @@ export default function POSScreen() {
 
   const handlePrint = () => {
     if (!receipt) return;
-    // Final foolproof delay of 3s for guaranteed device/driver stabilization
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       window.print();
-    }, 3000);
+    });
   };
 
   const handleWhatsAppShare = async () => {
@@ -948,7 +958,7 @@ export default function POSScreen() {
     const fileName = `receipt_${date}_${uuid()}.txt`;
     try {
       const path = await saveReceiptToFile(receipt, fileName);
-      alert(`Receipt saved to: ${path}`);
+      alert(t("pos.errors.receiptSaved", { path }));
     } catch (err) {
       uiLogger.error("Failed to save receipt", err);
     }
@@ -986,25 +996,31 @@ export default function POSScreen() {
     ? Math.round(lastOrder?.total || 0)
     : lastOrder?.total || 0;
   const currValue = settings.currency_symbol || (isIndia ? "₹" : "$");
+  const activeUpiId =
+    lastOrder?.payment_method === "paytm"
+      ? (settings.paytm_upi_id || settings.upi_id)
+      : lastOrder?.payment_method === "razorpay"
+        ? (settings.razorpay_upi_id || settings.upi_id)
+        : settings.upi_id;
   const upiUrlValue =
-    isIndia && settings.upi_id
-      ? `upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${totalToPayValue.toFixed(2)}&cu=INR`
+    isIndia && activeUpiId
+      ? `upi://pay?pa=${activeUpiId}&pn=${encodeURIComponent(settings.store_name)}&am=${totalToPayValue.toFixed(2)}&cu=INR`
       : null;
 
   useEffect(() => {
     if (upiUrlValue && qrRef.current) {
-      // Robust capture delay of 1.5s to ensure HD paint cycle is complete
-      const timer = setTimeout(() => {
-        const canvas = qrRef.current?.querySelector("canvas");
-        if (canvas) {
-          try {
-            setQrBase64(canvas.toDataURL("image/png", 1.0));
-          } catch (e) {
-            uiLogger.error("Failed to capture QR as image", e);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const canvas = qrRef.current?.querySelector("canvas");
+          if (canvas) {
+            try {
+              setQrBase64(canvas.toDataURL("image/png", 1.0));
+            } catch (e) {
+              uiLogger.error("Failed to capture QR as image", e);
+            }
           }
-        }
-      }, 1500);
-      return () => clearTimeout(timer);
+        });
+      });
     } else {
       setQrBase64(null);
     }
@@ -1014,7 +1030,7 @@ export default function POSScreen() {
     // keep processing early return if needed, but receipt should be a modal
   }
 
-  const allCategories = ["All", "Combos", ...categories];
+  const allCategories = [t("common.all"), t("products.combosTab"), ...categories];
   const activeCombos = getActiveCombos();
   const showCombos = selectedCategory === "Combos";
 
@@ -1024,7 +1040,7 @@ export default function POSScreen() {
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm no-print"
           role="region"
-          aria-label="Order complete"
+          aria-label={t("pos.receipt.orderComplete")}
         >
           <div
             className="card p-6 w-[450px] animate-in zoom-in-95 duration-200"
@@ -1038,7 +1054,7 @@ export default function POSScreen() {
                 className="font-display text-base"
                 style={{ color: "#F5C842" }}
               >
-                {isUnpaid ? "Payment Request" : "Order Complete!"}
+                {isUnpaid ? t("pos.receipt.paymentRequest") : t("pos.receipt.orderComplete")}
               </h2>
               <button
                 onClick={() => {
@@ -1046,7 +1062,7 @@ export default function POSScreen() {
                   setLastOrder(null);
                 }}
                 className="btn-ghost py-1 px-3"
-                aria-label="Close and start new order"
+                aria-label={t("pos.receipt.closeAndStartNew")}
               >
                 <X size={16} aria-hidden="true" />
               </button>
@@ -1100,13 +1116,22 @@ export default function POSScreen() {
                         className="flex flex-col items-center gap-3 p-4 bg-[#141418] rounded-xl border border-border my-4"
                       >
                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">
-                          Scan to Pay UPI
+                          {t("pos.receipt.scanToPayUpi")}
                         </div>
                         <div className="p-3 bg-white rounded-xl">
-                          <QRCodeSVG value={url} size={150} />
+                      {qrBase64 ? (
+                        <img
+                          src={qrBase64}
+                          alt="QR Code"
+                          width={150}
+                          height={150}
+                        />
+                      ) : (
+                        <QRCodeCanvas value={url} size={150} />
+                      )}
                         </div>
                         <div className="text-xs font-bold text-[#F5C842]">
-                          {settings.upi_id}
+                          {activeUpiId}
                         </div>
                       </div>
                     );
@@ -1118,7 +1143,7 @@ export default function POSScreen() {
               {upiUrlValue && (
                 <div className="no-print w-40 flex flex-col items-center gap-3 p-3 rounded-lg border border-border bg-[#141418]">
                   <div className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-wider">
-                    Scan to Pay UPI
+                    {t("pos.receipt.scanToPayUpi")}
                   </div>
                   <div className="p-2 bg-white rounded-lg">
                     <QRCodeSVG value={upiUrlValue} size={120} />
@@ -1128,7 +1153,7 @@ export default function POSScreen() {
                     {lastOrder?.total.toFixed(2)}
                   </div>
                   <div className="text-[9px] text-gray-500 text-center truncate w-full">
-                    {settings.upi_id}
+                    {activeUpiId}
                   </div>
                 </div>
               )}
@@ -1146,19 +1171,19 @@ export default function POSScreen() {
                   setLastOrder(null);
                 }}
               >
-                <Plus size={14} aria-hidden="true" /> New Order
+                <Plus size={14} aria-hidden="true" /> {t("pos.newOrder")}
               </button>
               <button
                 className="btn-ghost py-3 px-3 flex items-center gap-1.5"
                 onClick={handlePrint}
-                aria-label="Print receipt"
+                aria-label={t("pos.receipt.printReceipt")}
               >
                 <Printer size={16} aria-hidden="true" />
               </button>
               <button
                 className="btn-ghost py-3 px-3 flex items-center gap-1.5"
                 onClick={handleWhatsAppShare}
-                aria-label="Share receipt on WhatsApp"
+                aria-label={t("pos.receipt.shareWhatsapp")}
               >
                 <MessageCircle size={16} aria-hidden="true" />
 
@@ -1166,19 +1191,19 @@ export default function POSScreen() {
               <button
                 className="btn-ghost py-3 px-3 flex items-center gap-1.5"
                 onClick={handleEmailShare}
-                aria-label="Share receipt via email"
+                aria-label={t("pos.receipt.shareEmail")}
               >
                 <Mail size={16} aria-hidden="true" />
               </button>
               <button
                 className="btn-ghost py-3 px-3 flex items-center gap-1.5"
                 onClick={handleSaveReceipt}
-                aria-label="Save receipt to file"
+                aria-label={t("pos.receipt.saveToFile")}
               >
                 <Save size={16} aria-hidden="true" />
               </button>
               <button
-                className={`btn-ghost py-3 px-3 flex items-center gap-1.5 relative opacity-50"}`}
+                className={`btn-ghost py-3 px-3 flex items-center gap-1.5 relative opacity-50`}
                 onClick={async () => {
                   if (lastOrder?.delivery_phone) {
                     try {
@@ -1187,15 +1212,15 @@ export default function POSScreen() {
                         receipt,
                         activeStoreId,
                       );
-                      alert("SMS sent!");
+                      alert(t("pos.receipt.smsSent"));
                     } catch (e) {
-                      alert("Failed to send SMS");
+                      alert(t("pos.receipt.failedToSendSms"));
                     }
                   } else {
-                    alert("No phone number found for this order");
+                    alert(t("pos.receipt.noPhoneForOrder"));
                   }
                 }}
-                aria-label="Share receipt via SMS"
+                aria-label={t("pos.receipt.shareSms")}
               >
                 <Smartphone size={16} aria-hidden="true" />
 
@@ -1225,12 +1250,12 @@ export default function POSScreen() {
                 aria-hidden="true"
               />
               <label htmlFor="product-search" className="sr-only">
-                Search or scan barcode
+                {t("pos.searchBarcode")}
               </label>
               <input
                 id="product-search"
                 ref={searchInputRef}
-                placeholder="Search or scan barcode..."
+                placeholder={t("pos.searchBarcodePlaceholder")}
                 value={localSearch}
                 onChange={(e) => setLocalSearch(e.target.value)}
                 onKeyDown={(e) => {
@@ -1243,13 +1268,13 @@ export default function POSScreen() {
                 aria-describedby="search-hint"
               />
               <span id="search-hint" className="sr-only">
-                Press Enter to search by barcode, Escape to clear
+                {t("pos.searchHint")}
               </span>
               <button
                 onClick={() => setShowBarcodeScanner(true)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 btn-ghost p-1"
-                title="Scan barcode"
-                aria-label="Open barcode scanner"
+                title={t("pos.scanBarcodeTitle")}
+                aria-label={t("pos.openScanner")}
               >
                 <Camera size={16} />
               </button>
@@ -1262,9 +1287,9 @@ export default function POSScreen() {
               <button
                 onClick={() => setShowCustomItemModal(true)}
                 className="px-3 py-2 rounded-lg text-xs font-medium transition-all bg-[#141418] text-[#F5C842] border border-[#1E1E26] hover:bg-[#1E1E26] flex items-center gap-1"
-                aria-label="Add custom item"
+                aria-label={t("pos.addCustomItem")}
               >
-                <Plus size={12} /> Custom
+                <Plus size={12} /> {t("pos.custom")}
               </button>
               {allCategories.map((c) => {
                 const isSelected =
@@ -1305,8 +1330,8 @@ export default function POSScreen() {
             <button
               onClick={() => fetchProducts()}
               className="btn-ghost py-2 px-3"
-              title="Refresh"
-              aria-label="Refresh products"
+              title={t("common.refresh")}
+              aria-label={t("pos.refreshProducts")}
             >
               <RefreshCw
                 size={15}
@@ -1324,7 +1349,7 @@ export default function POSScreen() {
               aria-live="polite"
             >
               <RefreshCw size={24} className="spin" aria-hidden="true" />
-              <span className="sr-only">Loading products</span>
+              <span className="sr-only">{t("pos.loadingProducts")}</span>
             </div>
           ) : (
             <div
@@ -1341,7 +1366,7 @@ export default function POSScreen() {
                 outline: "none",
               }}
               role="grid"
-              aria-label={showCombos ? "Combo deals grid" : "Product grid"}
+              aria-label={showCombos ? t("pos.comboDeals") : t("pos.productGrid")}
               aria-readonly="true"
             >
               {showCombos ? (
@@ -1351,9 +1376,9 @@ export default function POSScreen() {
                     style={{ color: "#4A4A5A" }}
                   >
                     <Tag size={48} className="mb-4 opacity-50" />
-                    <p className="text-base mb-2">No Active Combos</p>
+                    <p className="text-base mb-2">{t("pos.noActiveCombos")}</p>
                     <p className="text-sm">
-                      Create combo deals in Products menu
+                      {t("pos.createComboHint")}
                     </p>
                   </div>
                 ) : (
@@ -1383,7 +1408,7 @@ export default function POSScreen() {
                           className="absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold"
                           style={{ background: "#2ECC71", color: "#0D0D0F" }}
                         >
-                          {combo.discount_percent.toFixed(0)}% OFF
+                          {combo.discount_percent.toFixed(0)}{t("products.percentOff")}
                         </div>
                         <div
                           className="w-10 h-10 rounded-lg mb-2 flex items-center justify-center"
@@ -1430,7 +1455,7 @@ export default function POSScreen() {
                             </span>
                           ))}
                           {combo.items.length > 2 && (
-                            <span> +{combo.items.length - 2} more</span>
+                            <span> +{t("common.showMore", { count: combo.items.length - 2 })}</span>
                           )}
                         </div>
                       </button>
@@ -1462,7 +1487,7 @@ export default function POSScreen() {
                             : undefined,
                       }}
                       role="gridcell"
-                      aria-label={`${p.name}, ${p.category}, ${curr}${p.price}, Stock: ${p.stock}${inCart ? `, Quantity in cart: ${inCart.quantity}` : ""}${oos ? ", Out of stock" : ""}`}
+                      aria-label={`${p.name}, ${p.category}, ${curr}${p.price}, ${t("pos.stock")} ${p.stock}${inCart ? `, ${t("pos.currentQty")} ${inCart.quantity}` : ""}${oos ? `, ${t("common.outOfStock")}` : ""}`}
                     >
                       {inCart && (
                         <div
@@ -1506,7 +1531,7 @@ export default function POSScreen() {
                         {p.price.toFixed(2)}
                       </div>
                       <div style={{ color: "#4A4A5A", fontSize: 10 }}>
-                        Stock: {p.stock}
+                        {t("pos.stock")} {p.stock}
                       </div>
                       {oos && (
                         <div
@@ -1518,7 +1543,7 @@ export default function POSScreen() {
                           }}
                           aria-hidden="true"
                         >
-                          OUT OF STOCK
+                          {t("common.outOfStock")}
                         </div>
                       )}
                     </button>
@@ -1534,7 +1559,7 @@ export default function POSScreen() {
           className="flex flex-col border-l border-border"
           style={{ width: 360 }}
           role="region"
-          aria-label="Shopping cart"
+          aria-label={t("pos.cart")}
         >
           <div className="p-3 border-b border-border bg-[#0D0D0F]/50">
             <div className="flex items-center justify-between mb-3">
@@ -1543,26 +1568,26 @@ export default function POSScreen() {
                   className="font-display font-bold text-sm uppercase tracking-tight text-[#F5C842]"
                   aria-live="polite"
                 >
-                  Cart ({itemCount})
+                  {t("pos.cartCount", { count: itemCount })}
                 </span>
                 <div
                   className="flex bg-[#141418] rounded-md p-0.5 border border-[#1E1E26]"
                   role="group"
-                  aria-label="Price Tier"
+                  aria-label={t("pos.retailPriceTier")}
                 >
                   <button
                     onClick={() => setPriceTier("retail")}
                     className={`px-2 py-0.5 text-[9px] font-bold rounded-sm transition-all ${priceTier === "retail" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
-                    aria-label="Retail Price Tier (Alt+Q)"
+                    aria-label={t("pos.retailPriceTier")}
                   >
-                    RETAIL
+                    {t("pos.retail")}
                   </button>
                   <button
                     onClick={() => setPriceTier("wholesale")}
                     className={`px-2 py-0.5 text-[9px] font-bold rounded-sm transition-all ${priceTier === "wholesale" ? "bg-[#F5C842] text-[#0D0D0F]" : "text-[#4A4A5A]"}`}
-                    aria-label="Wholesale Price Tier (Alt+Q)"
+                    aria-label={t("pos.wholesalePriceTier")}
                   >
-                    WHOL.
+                    {t("pos.wholesale")}
                   </button>
                 </div>
               </div>
@@ -1570,14 +1595,14 @@ export default function POSScreen() {
                 <button
                   onClick={handleNoSale}
                   className="p-1.5 rounded-lg text-[#2ECC71] bg-green-500/5 border border-green-500/10 hover:bg-green-500/10"
-                  title="Open Drawer"
+                  title={t("pos.openDrawer")}
                 >
                   <Banknote size={14} />
                 </button>
                 <button
                   onClick={handleClearCart}
                   className="p-1.5 rounded-lg text-[#E74C3C] bg-red-500/5 border border-red-500/10 hover:bg-red-500/10"
-                  title="Clear Cart"
+                  title={t("pos.clearCart")}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -1595,20 +1620,20 @@ export default function POSScreen() {
               </div>
             </div>
 
-            <div className="flex gap-1" role="group" aria-label="Order type">
+            <div className="flex gap-1" role="group" aria-label={t("pos.orderType")}>
               {[
                 { id: "dine_in", label: labels.dine_in, key: "1" },
                 {
                   id: "takeaway",
-                  label: labels.takeaway.split("/")[1] || "Takeaway",
+                  label: labels.takeaway.split("/")[1] || t("pos.takeaway"),
                   key: "2"
                 },
-                { id: "delivery", label: "Delivery", key: "3" },
+                { id: "delivery", label: t("pos.delivery"), key: "3" },
               ].map((type) => (
                 <button
                   key={type.id}
                   onClick={() => setOrderType(type.id as OrderType)}
-                  aria-label={`${type.label} order type (${type.key})`}
+                  aria-label={`${type.label} ${t("pos.orderType")} (${type.key})`}
                   className={`flex-1 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-all border ${orderType === type.id ? "bg-[#F5C842] border-[#F5C842] text-[#0D0D0F]" : "bg-[#141418] border-[#1E1E26] text-[#4A4A5A] hover:border-[#F5C842]/50"}`}
                 >
                   {type.label} <span className="text-[7px] opacity-40 ml-0.5">{type.key}</span>
@@ -1621,34 +1646,34 @@ export default function POSScreen() {
             <div className="grid grid-cols-2 gap-1 border border-[#1E1E26] rounded-sm p-1.5 bg-[#141418]/30 mb-1.5">
               <div className="flex flex-col">
                 <span className="text-[8px] uppercase font-bold text-[#4A4A5A] leading-none mb-1">
-                  Table
+                  {t("pos.tableLabel")}
                 </span>
                 <button
                   onClick={() => setShowTableModal(true)}
                   data-testid="select-table-btn"
                   className="text-[10px] font-bold text-white flex items-center justify-between hover:text-[#F5C842] transition-colors"
                 >
-                  <span className="truncate">{tableName || "No Table"}</span>
+                  <span className="truncate">{tableName || t("pos.noTableLabel")}</span>
                   <span className="text-[8px] text-[#F5C842] uppercase ml-1">
-                    (Edit)
+                    {t("pos.edit")}
                   </span>
                 </button>
               </div>
               <div className="flex flex-col border-l border-[#1E1E26] pl-1.5">
                 <span className="text-[8px] uppercase font-bold text-[#4A4A5A] leading-none mb-1">
-                  Customer
+                  {t("pos.customer")}
                 </span>
                 <button
                   onClick={() => setIsEditingCustomer(!isEditingCustomer)}
                   data-testid="edit-customer-btn"
-                  aria-label={`Customer: ${customerInfo?.name || activeCustomer?.name || "Walk-in"}. Click to edit.`}
+                  aria-label={`${t("pos.customer")}: ${customerInfo?.name || activeCustomer?.name || t("pos.walkInCustomer")}. ${t("pos.edit")}`}
                   className="text-[10px] font-bold text-white flex items-center justify-between hover:text-[#F5C842] transition-colors"
                 >
                   <span className="truncate">
-                    {customerInfo?.name || activeCustomer?.name || "Walk-in"}
+                    {customerInfo?.name || activeCustomer?.name || t("pos.walkInCustomer")}
                   </span>
                   <span className="text-[8px] text-[#F5C842] uppercase ml-1">
-                    (Edit)
+                    {t("pos.edit")}
                   </span>
                 </button>
               </div>
@@ -1662,7 +1687,7 @@ export default function POSScreen() {
                     className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#4A4A5A]"
                   />
                   <input
-                    placeholder="Customer Name"
+                    placeholder={t("pos.customerName")}
                     value={customerInfo?.name || ""}
                     onChange={(e) =>
                       setCustomerInfo({
@@ -1676,7 +1701,7 @@ export default function POSScreen() {
                 </div>
                 <div className="flex gap-2">
                   <input
-                    placeholder="Phone"
+                    placeholder={t("pos.phonePlaceholder")}
                     value={customerInfo?.phone || ""}
                     onChange={(e) => {
                       setCustomerInfo({
@@ -1689,7 +1714,7 @@ export default function POSScreen() {
                     className="text-[11px] py-1.5 flex-1 bg-[#0D0D0F]"
                   />
                   <input
-                    placeholder="Address"
+                    placeholder={t("pos.addressPlaceholder")}
                     value={customerInfo?.address || ""}
                     onChange={(e) =>
                       setCustomerInfo({
@@ -1724,7 +1749,7 @@ export default function POSScreen() {
                   onClick={() => setIsEditingCustomer(false)}
                   className="w-full py-1 text-[9px] font-bold uppercase bg-[#1E1E26] text-[#4A4A5A] rounded hover:text-white"
                 >
-                  Close Editor
+                  {t("pos.closeEditor")}
                 </button>
               </div>
             )}
@@ -1754,7 +1779,7 @@ export default function POSScreen() {
                   <circle cx="20" cy="21" r="1" />
                   <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
                 </svg>
-                <div className="mt-3 text-sm">Cart is empty</div>
+                <div className="mt-3 text-sm">{t("pos.cartEmpty")}</div>
               </div>
             )}
             {cart.map((item) => {
@@ -1774,13 +1799,13 @@ export default function POSScreen() {
                         updateQuantity(item.cartItemId, item.quantity - 1)
                       }
                       className="px-1 h-full hover:bg-[#F5C842] hover:text-[#0D0D0F] transition-colors"
-                      aria-label={`Decrease quantity of ${item.product.name}`}
+                      aria-label={`${t("pos.decreaseQty")} ${item.product.name}`}
                     >
                       <Minus size={8} />
                     </button>
                     <span
                       className="w-5 text-center text-[9px] font-bold leading-none"
-                      aria-label={`Current quantity: ${item.quantity}`}
+                      aria-label={`${t("pos.currentQty")} ${item.quantity}`}
                       aria-live="polite"
                     >
                       {item.quantity}x
@@ -1790,7 +1815,7 @@ export default function POSScreen() {
                         updateQuantity(item.cartItemId, item.quantity + 1)
                       }
                       className="px-1 h-full hover:bg-[#F5C842] hover:text-[#0D0D0F] transition-colors"
-                      aria-label={`Increase quantity of ${item.product.name}`}
+                      aria-label={`${t("pos.increaseQty")} ${item.product.name}`}
                     >
                       <Plus size={8} />
                     </button>
@@ -1808,7 +1833,7 @@ export default function POSScreen() {
                           productId: item.cartItemId,
                         })
                       }
-                      aria-label={`Override price for ${item.product.name}. Current: ${curr}${currentPrice.toFixed(2)}`}
+                      aria-label={`${t("pos.overridePrice")} ${item.product.name}. ${t("pos.currentQty")} ${curr}${currentPrice.toFixed(2)}`}
                       className="text-[10px] font-bold text-[#F5C842] tabular-nums"
                     >
                       {curr}
@@ -1817,7 +1842,7 @@ export default function POSScreen() {
                     <button
                       onClick={() => removeItem(item.cartItemId)}
                       className="text-[#4A4A5A] hover:text-[#E74C3C]"
-                      aria-label="Remove"
+                      aria-label={t("pos.remove")}
                     >
                       <X size={10} />
                     </button>
@@ -1832,7 +1857,7 @@ export default function POSScreen() {
               <div className="flex gap-1 items-center">
                 <div className="flex-1 flex items-center bg-[#141418] rounded-sm border border-[#1E1E26] px-1 py-0.5">
                   <span className="text-[8px] uppercase font-bold text-[#4A4A5A] mr-1">
-                    Disc
+                    {t("pos.disc")}
                   </span>
                   <input
                     type="number"
@@ -1859,7 +1884,7 @@ export default function POSScreen() {
                 </div>
                 <div className="flex-1 flex items-center bg-[#141418] rounded-sm border border-[#1E1E26] px-1 py-0.5">
                   <span className="text-[8px] uppercase font-bold text-[#4A4A5A] mr-1">
-                    Tip
+                    {t("pos.tip")}
                   </span>
                   <input
                     type="number"
@@ -1878,7 +1903,7 @@ export default function POSScreen() {
                     onChange={(e) =>
                       setCouponCode(e.target.value.toUpperCase())
                     }
-                    placeholder="Coupon"
+                    placeholder={t("pos.coupon")}
                     className="flex-1 bg-transparent border-none text-[10px] p-0 h-4"
                     disabled={!!appliedCoupon}
                   />
@@ -1888,7 +1913,7 @@ export default function POSScreen() {
                     }
                     className="text-[8px] font-bold text-[#F5C842] ml-1"
                   >
-                    {appliedCoupon ? "REM" : "APP"}
+                    {appliedCoupon ? t("pos.rem") : t("pos.app")}
                   </button>
                 </div>
               </div>
@@ -1896,14 +1921,14 @@ export default function POSScreen() {
               <div className="flex items-center justify-between py-1.5 border-y border-white/5 text-[10px] font-bold tracking-tight">
                 <div className="flex gap-2">
                   <div className="flex gap-0.5">
-                    <span className="text-[#4A4A5A]">SUB:</span>
+                    <span className="text-[#4A4A5A]">{t("pos.subtotalLabel")}</span>
                     <span>
                       {curr}
                       {totals.subtotal.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex gap-0.5">
-                    <span className="text-[#4A4A5A]">TAX:</span>
+                    <span className="text-[#4A4A5A]">{t("pos.taxLabel")}</span>
                     <span>
                       {curr}
                       {totals.tax_amount.toFixed(2)}
@@ -1912,7 +1937,7 @@ export default function POSScreen() {
                 </div>
                 <div className="flex gap-1 items-baseline" aria-live="polite">
                   <span className="text-[#4A4A5A] text-[8px] uppercase">
-                    Total:
+                    {t("pos.totalLabel")}
                   </span>
                   <span className="text-[15px] text-[#F5C842]">
                     {curr}
@@ -1927,8 +1952,7 @@ export default function POSScreen() {
                   <div className="flex items-center gap-1.5">
                     <Wallet size={12} className="text-[#3498DB]" />
                     <span className="text-[10px] text-[#9090A8]">
-                      Wallet: {curr}
-                      {walletBalance.toFixed(2)}
+                      {t("pos.walletBalance", { currency: curr, balance: walletBalance.toFixed(2) })}
                     </span>
                   </div>
                   <button
@@ -1948,19 +1972,28 @@ export default function POSScreen() {
                 role="group"
                 aria-label="Payment method"
               >
-                {(["cash", "card", "upi", "store_credit", "gift_card", "split"] as const).map(
-                  (m, idx) => (
+                {(["cash", "card", "upi", "paytm", "razorpay", "store_credit", "gift_card", "split"] as const).map(
+                  (m, idx) => {
+                    const paymentLabels: Record<string, string> = {
+                      cash: t("pos.payment.cash"),
+                      card: t("pos.payment.card"),
+                      upi: t("pos.payment.upi"),
+                      paytm: t("pos.payment.paytm"),
+                      razorpay: t("pos.payment.razorpay"),
+                      store_credit: t("pos.payment.credit"),
+                      gift_card: t("pos.payment.giftCard"),
+                      split: t("pos.payment.split"),
+                    };
+                    return (
                     <button
                       key={m}
-                      aria-label={`${m} payment method (Alt+${idx + 1})`}
+                      aria-label={`${paymentLabels[m]} (Alt+${idx + 1})`}
                       onClick={() => {
                         if (
                           m === "store_credit" &&
                           (!activeCustomer || !walletCustomerId)
                         ) {
-                          alert(
-                            "Please select a registered customer for Store Credit / Khata sales.",
-                          );
+                          alert(t("pos.errors.selectCustomerForCredit"));
                           setIsEditingCustomer(true);
                           return;
                         }
@@ -1971,9 +2004,7 @@ export default function POSScreen() {
                             Math.min(0, walletBalance),
                           );
                           if (limit > 0 && currentDebt + finalTotal > limit) {
-                            alert(
-                              `Credit limit exceeded! Limit: ${curr}${limit}, Current Debt: ${curr}${currentDebt.toFixed(2)}, This Order: ${curr}${finalTotal.toFixed(2)}`,
-                            );
+                            alert(t("pos.payment.creditLimitExceeded", { limit: `${curr}${limit}` }));
                             return;
                           }
                         }
@@ -1983,11 +2014,12 @@ export default function POSScreen() {
                         if (m === "gift_card") setShowGiftCardRedeem(true);
                       }}
                       className={`py-1.5 rounded-sm text-[8px] font-bold uppercase tracking-wider border transition-all ${paymentMethod === m ? "bg-[#F5C842] border-[#F5C842] text-[#0D0D0F]" : "bg-[#141418] border-[#1E1E26] text-[#4A4A5A] hover:border-[#F5C842]/50"}`}
-                      title={m === "store_credit" ? "Udhar / Khata" : ""}
+                      title={m === "store_credit" ? t("pos.payment.storeCredit") : paymentLabels[m]}
                     >
-                      {m === "store_credit" ? "Credit" : m}
+                      {paymentLabels[m]}
                     </button>
-                  ),
+                    );
+                  },
                 )}
               </div>
 
@@ -1995,7 +2027,7 @@ export default function POSScreen() {
                 <div className="flex flex-col gap-1">
                   <div className="flex gap-2 items-center bg-[#141418] rounded border border-[#1E1E26] px-2 py-1">
                     <span className="text-[9px] uppercase font-bold text-[#4A4A5A]">
-                      Tendered
+                      {t("pos.tendered")}
                     </span>
                     <input
                       type="number"
@@ -2010,48 +2042,61 @@ export default function POSScreen() {
                       onClick={() => setAmountPaid(finalTotal)}
                       className="text-[9px] font-bold text-[#F5C842] hover:underline"
                     >
-                      COPY
+                      {t("pos.copy")}
                     </button>
                   </div>
                   {amountPaid > finalTotal && (
                     <div className="flex justify-end">
                       <span className="text-[10px] font-bold text-[#2ECC71]">
-                        Change: {curr}
-                        {change.toFixed(2)}
+                        {t("pos.change", { currency: curr, amount: change.toFixed(2) })}
                       </span>
                     </div>
                   )}
                 </div>
               )}
 
-              {paymentMethod === "upi" && settings.upi_id && (
+              {paymentMethod === "upi" && settings.upi_id ? (
                 <div className="flex flex-col items-center gap-2 p-2 bg-[#141418] rounded border border-[#1E1E26]">
                   <QRCodeSVG
                     value={`upi://pay?pa=${settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${finalTotal}&cu=INR`}
                     size={80}
                   />
-                  <span className="text-[9px] text-[#4A4A5A] font-mono">
-                    {settings.upi_id}
-                  </span>
+                  <span className="text-[9px] text-[#4A4A5A] font-mono">{settings.upi_id}</span>
                 </div>
-              )}
+              ) : paymentMethod === "paytm" && (settings.paytm_upi_id || settings.upi_id) ? (
+                <div className="flex flex-col items-center gap-2 p-2 bg-[#141418] rounded border border-[#1E1E26]">
+                  <QRCodeSVG
+                    value={`upi://pay?pa=${settings.paytm_upi_id || settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${finalTotal}&cu=INR`}
+                    size={80}
+                  />
+                  <span className="text-[9px] text-[#4A4A5A] font-mono">{settings.paytm_upi_id || settings.upi_id}</span>
+                </div>
+              ) : paymentMethod === "razorpay" && (settings.razorpay_upi_id || settings.upi_id) ? (
+                <div className="flex flex-col items-center gap-2 p-2 bg-[#141418] rounded border border-[#1E1E26]">
+                  <QRCodeSVG
+                    value={`upi://pay?pa=${settings.razorpay_upi_id || settings.upi_id}&pn=${encodeURIComponent(settings.store_name)}&am=${finalTotal}&cu=INR`}
+                    size={80}
+                  />
+                  <span className="text-[9px] text-[#4A4A5A] font-mono">{settings.razorpay_upi_id || settings.upi_id}</span>
+                </div>
+              ) : null}
 
               <div className="flex gap-2 pt-2 border-t border-white/5">
                 <button
                   onClick={handlePrintKOT}
                   disabled={processing}
-                  aria-label="Print Kitchen Order Ticket (F9)"
+                  aria-label={t("pos.printKot")}
                   className="flex-1 py-2 text-[10px] font-bold uppercase bg-[#141418] border border-[#1E1E26] rounded hover:bg-[#1E1E26] transition-colors"
                 >
-                  KOT <span className="text-[7px] opacity-50 ml-1">F9</span>
+                  {t("pos.kot")} <span className="text-[7px] opacity-50 ml-1">F9</span>
                 </button>
                 <button
                   onClick={handleHoldOrder}
                   disabled={processing}
-                  aria-label="Hold order for later (F10)"
+                  aria-label={t("pos.holdForLater")}
                   className="flex-1 py-2 text-[10px] font-bold uppercase bg-[#141418] border border-[#1E1E26] rounded hover:bg-[#1E1E26] transition-colors"
                 >
-                  Hold <span className="text-[7px] opacity-50 ml-1">F10</span>
+                  {t("pos.hold")} <span className="text-[7px] opacity-50 ml-1">F10</span>
                 </button>
                 <button
                   onClick={() => {
@@ -2074,7 +2119,7 @@ export default function POSScreen() {
                   }}
                   disabled={processing || cart.length === 0}
                   className="p-2 rounded bg-[#141418] border border-[#1E1E26] hover:bg-[#1E1E26] shrink-0"
-                  title="Print Proforma Receipt"
+                  title={t("pos.printProforma")}
                 >
                   <QrCode size={14} className="text-[#F5C842]" />
                 </button>
@@ -2085,7 +2130,7 @@ export default function POSScreen() {
                     cart.length === 0 ||
                     (orderType === "dine_in" && !tableId)
                   }
-                  aria-label={`Charge ${curr}${finalTotal.toFixed(2)} (F12)`}
+                  aria-label={t("pos.charge", { currency: curr, amount: finalTotal.toFixed(2) })}
                   className="flex-[3] py-2 text-[11px] font-bold uppercase bg-[#F5C842] text-[#0D0D0F] rounded hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
                   data-testid="checkout-button"
                   data-checkout-button
@@ -2095,8 +2140,7 @@ export default function POSScreen() {
                   ) : (
                     <ChevronRight size={12} />
                   )}
-                  Charge {curr}
-                  {finalTotal.toFixed(2)}
+                  {t("pos.chargeLabel", { currency: curr, amount: finalTotal.toFixed(2) })}
                   <span className="text-[8px] opacity-60 ml-1 font-mono">F12</span>
                 </button>
               </div>
@@ -2109,16 +2153,16 @@ export default function POSScreen() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <Package size={20} className="text-[#F5C842]" /> Add Custom Item
+                <Package size={20} className="text-[#F5C842]" /> {t("pos.modals.addCustomItem")}
               </h3>
               <div className="space-y-4 mb-6">
                 <div>
                   <label className="text-xs text-[#9090A8] mb-1 block">
-                    Item Name
+                    {t("pos.modals.itemName")}
                   </label>
                   <input
                     autoFocus
-                    placeholder="e.g., Miscellaneous Repair"
+                    placeholder={t("pos.modals.itemNamePlaceholder")}
                     className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3"
                     value={customItem.name}
                     onChange={(e) =>
@@ -2128,7 +2172,7 @@ export default function POSScreen() {
                 </div>
                 <div>
                   <label className="text-xs text-[#9090A8] mb-1 block">
-                    Price ({curr})
+                    {t("pos.modals.itemPrice", { currency: curr })}
                   </label>
                   <input
                     type="number"
@@ -2149,7 +2193,7 @@ export default function POSScreen() {
                   }}
                   className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
                 <button
                   disabled={!customItem.name || !customItem.price}
@@ -2163,7 +2207,7 @@ export default function POSScreen() {
                   }}
                   className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl disabled:opacity-50"
                 >
-                  Add to Cart
+                  {t("pos.modals.addToCart")}
                 </button>
                 <button
                   disabled={!customItem.name || !customItem.price}
@@ -2177,7 +2221,7 @@ export default function POSScreen() {
                   }}
                   className="flex-1 py-3 bg-red-500/10 text-red-500 font-bold border border-red-500/20 rounded-xl disabled:opacity-50"
                 >
-                  Add as Return
+                  {t("pos.modals.addAsReturn")}
                 </button>
               </div>
             </div>
@@ -2190,7 +2234,7 @@ export default function POSScreen() {
             <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
               <div className="p-6 border-b border-[#1E1E26] flex items-center justify-between">
                 <h3 className="text-lg font-bold flex items-center gap-2">
-                  <Package size={20} className="text-[#F5C842]" /> Select Batch:{" "}
+                  <Package size={20} className="text-[#F5C842]" /> {t("pos.modals.selectBatch")}{" "}
                   {batchSelection.product.name}
                 </h3>
                 <button
@@ -2208,14 +2252,14 @@ export default function POSScreen() {
                     className="flex flex-col p-4 rounded-xl bg-[#141418] border border-[#1E1E26] hover:border-[#F5C842] transition-all text-left"
                   >
                     <div className="text-xs text-[#9090A8] uppercase font-bold mb-1">
-                      Batch #{b.batch_number}
+                      {t("pos.modals.batchNumber")}{b.batch_number}
                     </div>
                     <div className="text-base font-bold mb-2">
-                      Expires: {b.expiry_date || "No Expiry"}
+                      {t("pos.modals.expires")} {b.expiry_date || t("pos.modals.noExpiry")}
                     </div>
                     <div className="flex items-center justify-between mt-auto">
                       <span className="text-[#F5C842] font-bold">
-                        Qty: {b.quantity}
+                        {t("pos.modals.qty")} {b.quantity}
                       </span>
                     </div>
                   </button>
@@ -2226,7 +2270,7 @@ export default function POSScreen() {
                   onClick={() => setBatchSelection(null)}
                   className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
@@ -2239,8 +2283,8 @@ export default function POSScreen() {
             <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
               <div className="p-6 border-b border-[#1E1E26] flex items-center justify-between">
                 <h3 className="text-lg font-bold flex items-center gap-2">
-                  <Package size={20} className="text-[#F5C842]" /> Select
-                  Serial: {serialSelection.product.name}
+                  <Package size={20} className="text-[#F5C842]" /> {t("pos.modals.selectSerial")}{" "}
+                  {serialSelection.product.name}
                 </h3>
                 <button
                   onClick={() => setSerialSelection(null)}
@@ -2257,13 +2301,13 @@ export default function POSScreen() {
                     className="flex flex-col p-4 rounded-xl bg-[#141418] border border-[#1E1E26] hover:border-[#F5C842] transition-all text-left"
                   >
                     <div className="text-xs text-[#9090A8] uppercase font-bold mb-1">
-                      Serial Number
+                      {t("pos.modals.serialNumber")}
                     </div>
                     <div className="text-base font-bold mb-2 font-mono">
                       {s.serial_number}
                     </div>
                     <div className="mt-auto text-[10px] text-green-500 font-bold uppercase tracking-wider">
-                      Available
+                      {t("pos.modals.available")}
                     </div>
                   </button>
                 ))}
@@ -2273,7 +2317,7 @@ export default function POSScreen() {
                   onClick={() => setSerialSelection(null)}
                   className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
@@ -2285,10 +2329,10 @@ export default function POSScreen() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <Split size={20} className="text-[#F5C842]" /> Split Payment
+                <Split size={20} className="text-[#F5C842]" /> {t("pos.modals.splitPayment")}
               </h3>
               <p className="text-xs text-[#9090A8] mb-6">
-                Allocate the total amount across different payment methods.
+                {t("pos.modals.splitPaymentDesc")}
               </p>
 
               <div className="space-y-4 mb-6">
@@ -2328,21 +2372,21 @@ export default function POSScreen() {
 
               <div className="p-4 rounded-xl mb-6 bg-[#141418] border border-[#1E1E26]">
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-[#9090A8]">Order Total</span>
+                  <span className="text-[#9090A8]">{t("pos.modals.orderTotal")}</span>
                   <span className="font-bold text-white">
                     {curr}
                     {finalTotal.toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-[#9090A8]">Allocated</span>
+                  <span className="text-[#9090A8]">{t("pos.modals.allocated")}</span>
                   <span className="font-bold text-[#F5C842]">
                     {curr}
                     {splitPayments.reduce((s, p) => s + p.amount, 0).toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm pt-2 border-t border-[#1E1E26]">
-                  <span className="text-[#9090A8]">Remaining</span>
+                  <span className="text-[#9090A8]">{t("pos.modals.remaining")}</span>
                   <span
                     className={`font-bold ${Math.abs(finalTotal - splitPayments.reduce((s, p) => s + p.amount, 0)) < 0.01 ? "text-[#2ECC71]" : "text-[#E74C3C]"}`}
                   >
@@ -2363,7 +2407,7 @@ export default function POSScreen() {
                   }}
                   className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
                 <button
                   disabled={
@@ -2375,7 +2419,7 @@ export default function POSScreen() {
                   onClick={() => setShowSplitPaymentModal(false)}
                   className="flex-1 py-3 bg-[#F5C842] text-black font-bold rounded-xl disabled:opacity-50"
                 >
-                  Confirm Split
+                  {t("pos.modals.confirmSplit")}
                 </button>
               </div>
             </div>
@@ -2386,11 +2430,11 @@ export default function POSScreen() {
         {showPinModal?.type === "price_override" && overridePrice === "" && (
           <div className="fixed inset-0 z-[101] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-sm rounded-2xl p-6 shadow-2xl">
-              <h3 className="text-lg font-bold mb-4">Enter New Price</h3>
+              <h3 className="text-lg font-bold mb-4">{t("pos.modals.enterNewPrice")}</h3>
               <input
                 autoFocus
                 type="number"
-                placeholder={`New Price (${curr})`}
+                placeholder={t("pos.modals.newPrice", { currency: curr })}
                 className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3 mb-6"
                 value={overridePrice}
                 onChange={(e) => setOverridePrice(e.target.value)}
@@ -2408,7 +2452,7 @@ export default function POSScreen() {
                   }}
                   className="flex-1 py-3 bg-[#1E1E26] rounded-xl"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
@@ -2420,12 +2464,12 @@ export default function POSScreen() {
           <PinModal
             title={
               showPinModal.type === "price_override"
-                ? "Authorize Price Override"
+                ? t("pos.modals.authorizeOverride")
                 : showPinModal.type === "void"
-                  ? "Authorize Void Transaction"
-                  : "Authorize No Sale"
+                  ? t("pos.modals.authorizeVoid")
+                  : t("pos.modals.authorizeNoSale")
             }
-            description="Manager PIN required to perform this action."
+            description={t("pos.modals.managerPinRequired")}
             onCancel={() => {
               setShowPinModal(null);
               setOverridePrice("");
@@ -2478,14 +2522,14 @@ export default function POSScreen() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-md rounded-2xl shadow-2xl p-6">
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <Trash2 size={20} className="text-[#E74C3C]" /> Void Transaction
+                <Trash2 size={20} className="text-[#E74C3C]" /> {t("pos.modals.voidTransaction")}
               </h3>
               <p className="text-xs text-[#9090A8] mb-4">
-                Please provide a reason for cancelling this sale.
+                {t("pos.modals.voidReason")}
               </p>
               <textarea
                 autoFocus
-                placeholder="Reason for voiding (e.g., Customer changed mind, Mistake in entry)"
+                placeholder={t("pos.modals.voidReasonPlaceholder")}
                 className="w-full bg-[#141418] border-[#1E1E26] rounded-xl px-4 py-3 mb-6 h-24 resize-none"
                 value={voidReason}
                 onChange={(e) => setVoidReason(e.target.value)}
@@ -2498,14 +2542,14 @@ export default function POSScreen() {
                   }}
                   className="flex-1 py-3 bg-[#1E1E26] text-white font-bold rounded-xl"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
                 <button
                   disabled={!voidReason.trim()}
                   onClick={handleVoidOrder}
                   className="flex-1 py-3 bg-[#E74C3C] text-white font-bold rounded-xl disabled:opacity-50"
                 >
-                  Confirm Void
+                  {t("common.confirmVoid")}
                 </button>
               </div>
             </div>
@@ -2559,8 +2603,8 @@ export default function POSScreen() {
             <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
               <div className="p-6 border-b border-[#1E1E26] flex items-center justify-between">
                 <h3 className="text-lg font-bold flex items-center gap-2">
-                  <Package size={20} className="text-[#F5C842]" /> Select
-                  Variant: {variantSelection.product.name}
+                  <Package size={20} className="text-[#F5C842]" /> {t("pos.modals.selectVariant")}{" "}
+                  {variantSelection.product.name}
                 </h3>
                 <button
                   onClick={() => setVariantSelection(null)}
@@ -2588,7 +2632,7 @@ export default function POSScreen() {
                       <span
                         className={`text-[10px] px-1.5 py-0.5 rounded ${v.stock > 0 ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}
                       >
-                        {v.stock > 0 ? `In Stock: ${v.stock}` : "Out of Stock"}
+                        {v.stock > 0 ? `${t("common.inStock")}: ${v.stock}` : t("common.outOfStock")}
                       </span>
                     </div>
                   </button>
@@ -2599,7 +2643,7 @@ export default function POSScreen() {
                   onClick={() => setVariantSelection(null)}
                   className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
@@ -2612,8 +2656,7 @@ export default function POSScreen() {
             <div className="bg-[#0F0F12] border border-[#1E1E26] w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden">
               <div className="p-6 border-b border-[#1E1E26] flex items-center justify-between">
                 <h3 className="text-lg font-bold flex items-center gap-2">
-                  <FolderOpen size={20} className="text-[#F5C842]" /> Select
-                  Table
+                  <FolderOpen size={20} className="text-[#F5C842]" /> {t("pos.modals.selectTable")}
                 </h3>
                 <button
                   onClick={() => setShowTableModal(false)}
@@ -2650,7 +2693,7 @@ export default function POSScreen() {
                   onClick={() => setShowTableModal(false)}
                   className="px-6 py-2 bg-[#1E1E26] text-white font-bold rounded-xl"
                 >
-                  Close
+                  {t("common.close")}
                 </button>
               </div>
             </div>
@@ -2678,12 +2721,12 @@ export default function POSScreen() {
                   className="font-display text-base flex items-center gap-2"
                   style={{ color: "#F5C842" }}
                 >
-                  <Clock size={20} /> Held Orders
+                  <Clock size={20} /> {t("pos.modals.heldOrders")}
                 </h2>
                 <button
                   onClick={() => setShowHeldOrders(false)}
                   className="btn-ghost py-1 px-3"
-                  aria-label="Close"
+                  aria-label={t("common.close")}
                 >
                   <X size={16} />
                 </button>
@@ -2692,7 +2735,7 @@ export default function POSScreen() {
               {heldOrders.length === 0 ? (
                 <div className="text-center py-8" style={{ color: "#4A4A5A" }}>
                   <FolderOpen size={48} className="mx-auto mb-4 opacity-50" />
-                  <p>No held orders</p>
+                  <p>{t("pos.modals.noHeldOrders")}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -2704,7 +2747,7 @@ export default function POSScreen() {
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div>
-                          <span className="font-medium">Order #{idx + 1}</span>
+                          <span className="font-medium">{t("pos.modals.orderNumber", { number: idx + 1 })}</span>
                           <span
                             className="text-xs ml-2 px-2 py-0.5 rounded"
                             style={{
@@ -2743,7 +2786,7 @@ export default function POSScreen() {
                           onClick={() => handleRestoreOrder(order)}
                           className="btn-accent flex-1 py-1.5 text-xs font-bold uppercase"
                         >
-                          Restore
+                          {t("pos.modals.restore")}
                         </button>
                         <button
                           onClick={() => {
@@ -2753,7 +2796,7 @@ export default function POSScreen() {
                             setShowHeldOrders(false);
                           }}
                           className="py-1.5 px-3 rounded bg-[#141418] border border-[#1E1E26] text-[#F5C842] hover:bg-[#1E1E26] flex items-center justify-center"
-                          title="Print Payment Receipt"
+                          title={t("pos.modals.printPaymentReceipt")}
                         >
                           <Printer size={14} />
                         </button>
@@ -2761,7 +2804,7 @@ export default function POSScreen() {
                           onClick={() => handleDeleteHeldOrder(order.id)}
                           className="btn-danger py-1.5 px-3 text-xs font-bold uppercase"
                         >
-                          Delete
+                          {t("common.delete")}
                         </button>
                       </div>
                     </div>
@@ -2769,6 +2812,29 @@ export default function POSScreen() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Hidden QR Generator (High-res canvas for print) */}
+      <div
+        style={{
+          position: "fixed",
+          top: "-10000px",
+          left: "-10000px",
+          opacity: 0,
+          pointerEvents: "none",
+          zIndex: -1,
+        }}
+      >
+        {upiUrlValue && (
+          <div ref={qrRef} id="hidden-qr-generator">
+            <QRCodeCanvas
+              value={upiUrlValue}
+              size={512}
+              includeMargin={true}
+              level="H"
+            />
           </div>
         )}
       </div>
@@ -2824,34 +2890,25 @@ export default function POSScreen() {
                       className="text-[10pt] font-extrabold uppercase tracking-widest text-center"
                       style={{ color: "black" }}
                     >
-                      Scan to Pay UPI
+                      {t("pos.receipt.scanToPayUpi")}
                     </div>
                     <div
                       className="p-3 bg-white border-2 border-black rounded-xl"
                       style={{ backgroundColor: "white" }}
                     >
-                      {qrBase64 ? (
-                        <img
-                          src={qrBase64}
-                          alt="QR Code"
-                          width={150}
-                          height={150}
-                        />
-                      ) : (
-                        <QRCodeCanvas value={url} size={150} />
-                      )}
+                      <QRCodeSVG value={url} size={150} />
                     </div>
                     <div
                       className="text-[11pt] font-bold text-center"
                       style={{ color: "black" }}
                     >
-                      {settings.upi_id}
+                      {activeUpiId}
                     </div>
                     <div
                       className="text-[14pt] font-black text-center mt-1"
                       style={{ color: "black" }}
                     >
-                      PAYABLE: {currValue}
+                      {t("pos.totalLabel")} {currValue}
                       {totalToPayValue.toFixed(2)}
                     </div>
                   </div>
@@ -2867,28 +2924,7 @@ export default function POSScreen() {
         )}
       </div>
 
-      {/* Hidden QR Generator (Always available at top level) */}
-      <div
-        style={{
-          position: "fixed",
-          top: "-10000px",
-          left: "-10000px",
-          opacity: 0,
-          pointerEvents: "none",
-          zIndex: -1,
-        }}
-      >
-        {upiUrlValue && (
-          <div ref={qrRef} id="hidden-qr-generator">
-            <QRCodeCanvas
-              value={upiUrlValue}
-              size={512}
-              includeMargin={true}
-              level="H"
-            />
-          </div>
-        )}
-      </div>
+
 
       <BarcodeScannerModal
         isOpen={showBarcodeScanner}
@@ -2903,27 +2939,27 @@ export default function POSScreen() {
       {showGiftCardRedeem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }}>
           <div className="card p-6 w-full max-w-md">
-            <h2 className="font-semibold text-base mb-4">Redeem Gift Card</h2>
+            <h2 className="font-semibold text-base mb-4">{t("pos.modals.redeemGiftCard")}</h2>
             <div className="mb-4">
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Gift Card Code</label>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("pos.modals.giftCardCode")}</label>
               <input
                 value={giftCardCode}
                 onChange={(e) => setGiftCardCode(e.target.value.toUpperCase())}
-                placeholder="Enter code"
+                placeholder={t("pos.modals.giftCardCodePlaceholder")}
               />
             </div>
             <div className="mb-4">
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Amount to Redeem</label>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("pos.modals.redeemAmount")}</label>
               <input
                 type="number"
                 step="0.01"
                 value={giftCardAmount}
                 onChange={(e) => setGiftCardAmount(e.target.value)}
-                placeholder="Enter amount"
+                placeholder={t("pos.modals.enterAmountPlaceholder")}
               />
             </div>
             <div className="flex gap-2">
-              <button onClick={() => { setShowGiftCardRedeem(false); setGiftCardCode(""); setGiftCardAmount(""); }} className="btn-ghost flex-1">Cancel</button>
+              <button onClick={() => { setShowGiftCardRedeem(false); setGiftCardCode(""); setGiftCardAmount(""); }} className="btn-ghost flex-1">{t("common.cancel")}</button>
               <button
                 onClick={async () => {
                   const amount = parseFloat(giftCardAmount);
@@ -2950,16 +2986,16 @@ export default function POSScreen() {
                       setGiftCardCode("");
                       setGiftCardAmount("");
                     } else {
-                      alert("Invalid gift card or insufficient balance");
+                      alert(t("common.error"));
                     }
                   } catch (err) {
-                    alert("Failed to redeem gift card");
+                    alert(t("common.somethingWentWrong"));
                   }
                 }}
                 className="btn-accent flex-1"
                 disabled={!giftCardCode || !giftCardAmount}
               >
-                Redeem
+                {t("pos.modals.redeem")}
               </button>
             </div>
           </div>

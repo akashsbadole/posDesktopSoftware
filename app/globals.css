@@ -14,6 +14,7 @@
   --accent-hover: #E8BB3A;
   --danger: #E74C3C;
   --success: #2ECC71;
+  --font-scale: 1;
 }
 
 [data-theme="light"] {
@@ -41,7 +42,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
-  font-size: 16px;
+  font-size: calc(16px * var(--font-scale));
   -webkit-user-select: none;
   user-select: none;
 }

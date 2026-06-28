@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@/lib/i18n";
 import { useState, useEffect, useRef } from "react";
 import {
   Check,
@@ -39,49 +40,51 @@ import {
 import { useSettingsStore, useAuthStore } from "@/lib/stores";
 import pako from "pako";
 import { countryPresets, taxSystems } from "@/lib/countries";
+import { storeTypeConfigs, applyStoreTypeDefaults } from "@/lib/utils/storeTypeConfig";
 
-const validatePhone = (phone: string): string | null => {
+const validatePhone = (phone: string, t: (k: string) => string): string | null => {
   if (!phone) return null;
   const cleaned = phone.replace(/[\s\-\(\)]/g, "");
   if (!/^\+?[\d]{7,15}$/.test(cleaned)) {
-    return "Invalid phone number format";
+    return t("settings.validation.invalidPhone");
   }
   return null;
 };
 
-const validateEmail = (email: string): string | null => {
+const validateEmail = (email: string, t: (k: string) => string): string | null => {
   if (!email) return null;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return "Invalid email format";
+    return t("settings.validation.invalidEmail");
   }
   return null;
 };
 
-const validateUrl = (url: string): string | null => {
+const validateUrl = (url: string, t: (k: string) => string): string | null => {
   if (!url) return null;
   try {
     new URL(url);
     return null;
   } catch {
-    return "Invalid URL format";
+    return t("settings.validation.invalidUrl");
   }
 };
 
-const validateTaxRate = (rate: number): string | null => {
+const validateTaxRate = (rate: number, t: (k: string) => string): string | null => {
   if (isNaN(rate) || rate < 0 || rate > 100) {
-    return "Tax rate must be between 0 and 100";
+    return t("settings.validation.taxRateRange");
   }
   return null;
 };
 
-const validatePort = (port: number): string | null => {
+const validatePort = (port: number, t: (k: string) => string): string | null => {
   if (isNaN(port) || port < 1 || port > 65535) {
-    return "Port must be between 1 and 65535";
+    return t("settings.validation.portRange");
   }
   return null;
 };
 
 export default function SettingsScreen() {
+  const t = useTranslation();
   const {
     activeStoreId,
     settings,
@@ -167,7 +170,8 @@ export default function SettingsScreen() {
       twilio_sid: "",
       twilio_token: "",
       twilio_phone: "",
-
+      lan_sync_enabled: false,
+      lan_server_port: 8765,
       logo_url: "",
       primary_color: "#F5C842",
       secondary_color: "#1E1E26",
@@ -185,9 +189,17 @@ export default function SettingsScreen() {
       tax_inclusive: false,
       tax_breakdown: "[]",
       auto_print_kot: false,
+      auto_print_receipt: false,
+      receipt_printer_name: "",
+      allow_negative_stock: true,
       auto_reminders_enabled: false,
       auto_reminder_days: 30,
+      license_key: "",
+      onboarding_completed: false,
       hidden_menus: "",
+      store_type: "general",
+      paytm_upi_id: "",
+      razorpay_upi_id: "",
     },
   );
 
@@ -214,19 +226,19 @@ export default function SettingsScreen() {
   const handleSave = async () => {
     const newErrors: Record<string, string> = {};
 
-    const phoneError = validatePhone(localSettings.phone);
+    const phoneError = validatePhone(localSettings.phone, t);
     if (phoneError) newErrors.phone = phoneError;
 
-    const emailError = validateEmail(localSettings.contact_email);
+    const emailError = validateEmail(localSettings.contact_email, t);
     if (emailError) newErrors.contact_email = emailError;
 
-    const websiteError = validateUrl(localSettings.contact_website);
+    const websiteError = validateUrl(localSettings.contact_website, t);
     if (websiteError) newErrors.contact_website = websiteError;
 
-    const taxRateError = validateTaxRate(localSettings.tax_rate);
+    const taxRateError = validateTaxRate(localSettings.tax_rate, t);
     if (taxRateError) newErrors.tax_rate = taxRateError;
 
-    const whatsappUrlError = validateUrl(localSettings.whatsapp_api_url);
+    const whatsappUrlError = validateUrl(localSettings.whatsapp_api_url, t);
     if (whatsappUrlError) newErrors.whatsapp_api_url = whatsappUrlError;
 
     if (Object.keys(newErrors).length > 0) {
@@ -242,7 +254,7 @@ export default function SettingsScreen() {
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
       console.error("Failed to save settings:", err);
-      alert("Failed to save settings. Please try again.");
+      alert(t("common.failedToSave"));
     }
   };
 
@@ -258,11 +270,11 @@ export default function SettingsScreen() {
       setSyncMsg(
         r.error
           ? { text: r.error, ok: false }
-          : { text: `✓ Cloud Sync: Pushed local changes to Neon`, ok: true },
+          : { text: t("settings.syncPushSuccess"), ok: true },
       );
       if (!r.error) setLastSyncTime(new Date().toLocaleTimeString());
     } catch (err) {
-      setSyncMsg({ text: `Sync failed: ${err}`, ok: false });
+      setSyncMsg({ text: t("settings.syncFailed", { error: String(err) }), ok: false });
     }
     setIsSyncing(false);
   };
@@ -275,11 +287,11 @@ export default function SettingsScreen() {
       setSyncMsg(
         r.error
           ? { text: r.error, ok: false }
-          : { text: `✓ Cloud Sync: Pulled changes from Neon`, ok: true },
+          : { text: t("settings.syncPullSuccess"), ok: true },
       );
       if (!r.error) setLastSyncTime(new Date().toLocaleTimeString());
     } catch (err) {
-      setSyncMsg({ text: `Sync failed: ${err}`, ok: false });
+      setSyncMsg({ text: t("settings.syncFailed", { error: String(err) }), ok: false });
     }
     setIsSyncing(false);
   };
@@ -302,7 +314,7 @@ export default function SettingsScreen() {
       a.click();
       URL.revokeObjectURL(url);
       setBackupMsg({
-        text: "✓ Backup exported successfully! (compressed)",
+        text: t("settings.backupExportSuccess"),
         ok: true,
       });
     } catch (err) {
@@ -334,12 +346,12 @@ export default function SettingsScreen() {
 
       const result = await importBackup(jsonString, activeStoreId);
       setBackupMsg({
-        text: `✓ Imported ${result.products_imported} products and ${result.orders_imported} orders`,
+        text: t("settings.importSuccess", { products: result.products_imported, orders: result.orders_imported }),
         ok: true,
       });
     } catch (err) {
       setBackupMsg({
-        text: `Error: Invalid backup file or import failed`,
+        text: t("settings.importFailed"),
         ok: false,
       });
     }
@@ -372,12 +384,12 @@ export default function SettingsScreen() {
 
       const result = await importBackup(jsonString, activeStoreId);
       setRestoreMsg({
-        text: `✓ Restored ${result.products_imported} products and ${result.orders_imported} orders`,
+        text: t("settings.restoreSuccess", { products: result.products_imported, orders: result.orders_imported }),
         ok: true,
       });
     } catch (err) {
       setRestoreMsg({
-        text: `Error: Invalid backup file or restore failed`,
+        text: t("settings.restoreFailed"),
         ok: false,
       });
     }
@@ -394,7 +406,7 @@ export default function SettingsScreen() {
     setSmsMsg(null);
     try {
       await sendSmsNotification(testPhone, testMessage, activeStoreId);
-      setSmsMsg({ text: "✓ SMS sent successfully!", ok: true });
+      setSmsMsg({ text: t("settings.smsSent"), ok: true });
       setTestPhone("");
       setTestMessage("");
     } catch (err) {
@@ -416,7 +428,7 @@ export default function SettingsScreen() {
     try {
       await sendWhatsAppMessage(waTestPhone, waTestMessage, activeStoreId);
       setWhatsappMsg({
-        text: "✓ WhatsApp message sent successfully!",
+        text: t("settings.whatsappSent"),
         ok: true,
       });
       setWaTestPhone("");
@@ -428,16 +440,14 @@ export default function SettingsScreen() {
   };
 
   const handleSeedData = async () => {
-    const confirmed = window.confirm(
-      "This will populate your database with sample data. Are you sure you want to proceed?",
-    );
+    const confirmed = window.confirm(t("settings.sampleDataConfirm"));
     if (!confirmed) return;
 
     setSeeding(true);
     setSeedMsg(null);
     try {
       await seedDatabase();
-      setSeedMsg({ text: "✓ Sample data seeded successfully!", ok: true });
+      setSeedMsg({ text: t("settings.sampleDataSeeded"), ok: true });
     } catch (err) {
       setSeedMsg({ text: `Error: ${err}`, ok: false });
     }
@@ -445,14 +455,10 @@ export default function SettingsScreen() {
   };
 
   const handleResetDatabase = async () => {
-    const confirmed = window.confirm(
-      "WARNING: This will permanently delete ALL data and reset the database to empty state. This action cannot be undone. Are you absolutely sure?",
-    );
+    const confirmed = window.confirm(t("settings.resetWarning"));
     if (!confirmed) return;
 
-    const doubleConfirm = window.confirm(
-      "FINAL WARNING: All products, orders, customers, and settings will be lost forever. Confirm to proceed.",
-    );
+    const doubleConfirm = window.confirm(t("settings.resetFinalWarning"));
     if (!doubleConfirm) return;
 
     setResetting(true);
@@ -460,7 +466,7 @@ export default function SettingsScreen() {
     try {
       await resetDatabase();
       setSeedMsg({
-        text: "✓ Database reset successfully! All data has been cleared.",
+        text: t("settings.resetComplete"),
         ok: true,
       });
     } catch (err) {
@@ -470,9 +476,7 @@ export default function SettingsScreen() {
   };
 
   const handleResetAndSeed = async () => {
-    const confirmed = window.confirm(
-      "This will reset the database and populate it with sample data. All existing data will be lost. Continue?",
-    );
+    const confirmed = window.confirm(t("settings.resetAndSeedConfirm"));
     if (!confirmed) return;
 
     setResetAndSeeding(true);
@@ -480,7 +484,7 @@ export default function SettingsScreen() {
     try {
       await resetAndSeedDatabase();
       setSeedMsg({
-        text: "✓ Database reset and seeded successfully! Sample data is now available.",
+        text: t("settings.resetAndSeedComplete"),
         ok: true,
       });
     } catch (err) {
@@ -497,14 +501,14 @@ export default function SettingsScreen() {
       return;
     }
     if (newPin !== confirmPin) {
-      setPinMsg({ text: "PINs do not match", ok: false });
+      setPinMsg({ text: t("settings.pinMismatch"), ok: false });
       return;
     }
     setChangingPin(true);
     setPinMsg(null);
     try {
       await changePin(user?.id || "", newPin);
-      setPinMsg({ text: "✓ PIN changed successfully!", ok: true });
+      setPinMsg({ text: t("settings.pinChanged"), ok: true });
       setNewPin("");
       setConfirmPin("");
     } catch (err) {
@@ -537,7 +541,7 @@ export default function SettingsScreen() {
 
   return (
     <div className="h-full overflow-y-auto p-5">
-      <h1 className="font-display text-xl font-bold mb-6">Settings</h1>
+      <h1 className="font-display text-xl font-bold mb-6">{t("settings.title")}</h1>
       <div className="grid grid-cols-2 gap-4">
         {/* Premium Plan Highlight */}
         <div
@@ -556,9 +560,9 @@ export default function SettingsScreen() {
                 <Key size={24} color="#0D0D0F" />
               </div>
               <div>
-                <h2 className="text-lg font-bold">Completely Free Forever</h2>
+                <h2 className="text-lg font-bold">{t("settings.freeForever")}</h2>
                 <p className="text-xs" style={{ color: "#4A4A5A" }}>
-                  All features included - no subscriptions, no hidden fees!
+                  {t("settings.freeSubtitle")}
                 </p>
               </div>
             </div>
@@ -566,30 +570,12 @@ export default function SettingsScreen() {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
             {[
-              {
-                label: "Cloud Sync (Neon)",
-                desc: "Real-time backup & multi-device sync",
-              },
-              {
-                label: "Multi-Store",
-                desc: "Manage all branches from one app",
-              },
-              {
-                label: "Advanced Inventory",
-                desc: "Ingredients, POs & Suppliers",
-              },
-              {
-                label: "Loyalty & CRM",
-                desc: "Customer Wallet & Points system",
-              },
-              {
-                label: "Staff Payroll",
-                desc: "Salary calculations & scheduling",
-              },
-              {
-                label: "SMS & WhatsApp",
-                desc: "Automated digital receipts",
-              },
+              { label: t("settings.featureCloudSync"), desc: t("settings.featureCloudSyncDesc") },
+              { label: t("settings.featureMultiStore"), desc: t("settings.featureMultiStoreDesc") },
+              { label: t("settings.featureInventory"), desc: t("settings.featureInventoryDesc") },
+              { label: t("settings.featureLoyalty"), desc: t("settings.featureLoyaltyDesc") },
+              { label: t("settings.featurePayroll"), desc: t("settings.featurePayrollDesc") },
+              { label: t("settings.featureSmsWhatsapp"), desc: t("settings.featureSmsWhatsappDesc") },
             ].map((f, i) => (
               <div key={i} className="flex gap-2">
                 <div className="mt-1">
@@ -610,7 +596,7 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <Store size={16} style={{ color: "#F5C842" }} />
-            <h2 className="font-semibold">Store Information</h2>
+            <h2 className="font-semibold">{t("settings.storeInfo")}</h2>
           </div>
           <div className="space-y-3">
             <div>
@@ -618,7 +604,7 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Store Name
+                {t("settings.storeName")}
               </label>
               <input
                 value={localSettings.store_name}
@@ -630,7 +616,7 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Address
+                {t("settings.address")}
               </label>
               <input
                 value={localSettings.address}
@@ -642,7 +628,7 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Phone
+                {t("settings.phone")}
               </label>
               <input
                 value={localSettings.phone}
@@ -650,7 +636,7 @@ export default function SettingsScreen() {
                   updateLocal("phone", e.target.value);
                   setErrors((prev) => ({
                     ...prev,
-                    phone: validatePhone(e.target.value) || "",
+                    phone: validatePhone(e.target.value, t) || "",
                   }));
                 }}
                 className={errors.phone ? "error" : ""}
@@ -665,11 +651,76 @@ export default function SettingsScreen() {
           </div>
         </div>
 
+        {/* Store Type Selection */}
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <span style={{ color: "#F5C842" }}>🏢</span>
+            <h2 className="font-semibold">{t("settings.storeType")}</h2>
+          </div>
+          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
+            {t("settings.storeTypeDesc")}
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {Object.entries(storeTypeConfigs).map(([key, config]) => (
+              <button
+                key={key}
+                onClick={() => {
+                  const defaults = applyStoreTypeDefaults(key as 'food' | 'retail' | 'pharmacy' | 'general');
+                  setLocalSettings((prev) => ({
+                    ...prev,
+                    ...defaults,
+                  }));
+                }}
+                className="flex flex-col items-start gap-2 px-4 py-3 rounded-lg border transition-all text-left"
+                style={{
+                  background:
+                    localSettings.store_type === key
+                      ? "rgba(245,200,66,0.15)"
+                      : "transparent",
+                  borderColor:
+                    localSettings.store_type === key
+                      ? "#F5C842"
+                      : "#1E1E26",
+                }}
+              >
+                <div className="flex items-center gap-2 w-full">
+                  <span className="text-lg">{config.icon}</span>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">{config.label}</div>
+                    <div className="text-[10px]" style={{ color: "#4A4A5A" }}>
+                      {config.description}
+                    </div>
+                  </div>
+                  {localSettings.store_type === key && (
+                    <Check
+                      size={16}
+                      style={{ color: "#F5C842" }}
+                    />
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+          <div
+            className="mt-4 p-3 rounded-lg text-xs"
+            style={{
+              background: "rgba(46,204,113,0.08)",
+              borderLeft: "3px solid #2ECC71",
+              color: "#4A4A5A",
+            }}
+          >
+            <strong style={{ color: "#2ECC71" }}>{t("settings.storeTypeInfo")}</strong>
+            <p className="mt-1">
+              {t("settings.storeTypeInfoDesc")}
+            </p>
+          </div>
+        </div>
+
         {/* Location & Currency */}
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <span style={{ color: "#F5C842" }}>🌍</span>
-            <h2 className="font-semibold">Location & Currency</h2>
+            <h2 className="font-semibold">{t("settings.locationCurrency")}</h2>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -677,7 +728,7 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Country
+                {t("settings.country")}
               </label>
               <select
                 value={localSettings.country}
@@ -713,7 +764,7 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Currency
+                {t("settings.currency")}
               </label>
               <select
                 value={localSettings.currency}
@@ -754,7 +805,7 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Currency Symbol
+                {t("settings.currencySymbol")}
               </label>
               <input
                 value={localSettings.currency_symbol}
@@ -769,7 +820,7 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <span style={{ color: "#F5C842" }}>💰</span>
-            <h2 className="font-semibold">Tax Configuration</h2>
+            <h2 className="font-semibold">{t("settings.taxConfig")}</h2>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -777,7 +828,7 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Tax System
+                {t("settings.taxSystem")}
               </label>
               <select
                 value={localSettings.tax_system}
@@ -803,8 +854,8 @@ export default function SettingsScreen() {
                 style={{ color: "#4A4A5A" }}
               >
                 {taxSystems.find((s) => s.id === localSettings.tax_system)
-                  ?.label || "Tax"}{" "}
-                Rate (%)
+                  ?.label || t("settings.taxName")}{" "}
+                {t("settings.ratePercent")}
               </label>
               <input
                 type="number"
@@ -814,7 +865,7 @@ export default function SettingsScreen() {
                   updateLocal("tax_rate", val);
                   setErrors((prev) => ({
                     ...prev,
-                    tax_rate: validateTaxRate(val) || "",
+                    tax_rate: validateTaxRate(val, t) || "",
                   }));
                 }}
                 min={0}
@@ -833,12 +884,12 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Tax Name
+                {t("settings.taxName")}
               </label>
               <input
                 value={localSettings.tax_name}
                 onChange={(e) => updateLocal("tax_name", e.target.value)}
-                placeholder={localSettings.tax_system === "gst" ? "GST" : "Tax"}
+                placeholder={localSettings.tax_system === "gst" ? t("settings.taxName") : t("settings.taxName")}
               />
             </div>
             <div>
@@ -846,21 +897,21 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Tax ID / GSTIN
+                {t("settings.taxId")}
               </label>
               <input
                 value={localSettings.tax_id}
                 onChange={(e) => updateLocal("tax_id", e.target.value)}
                 placeholder={
                   localSettings.tax_system === "gst"
-                    ? "29AAAAA0000A1Z5"
-                    : "Tax ID"
+                    ? t("settings.taxIdPlaceholder")
+                    : t("settings.taxId")
                 }
               />
             </div>
             <div className="flex items-center justify-between">
               <label className="text-xs" style={{ color: "#4A4A5A" }}>
-                Tax Inclusive Pricing
+                {t("settings.taxInclusive")}
               </label>
               <div
                 className="toggle"
@@ -889,12 +940,12 @@ export default function SettingsScreen() {
           </div>
           <div className="mt-3">
             <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
-              Business Name (for receipts)
+              {t("settings.businessName")}
             </label>
             <input
               value={localSettings.business_name}
               onChange={(e) => updateLocal("business_name", e.target.value)}
-              placeholder="Your Business Name"
+              placeholder={t("settings.businessNamePlaceholder")}
             />
           </div>
           {localSettings.country === "IN" && (
@@ -903,12 +954,12 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                UPI ID (for receipts)
+                {t("settings.upiId")}
               </label>
               <input
                 value={localSettings.upi_id || ""}
                 onChange={(e) => updateLocal("upi_id", e.target.value)}
-                placeholder="merchant@upi"
+                placeholder={t("settings.upiIdPlaceholder")}
               />
             </div>
           )}
@@ -918,89 +969,203 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Merchant ID (for UPI payments)
+                {t("settings.merchantId")}
               </label>
               <input
                 value={localSettings.merchant_id || ""}
                 onChange={(e) => updateLocal("merchant_id", e.target.value)}
-                placeholder="Merchant ID"
+                placeholder={t("settings.merchantIdPlaceholder")}
               />
             </div>
           )}
         </div>
 
-        {/* Language & Region */}
-        <div className="card p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <span style={{ color: "#F5C842" }}>🌐</span>
-            <h2 className="font-semibold">Language</h2>
+          {/* Language & Region */}
+          <div className="card p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <span style={{ color: "#F5C842" }}>🌐</span>
+              <h2 className="font-semibold">{t("settings.languageSection")}</h2>
+            </div>
+            <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
+              {t("settings.languageDesc")}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { code: "en", name: "English" },
+                { code: "hi", name: "हिंदी (Hindi)" },
+                { code: "mr", name: "मराठी (Marathi)" },
+                { code: "te", name: "తెలుగు (Telugu)" },
+                { code: "ta", name: "தமிழ் (Tamil)" },
+                { code: "gu", name: "ગુજરાતી (Gujarati)" },
+              ].map((lang) => (
+                <button
+                  key={lang.code}
+                  onClick={() => {
+                    updateLocal("language", lang.code);
+                    if (typeof window !== "undefined") {
+                      localStorage.setItem("pos_language", lang.code);
+                      window.location.reload();
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-3 rounded-lg border transition-all text-left"
+                  style={{
+                    background:
+                      localSettings.language === lang.code
+                        ? "rgba(245,200,66,0.15)"
+                        : "transparent",
+                    borderColor:
+                      localSettings.language === lang.code
+                        ? "#F5C842"
+                        : "#1E1E26",
+                    color:
+                      localSettings.language === lang.code
+                        ? "#F5C842"
+                        : "#9090A8",
+                  }}
+                >
+                  <span className="text-sm">
+                    {lang.code === "en" ? "🇺🇸" : "🇮🇳"}
+                  </span>
+                  <span className="text-xs font-medium">{lang.name}</span>
+                  {localSettings.language === lang.code && (
+                    <Check
+                      size={14}
+                      className="ml-auto"
+                      style={{ color: "#F5C842" }}
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
-          <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
-            Choose your preferred language for the POS interface.
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { code: "en", name: "English" },
-              { code: "hi", name: "हिंदी (Hindi)" },
-              { code: "mr", name: "मराठी (Marathi)" },
-              { code: "te", name: "తెలుగు (Telugu)" },
-              { code: "ta", name: "தமிழ் (Tamil)" },
-              { code: "gu", name: "ગુજરાતી (Gujarati)" },
-            ].map((lang) => (
-              <button
-                key={lang.code}
-                onClick={() => {
-                  updateLocal("language", lang.code);
-                  if (typeof window !== "undefined") {
-                    localStorage.setItem("pos_language", lang.code);
-                    window.location.reload();
-                  }
-                }}
-                className="flex items-center gap-2 px-4 py-3 rounded-lg border transition-all text-left"
-                style={{
-                  background:
-                    localSettings.language === lang.code
-                      ? "rgba(245,200,66,0.15)"
-                      : "transparent",
-                  borderColor:
-                    localSettings.language === lang.code
-                      ? "#F5C842"
-                      : "#1E1E26",
-                  color:
-                    localSettings.language === lang.code
-                      ? "#F5C842"
-                      : "#9090A8",
-                }}
-              >
-                <span className="text-sm">
-                  {lang.code === "en" ? "🇺🇸" : "🇮🇳"}
-                </span>
-                <span className="text-xs font-medium">{lang.name}</span>
-                {localSettings.language === lang.code && (
-                  <Check
-                    size={14}
-                    className="ml-auto"
-                    style={{ color: "#F5C842" }}
+
+          {/* Payment Gateways */}
+          <div className="card p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <span style={{ color: "#F5C842" }}>💳</span>
+              <h2 className="font-semibold">{t("settings.paymentGateways")}</h2>
+            </div>
+            
+            {/* Paytm Configuration */}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-4">{t("settings.paytmConfiguration")}</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                    {t("settings.paytmMerchantId")}
+                  </label>
+                  <input
+                    value={localSettings.paytm_merchant_id || ""}
+                    onChange={(e) => updateLocal("paytm_merchant_id", e.target.value)}
+                    placeholder={t("settings.paytmMerchantIdPlaceholder")}
                   />
-                )}
-              </button>
-            ))}
+                </div>
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                    {t("settings.paytmMerchantKey")}
+                  </label>
+                  <input
+                    type="password"
+                    value={localSettings.paytm_merchant_key || ""}
+                    onChange={(e) => updateLocal("paytm_merchant_key", e.target.value)}
+                    placeholder={t("settings.paytmMerchantKeyPlaceholder")}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                    {t("settings.paytmWebsite")}
+                  </label>
+                  <input
+                    value={localSettings.paytm_website || ""}
+                    onChange={(e) => updateLocal("paytm_website", e.target.value)}
+                    placeholder={t("settings.paytmWebsitePlaceholder")}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                    {t("settings.paytmIndustryType")}
+                  </label>
+                  <input
+                    value={localSettings.paytm_industry_type || ""}
+                    onChange={(e) => updateLocal("paytm_industry_type", e.target.value)}
+                    placeholder={t("settings.paytmIndustryTypePlaceholder")}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                    {t("settings.paytmChannelId")}
+                  </label>
+                  <input
+                    value={localSettings.paytm_channel_id || ""}
+                    onChange={(e) => updateLocal("paytm_channel_id", e.target.value)}
+                    placeholder={t("settings.paytmChannelIdPlaceholder")}
+                  />
+                </div>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                {t("settings.paytmUpiId")}
+              </label>
+              <input
+                value={localSettings.paytm_upi_id || ""}
+                onChange={(e) => updateLocal("paytm_upi_id", e.target.value)}
+                placeholder={t("settings.paytmUpiIdPlaceholder")}
+              />
+            </div>
+
+            {/* Razorpay Configuration */}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-4">{t("settings.razorpayConfiguration")}</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                    {t("settings.razorpayKeyId")}
+                  </label>
+                  <input
+                    value={localSettings.razorpay_key_id || ""}
+                    onChange={(e) => updateLocal("razorpay_key_id", e.target.value)}
+                    placeholder={t("settings.razorpayKeyIdPlaceholder")}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                    {t("settings.razorpayKeySecret")}
+                  </label>
+                  <input
+                    type="password"
+                    value={localSettings.razorpay_key_secret || ""}
+                    onChange={(e) => updateLocal("razorpay_key_secret", e.target.value)}
+                    placeholder={t("settings.razorpayKeySecretPlaceholder")}
+                  />
+                </div>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>
+                {t("settings.razorpayUpiId")}
+              </label>
+              <input
+                value={localSettings.razorpay_upi_id || ""}
+                onChange={(e) => updateLocal("razorpay_upi_id", e.target.value)}
+                placeholder={t("settings.razorpayUpiIdPlaceholder")}
+              />
+            </div>
           </div>
-        </div>
 
         {/* Receipt Customization */}
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <Receipt size={16} style={{ color: "#F5C842" }} />
-            <h2 className="font-semibold">Receipt Customization</h2>
+            <h2 className="font-semibold">{t("settings.receiptCustomization")}</h2>
           </div>
           <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
-            Customize your receipt content and appearance.
+            {t("settings.receiptCustomizationDesc")}
           </p>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs" style={{ color: "#4A4A5A" }}>
-                Show Logo on Receipt
+                {t("settings.showLogoOnReceipt")}
               </label>
               <button
                 onClick={() =>
@@ -1040,19 +1205,19 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Header Text (optional)
+                {t("settings.headerText")}
               </label>
               <input
                 value={localSettings.receipt_header_text || ""}
                 onChange={(e) =>
                   updateLocal("receipt_header_text", e.target.value)
                 }
-                placeholder="e.g., Welcome to our store!"
+                placeholder={t("settings.headerTextPlaceholder")}
               />
             </div>
             <div className="flex items-center justify-between">
               <label className="text-xs" style={{ color: "#4A4A5A" }}>
-                Show Tax Breakdown
+                {t("settings.showTaxBreakdown")}
               </label>
               <button
                 onClick={() =>
@@ -1089,7 +1254,7 @@ export default function SettingsScreen() {
             </div>
             <div className="flex items-center justify-between">
               <label className="text-xs" style={{ color: "#4A4A5A" }}>
-                Enable Round Off
+                {t("settings.enableRoundOff")}
               </label>
               <button
                 onClick={() =>
@@ -1129,12 +1294,12 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Footer Text
+                {t("settings.footerText")}
               </label>
               <input
                 value={localSettings.footer_text || ""}
                 onChange={(e) => updateLocal("footer_text", e.target.value)}
-                placeholder="Thank you! Visit again"
+                placeholder={t("settings.footerTextPlaceholder")}
               />
             </div>
           </div>
@@ -1144,16 +1309,16 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <Receipt size={16} style={{ color: "#F5C842" }} />
-            <h2 className="font-semibold">Hardware & Printing</h2>
+            <h2 className="font-semibold">{t("settings.hardwarePrinting")}</h2>
           </div>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <label className="text-sm font-medium block">
-                  Auto-print KOT
+                  {t("settings.autoPrintKot")}
                 </label>
                 <p className="text-[10px]" style={{ color: "#4A4A5A" }}>
-                  Automatically trigger kitchen ticket on checkout/hold
+                  {t("settings.autoPrintKotDesc")}
                 </p>
               </div>
               <button
@@ -1190,10 +1355,10 @@ export default function SettingsScreen() {
             <div className="flex items-center justify-between">
               <div>
                 <label className="text-sm font-medium block">
-                  Auto-print Receipt
+                  {t("settings.autoPrintReceipt")}
                 </label>
                 <p className="text-[10px]" style={{ color: "#4A4A5A" }}>
-                  Automatically trigger customer receipt on checkout
+                  {t("settings.autoPrintReceiptDesc")}
                 </p>
               </div>
               <button
@@ -1235,14 +1400,14 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Receipt Printer Name (System)
+                {t("settings.printerName")}
               </label>
               <input
                 value={localSettings.receipt_printer_name || ""}
                 onChange={(e) =>
                   updateLocal("receipt_printer_name", e.target.value)
                 }
-                placeholder="Default Printer"
+                placeholder={t("settings.printerNamePlaceholder")}
               />
             </div>
           </div>
@@ -1253,7 +1418,7 @@ export default function SettingsScreen() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <RefreshCw size={16} style={{ color: "#F5C842" }} />
-              <h2 className="font-semibold">Cloud Sync (Neon PostgreSQL)</h2>
+              <h2 className="font-semibold">{t("settings.cloudSync")}</h2>
             </div>
             {lastSyncTime && (
               <span
@@ -1261,7 +1426,7 @@ export default function SettingsScreen() {
                 style={{ color: "#2ECC71", background: "rgba(46,204,113,0.1)" }}
               >
                 {syncing && <RefreshCw size={10} className="spin" />}
-                Last Sync: {lastSyncTime}
+                {t("settings.lastSync", { time: lastSyncTime })}
               </span>
             )}
           </div>
@@ -1284,7 +1449,7 @@ export default function SettingsScreen() {
                     className="text-sm font-semibold mb-2"
                     style={{ color: "#F5C842" }}
                   >
-                    Set Up Cloud Sync
+                    {t("settings.setupCloudSync")}
                   </h3>
                   <div
                     className="text-xs space-y-2"
@@ -1313,8 +1478,8 @@ export default function SettingsScreen() {
                         </code>
                         )
                       </li>
-                      <li>Paste it in the Neon Database URL field below</li>
-                      <li>Click "Push to Cloud" to upload your data</li>
+                      <li>Paste it in the {t("settings.neonUrl")} field below</li>
+                      <li>Click "{t("settings.pushToCloud")}" to upload your data</li>
                     </ol>
                   </div>
                 </div>
@@ -1328,20 +1493,19 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Neon Database URL
+                {t("settings.neonUrl")}
               </label>
               <input
                 value={localSettings.neon_url}
                 onChange={(e) => updateLocal("neon_url", e.target.value)}
-                placeholder="postgres://user:pass@host/db"
+                placeholder={t("settings.neonUrlPlaceholder")}
                 type="password"
                 style={{
                   borderColor: !localSettings.neon_url ? "#F5C842" : undefined,
                 }}
               />
               <p className="text-[10px] mt-1" style={{ color: "#9090A8" }}>
-                Your Neon PostgreSQL connection string. Found in your Neon
-                dashboard.
+                {t("settings.neonUrlHint")}
               </p>
               {!localSettings.neon_url && (
                 <div
@@ -1350,8 +1514,8 @@ export default function SettingsScreen() {
                 >
                   <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
                   <span>
-                    Neon URL is required for cloud sync. Get your connection
-                    string from{" "}
+                                        {t("settings.neonUrlRequired")}. Get your connection
+                    string from {" "}
                     <a
                       href="https://neon.tech"
                       target="_blank"
@@ -1382,7 +1546,7 @@ export default function SettingsScreen() {
                 ) : (
                   <CloudUpload size={14} />
                 )}
-                Push to Cloud
+                {t("settings.pushToCloud")}
               </button>
               <button
                 onClick={handleSyncDown}
@@ -1399,7 +1563,7 @@ export default function SettingsScreen() {
                 ) : (
                   <CloudDownload size={14} />
                 )}
-                Pull from Cloud
+                {t("settings.pullFromCloud")}
               </button>
             </div>
 
@@ -1417,7 +1581,7 @@ export default function SettingsScreen() {
                 {syncMsg.text}
                 {!syncMsg.ok && syncMsg.text.includes("Neon database URL") && (
                   <div className="mt-2 text-xs" style={{ color: "#F5C842" }}>
-                    <strong>How to fix:</strong> Get your Neon URL from{" "}
+                                        <strong>{t("settings.howToFix")}</strong> Get your Neon URL from {" "}
                     <a
                       href="https://neon.tech"
                       target="_blank"
@@ -1438,7 +1602,7 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-2">
             <Database size={16} style={{ color: "#F5C842" }} />
-            <h2 className="font-semibold">Local Database</h2>
+            <h2 className="font-semibold">{t("settings.localDb")}</h2>
           </div>
           <p className="text-xs" style={{ color: "#4A4A5A" }}>
             All data is stored in a SQLite file at{" "}
@@ -1457,11 +1621,10 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-2">
             <Save size={16} style={{ color: "#2ECC71" }} />
-            <h2 className="font-semibold">Backup & Restore</h2>
+            <h2 className="font-semibold">{t("settings.backupRestore")}</h2>
           </div>
           <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
-            Export your data to a JSON file for backup, or import from a
-            previous backup.
+            {t("settings.importDesc")}
           </p>
 
           <div className="flex gap-2">
@@ -1475,7 +1638,7 @@ export default function SettingsScreen() {
               ) : (
                 <Download size={14} />
               )}
-              Export Backup
+              {t("settings.exportBackup")}
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -1487,7 +1650,7 @@ export default function SettingsScreen() {
               ) : (
                 <Upload size={14} />
               )}
-              Import Backup
+              {t("settings.importBackup")}
             </button>
             <input
               ref={fileInputRef}
@@ -1518,10 +1681,10 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <CloudDownload size={16} style={{ color: "#2ECC71" }} />
-            <h2 className="font-semibold">Backup Restoration</h2>
+            <h2 className="font-semibold">{t("settings.restoreBackup")}</h2>
           </div>
           <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
-            Restore your data from a JSON backup file.
+            {t("settings.importDesc")}
           </p>
 
           <div className="flex gap-2">
@@ -1535,7 +1698,7 @@ export default function SettingsScreen() {
               ) : (
                 <Upload size={14} />
               )}
-              Restore Backup
+              {t("settings.restoreBackupBtn")}
             </button>
             <input
               ref={restoreFileInputRef}
@@ -1566,7 +1729,7 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-2">
             <Database size={16} style={{ color: "#9B59B6" }} />
-            <h2 className="font-semibold">Seed Data & Reset</h2>
+            <h2 className="font-semibold">{t("settings.seedDataReset")}</h2>
           </div>
           <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
             Populate the database with sample data for testing, or reset
@@ -1584,7 +1747,7 @@ export default function SettingsScreen() {
               ) : (
                 <Database size={14} />
               )}
-              Reset & Seed Database
+              {t("settings.resetAndSeed")}
             </button>
             <div className="flex gap-2">
               <button
@@ -1597,7 +1760,7 @@ export default function SettingsScreen() {
                 ) : (
                   <Database size={14} />
                 )}
-                Apply Seed Data
+                {t("settings.applySeedData")}
               </button>
               <button
                 onClick={handleResetDatabase}
@@ -1609,7 +1772,7 @@ export default function SettingsScreen() {
                 ) : (
                   <AlertCircle size={14} />
                 )}
-                Reset Database
+                {t("settings.resetDatabase")}
               </button>
             </div>
           </div>
@@ -1634,36 +1797,36 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <LayoutGrid size={16} style={{ color: "#F5C842" }} />
-            <h2 className="font-semibold">Menu Visibility</h2>
+            <h2 className="font-semibold">{t("settings.menuVisibility")}</h2>
           </div>
           <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
             Hide menus you don't need. Hidden menus won't appear in the sidebar.
           </p>
           <div className="grid grid-cols-4 gap-2">
             {[
-              { key: "orders", label: "Orders" },
-              { key: "products", label: "Products" },
-              { key: "tables", label: "Tables" },
-              { key: "reservations", label: "Reservations" },
-              { key: "kds", label: "Kitchen (KDS)" },
-              { key: "customers", label: "Customers" },
-              { key: "expenses", label: "Expenses" },
-              { key: "ingredients", label: "Ingredients" },
-              { key: "suppliers", label: "Suppliers" },
-              { key: "purchase_orders", label: "Purchase Orders" },
-              { key: "wallet", label: "Wallet" },
-              { key: "coupons", label: "Coupons" },
-              { key: "inventory_alerts", label: "Inventory Alerts" },
-              { key: "inventory", label: "Inventory" },
-              { key: "refund_requests", label: "Refunds" },
-              { key: "staff", label: "Staff" },
-              { key: "scheduling", label: "Scheduling" },
-              { key: "reconciliation", label: "Reconciliation" },
-              { key: "reports", label: "Reports" },
-              { key: "gst", label: "GST" },
-              { key: "logs", label: "Activity Logs" },
-              { key: "stores", label: "Stores" },
-              { key: "support", label: "Support" },
+              { key: "orders", label: t("nav.orders") },
+              { key: "products", label: t("nav.products") },
+              { key: "tables", label: t("nav.tables") },
+              { key: "reservations", label: t("nav.bookings") },
+              { key: "kds", label: t("nav.kitchen") },
+              { key: "customers", label: t("nav.customers") },
+              { key: "expenses", label: t("nav.expenses") },
+              { key: "ingredients", label: t("nav.ingredients") },
+              { key: "suppliers", label: t("nav.suppliers") },
+              { key: "purchase_orders", label: t("nav.purchase_orders") },
+              { key: "wallet", label: t("nav.wallet") },
+              { key: "coupons", label: t("nav.coupons") },
+              { key: "inventory_alerts", label: t("nav.alerts") },
+              { key: "inventory", label: t("nav.inventory") },
+              { key: "refund_requests", label: t("nav.refunds") },
+              { key: "staff", label: t("nav.staff") },
+              { key: "scheduling", label: t("nav.schedule") },
+              { key: "reconciliation", label: t("nav.reconciliation") },
+              { key: "reports", label: t("nav.reports") },
+              { key: "gst", label: t("nav.gst") },
+              { key: "logs", label: t("nav.logs") },
+              { key: "stores", label: t("nav.stores") },
+              { key: "support", label: t("nav.support") },
             ].map((menu) => {
               const isHidden = localSettings.hidden_menus
                 ?.split(",")
@@ -1716,14 +1879,14 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <AlertCircle size={16} style={{ color: "#F5C842" }} />
-            <h2 className="font-semibold">Udhar / Khata Reminders</h2>
+            <h2 className="font-semibold">{t("settings.udharReminders")}</h2>
           </div>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <div className="font-medium text-sm">Automated Reminders</div>
+                <div className="font-medium text-sm">{t("settings.autoReminders")}</div>
                 <div className="text-xs" style={{ color: "#4A4A5A" }}>
-                  Visually flag overdue bills in Digital Ledger
+                  {t("settings.autoRemindersDesc")}
                 </div>
               </div>
               <button
@@ -1765,7 +1928,7 @@ export default function SettingsScreen() {
                   className="text-xs mb-1 block"
                   style={{ color: "#4A4A5A" }}
                 >
-                  Mark as Overdue after (Days)
+                  {t("settings.overdueDays")}
                 </label>
                 <input
                   type="number"
@@ -1787,7 +1950,7 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-2">
             <span style={{ color: "#25D366" }}>💬</span>
-            <h2 className="font-semibold">SMS & WhatsApp Notifications</h2>
+            <h2 className="font-semibold">{t("settings.smsWhatsappNotifications")}</h2>
           </div>
           <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
             Configure SMS and WhatsApp for sending order updates to customers.
@@ -1799,12 +1962,12 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Twilio SID
+                {t("settings.twilioSid")}
               </label>
               <input
                 value={localSettings.twilio_sid}
                 onChange={(e) => updateLocal("twilio_sid", e.target.value)}
-                placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                placeholder={t("settings.twilioSidPlaceholder")}
               />
             </div>
             <div>
@@ -1812,12 +1975,12 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Twilio Token
+                {t("settings.twilioToken")}
               </label>
               <input
                 value={localSettings.twilio_token}
                 onChange={(e) => updateLocal("twilio_token", e.target.value)}
-                placeholder="Your Twilio Auth Token"
+                placeholder={t("settings.twilioTokenPlaceholder")}
                 type="password"
               />
             </div>
@@ -1826,12 +1989,12 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Twilio Phone Number
+                {t("settings.twilioPhone")}
               </label>
               <input
                 value={localSettings.twilio_phone}
                 onChange={(e) => updateLocal("twilio_phone", e.target.value)}
-                placeholder="+1234567890"
+                placeholder={t("settings.twilioPhonePlaceholder")}
               />
             </div>
           </div>
@@ -1842,9 +2005,9 @@ export default function SettingsScreen() {
           >
             <div className="flex items-center justify-between mb-3">
               <div>
-                <div className="font-medium">WhatsApp Business API</div>
+                <div className="font-medium">{t("settings.whatsappApi")}</div>
                 <div className="text-xs" style={{ color: "#4A4A5A" }}>
-                  Enable WhatsApp notifications
+                  {t("settings.whatsappApiDesc")}
                 </div>
               </div>
               <button
@@ -1884,7 +2047,7 @@ export default function SettingsScreen() {
                   className="text-xs mb-1 block"
                   style={{ color: "#4A4A5A" }}
                 >
-                  WhatsApp API URL
+                  {t("settings.whatsappApiUrl")}
                 </label>
                 <input
                   value={localSettings.whatsapp_api_url}
@@ -1892,10 +2055,10 @@ export default function SettingsScreen() {
                     updateLocal("whatsapp_api_url", e.target.value);
                     setErrors((prev) => ({
                       ...prev,
-                      whatsapp_api_url: validateUrl(e.target.value) || "",
+                      whatsapp_api_url: validateUrl(e.target.value, t) || "",
                     }));
                   }}
-                  placeholder="https://api.your-whatsapp-gateway.com"
+                  placeholder={t("settings.whatsappApiUrlPlaceholder")}
                   className={errors.whatsapp_api_url ? "error" : ""}
                 />
                 {errors.whatsapp_api_url && (
@@ -1915,12 +2078,12 @@ export default function SettingsScreen() {
                 className="mt-4 pt-4 border-t"
                 style={{ borderColor: "var(--border)" }}
               >
-                <div className="font-medium mb-3">Test SMS</div>
+                <div className="font-medium mb-3">{t("settings.testSms")}</div>
                 <div className="space-y-2">
                   <input
                     value={testPhone}
                     onChange={(e) => setTestPhone(e.target.value)}
-                    placeholder="Phone number (e.g., +1234567890)"
+                    placeholder={t("settings.testSmsPhonePlaceholder")}
                     className={
                       smsMsg && !smsMsg.ok && !testPhone ? "error" : ""
                     }
@@ -1928,7 +2091,7 @@ export default function SettingsScreen() {
                   <input
                     value={testMessage}
                     onChange={(e) => setTestMessage(e.target.value)}
-                    placeholder="Test message"
+                    placeholder={t("settings.testSmsMessagePlaceholder")}
                   />
                   <button
                     onClick={handleSendTestSms}
@@ -1938,7 +2101,7 @@ export default function SettingsScreen() {
                     {sendingSms ? (
                       <RefreshCw size={14} className="spin" />
                     ) : (
-                      "Send Test SMS"
+                      t("settings.sendTestSms")
                     )}
                   </button>
                   {smsMsg && (
@@ -1958,17 +2121,17 @@ export default function SettingsScreen() {
               className="mt-4 pt-4 border-t"
               style={{ borderColor: "var(--border)" }}
             >
-              <div className="font-medium mb-3">Test WhatsApp</div>
+              <div className="font-medium mb-3">{t("settings.testWhatsapp")}</div>
               <div className="space-y-2">
                 <input
                   value={waTestPhone}
                   onChange={(e) => setWaTestPhone(e.target.value)}
-                  placeholder="Phone number (e.g., +1234567890)"
+                  placeholder={t("settings.testSmsPhonePlaceholder")}
                 />
                 <input
                   value={waTestMessage}
                   onChange={(e) => setWaTestMessage(e.target.value)}
-                  placeholder="Test message"
+                  placeholder={t("settings.testSmsMessagePlaceholder")}
                 />
                 <button
                   onClick={handleSendTestWhatsApp}
@@ -1978,7 +2141,7 @@ export default function SettingsScreen() {
                   {sendingWhatsapp ? (
                     <RefreshCw size={14} className="spin" />
                   ) : (
-                    "Send Test WhatsApp"
+                    t("settings.sendTestWhatsapp")
                   )}
                 </button>
                 {whatsappMsg && (
@@ -1998,7 +2161,7 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <Mail size={16} style={{ color: "#3498DB" }} />
-            <h2 className="font-semibold">Contact Information</h2>
+            <h2 className="font-semibold">{t("settings.contactInfo")}</h2>
           </div>
           <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
             Customer contact details shown on receipts and notifications.
@@ -2010,7 +2173,7 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Contact Email
+                {t("settings.contactEmail")}
               </label>
               <input
                 value={localSettings.contact_email}
@@ -2018,10 +2181,10 @@ export default function SettingsScreen() {
                   updateLocal("contact_email", e.target.value);
                   setErrors((prev) => ({
                     ...prev,
-                    contact_email: validateEmail(e.target.value) || "",
+                    contact_email: validateEmail(e.target.value, t) || "",
                   }));
                 }}
-                placeholder="contact@yourbusiness.com"
+                placeholder={t("settings.contactEmailPlaceholder")}
                 type="email"
                 className={errors.contact_email ? "error" : ""}
               />
@@ -2037,7 +2200,7 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Website
+                {t("settings.website")}
               </label>
               <input
                 value={localSettings.contact_website}
@@ -2045,10 +2208,10 @@ export default function SettingsScreen() {
                   updateLocal("contact_website", e.target.value);
                   setErrors((prev) => ({
                     ...prev,
-                    contact_website: validateUrl(e.target.value) || "",
+                    contact_website: validateUrl(e.target.value, t) || "",
                   }));
                 }}
-                placeholder="https://www.yourbusiness.com"
+                placeholder={t("settings.websitePlaceholder")}
                 type="url"
                 className={errors.contact_website ? "error" : ""}
               />
@@ -2066,7 +2229,7 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <Key size={16} style={{ color: "#F5C842" }} />
-            <h2 className="font-semibold">Change PIN</h2>
+            <h2 className="font-semibold">{t("settings.changePin")}</h2>
           </div>
           <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
             Change your 4-digit login PIN. Current user: {user?.name} (
@@ -2078,7 +2241,7 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                New PIN (4 digits)
+                {t("settings.newPin")}
               </label>
               <input
                 value={newPin}
@@ -2095,7 +2258,7 @@ export default function SettingsScreen() {
                 className="text-xs mb-1 block"
                 style={{ color: "#4A4A5A" }}
               >
-                Confirm PIN
+                {t("settings.confirmPin")}
               </label>
               <input
                 value={confirmPin}
@@ -2118,7 +2281,7 @@ export default function SettingsScreen() {
             {changingPin ? (
               <RefreshCw size={14} className="spin" />
             ) : (
-              "Change PIN"
+              t("settings.changePinBtn")
             )}
           </button>
           {pinMsg && (
@@ -2135,10 +2298,10 @@ export default function SettingsScreen() {
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <Monitor size={16} style={{ color: "#F5C842" }} />
-            <h2 className="font-semibold">Desktop Shortcut</h2>
+            <h2 className="font-semibold">{t("settings.desktopShortcut")}</h2>
           </div>
           <p className="text-xs mb-4" style={{ color: "#4A4A5A" }}>
-            Create a desktop shortcut to quickly launch Appixen POS Billing.
+            {t("settings.desktopShortcutDesc")}
           </p>
           <button
             onClick={handleCreateShortcut}
@@ -2149,7 +2312,7 @@ export default function SettingsScreen() {
               <RefreshCw size={14} className="spin" />
             ) : (
               <>
-                <Monitor size={14} /> Create Desktop Shortcut
+                <Monitor size={14} /> {t("settings.createShortcut")}
               </>
             )}
           </button>
@@ -2169,10 +2332,10 @@ export default function SettingsScreen() {
         >
           {saved ? (
             <>
-              <Check size={16} /> Saved!
+              <Check size={16} /> {t("settings.saved")}
             </>
           ) : (
-            "Save Settings"
+            t("settings.saveSettings")
           )}
         </button>
       </div>

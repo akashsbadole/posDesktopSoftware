@@ -12,7 +12,10 @@ const IS_TAURI = typeof window !== "undefined" && "__TAURI__" in window;
 
 const SENSITIVE_KEYS = ["pos_users", "pos_organizations"];
 
-const ENCRYPTION_KEY = "pos-tauri-encryption-key-2026"; // TODO: derive from user org or env
+const ENCRYPTION_KEY =
+  typeof process !== "undefined" && process.env.NEXT_PUBLIC_ENCRYPTION_KEY
+    ? process.env.NEXT_PUBLIC_ENCRYPTION_KEY
+    : "pos-tauri-encryption-key-2026"; // FIXME: Set NEXT_PUBLIC_ENCRYPTION_KEY in production
 
 let currentOrganizationId: string | null = null;
 
@@ -55,12 +58,12 @@ export interface Store {
   organization_id?: string;
   name: string;
   industry:
-    | "food"
-    | "retail"
-    | "pharmacy"
-    | "gift_shop"
-    | "salon_spa"
-    | "repair_shop";
+  | "food"
+  | "retail"
+  | "pharmacy"
+  | "gift_shop"
+  | "salon_spa"
+  | "repair_shop";
   is_active: boolean;
   created_at: string;
 }
@@ -213,18 +216,18 @@ export interface Order {
   tax_amount: number;
   discount_amount: number;
   total: number;
-  payment_method: "cash" | "card" | "upi" | "wallet" | "store_credit" | "gift_card";
+  payment_method: "cash" | "card" | "upi" | "wallet" | "store_credit" | "gift_card" | "paytm" | "razorpay";
   amount_paid: number;
   change_amount: number;
   customer_name: string;
   payment_status?: "paid" | "unpaid" | "partial";
   status:
-    | "completed"
-    | "refunded"
-    | "hold"
-    | "cancelled"
-    | "pending"
-    | "processing";
+  | "completed"
+  | "refunded"
+  | "hold"
+  | "cancelled"
+  | "pending"
+  | "processing";
   order_type: "dine_in" | "takeaway" | "delivery";
   delivery_status: "pending" | "out_for_delivery" | "delivered" | "cancelled";
   delivery_address: string;
@@ -422,6 +425,18 @@ export interface Settings {
   onboarding_completed: boolean;
   license_key: string;
   hidden_menus: string;
+  // Store Type
+  store_type: 'food' | 'retail' | 'pharmacy' | 'general' | 'others';
+  // Payment Gateway Settings
+  paytm_merchant_id: string;
+  paytm_merchant_key: string;
+  paytm_website: string;
+  paytm_industry_type: string;
+  paytm_channel_id: string;
+  paytm_upi_id: string;
+  razorpay_key_id: string;
+  razorpay_key_secret: string;
+  razorpay_upi_id: string;
 }
 
 export interface TaxRate {
@@ -903,8 +918,10 @@ export async function dbGetOrders(
   storeId: string,
   limit?: number,
   offset?: number,
+  startDate?: string,
+  endDate?: string,
 ): Promise<Order[]> {
-  return sql<Order[]>("get_orders", { storeId, limit, offset });
+  return sql<Order[]>("get_orders", { storeId, limit, offset, startDate, endDate });
 }
 
 export async function dbSaveOrder(
@@ -1543,7 +1560,7 @@ export async function dbCreateRefundRequest(
   amount: number,
   reason: string,
   storeId: string,
-  selectedItems?: {product_id: string, quantity: number, price: number}[],
+  selectedItems?: { product_id: string, quantity: number, price: number }[],
 ): Promise<string> {
   return sql<string>("create_refund_request", {
     orderId,
@@ -2068,14 +2085,14 @@ function lsGet<T>(key: string): T | null {
   if (!raw) return null;
   let data = SENSITIVE_KEYS.includes(key)
     ? (() => {
-        try {
-          return CryptoJS.AES.decrypt(raw, ENCRYPTION_KEY).toString(
-            CryptoJS.enc.Utf8,
-          );
-        } catch {
-          return raw; // fallback to plain text if not encrypted
-        }
-      })()
+      try {
+        return CryptoJS.AES.decrypt(raw, ENCRYPTION_KEY).toString(
+          CryptoJS.enc.Utf8,
+        );
+      } catch {
+        return raw; // fallback to plain text if not encrypted
+      }
+    })()
     : raw;
   if (!data || !data.trim()) return null;
   try {
@@ -2144,6 +2161,16 @@ function defaultSettings(): Settings {
     onboarding_completed: false,
     license_key: "",
     hidden_menus: "",
+    store_type: "general",
+    paytm_merchant_id: "",
+    paytm_merchant_key: "",
+    paytm_website: "",
+    paytm_industry_type: "",
+    paytm_channel_id: "",
+    paytm_upi_id: "",
+    razorpay_key_id: "",
+    razorpay_key_secret: "",
+    razorpay_upi_id: "",
   };
 }
 

@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@/lib/i18n";
 import { useState, useEffect } from "react";
 import {
   dbGetCustomers, dbSaveCustomer, dbDeleteCustomer, dbGetCustomerOrders,
@@ -24,6 +25,7 @@ interface CustomerCRMProps {
 type TabType = "profile" | "addresses" | "history" | "stats" | "ledger";
 
 export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps) {
+  const t = useTranslation();
   const { settings, activeStoreId } = useSettingsStore();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -133,7 +135,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
   };
 
   const handleDeleteCustomer = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this customer? This action cannot be undone.")) return;
+    if (!confirm(t("customers.errors.confirmDelete"))) return;
     try {
       await dbDeleteCustomer(id, activeStoreId);
       setSelectedCustomer(null);
@@ -185,7 +187,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
       a.download = `customers_${new Date().toISOString().split('T')[0]}.csv`;
       a.click();
     } catch (err) {
-      alert("Export failed");
+      alert(t("customers.errors.exportFailed"));
     }
   };
 
@@ -197,10 +199,10 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
       const csv = event.target?.result as string;
       try {
         const res = await importCustomersCsv(csv, activeStoreId);
-        alert(`Imported ${res.imported} customers. Errors: ${res.errors}`);
+        alert(t("customers.errors.importResult", { imported: res.imported, errors: res.errors }));
         await loadCustomers();
       } catch (err) {
-        alert("Import failed");
+        alert(t("customers.errors.importFailed"));
       }
     };
     reader.readAsText(file);
@@ -263,13 +265,13 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
     try {
       if (settings.whatsapp_enabled) {
         await sendWhatsAppMessage(selectedCustomer.phone || "", message, activeStoreId);
-        alert("WhatsApp reminder sent!");
+        alert(t("customers.errors.reminderSent", { type: "WhatsApp" }));
       } else {
         await sendSmsNotification(selectedCustomer.phone || "", message, activeStoreId);
-        alert("SMS reminder sent!");
+        alert(t("customers.errors.reminderSent", { type: "SMS" }));
       }
     } catch (err) {
-      alert("Failed to send reminder");
+      alert(t("customers.errors.reminderFailed"));
     }
   };
 
@@ -277,17 +279,17 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
     if (!selectedCustomer) return;
     const totalDue = unpaidOrders.reduce((sum, o) => sum + o.total, 0);
     const content = `
-      CUSTOMER LEDGER STATEMENT
+      ${t("customers.ledger.title")}
       -------------------------
-      Store: ${settings.store_name}
-      Date: ${new Date().toLocaleDateString()}
+      ${t("customers.ledger.store")} ${settings.store_name}
+      ${t("customers.ledger.date")} ${new Date().toLocaleDateString()}
 
-      Customer: ${selectedCustomer.name}
-      Phone: ${selectedCustomer.phone}
+      ${t("customers.ledger.customer")} ${selectedCustomer.name}
+      ${t("customers.ledger.phone")} ${selectedCustomer.phone}
 
-      TOTAL OUTSTANDING: ${curr}${totalDue.toFixed(2)}
+      ${t("customers.ledger.totalOutstanding")} ${curr}${totalDue.toFixed(2)}
 
-      TRANSACTION HISTORY
+      ${t("customers.ledger.transactionHistory")}
       -------------------------
       ${customerOrders.map(o => `[${new Date(o.created_at).toLocaleDateString()}] ${o.payment_method.toUpperCase()} - ${curr}${o.total.toFixed(2)} (${o.payment_status || 'paid'})`).join('\n      ')}
     `;
@@ -320,14 +322,14 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <Users className="text-[#F5C842]" />
-            <h2 className="font-display text-lg" style={{ color: "#F5C842" }}>Customer Relationship Management</h2>
+            <h2 className="font-display text-lg" style={{ color: "#F5C842" }}>{t("customers.title")}</h2>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={handleExport} className="btn-ghost py-2 px-3 flex items-center gap-1.5 text-xs">
-              <Download size={14} /> Export
+              <Download size={14} /> {t("customers.export")}
             </button>
             <label className="btn-ghost py-2 px-3 flex items-center gap-1.5 text-xs cursor-pointer">
-              <Upload size={14} /> Import
+              <Upload size={14} /> {t("customers.import")}
               <input type="file" accept=".csv" onChange={handleImport} className="hidden" />
             </label>
             <button onClick={handleClose} className="btn-ghost py-1 px-3 ml-2"><X size={16} /></button>
@@ -341,7 +343,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
               <div className="relative flex-1">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input
-                  placeholder="Search name, phone, email..."
+                  placeholder={t("customers.searchPlaceholder")}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-9"
@@ -350,7 +352,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
               <div className="relative">
                 <Tag size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input
-                  placeholder="Filter by tag..."
+                  placeholder={t("customers.filterByTag")}
                   value={tagFilter}
                   onChange={(e) => setTagFilter(e.target.value)}
                   className="w-full pl-9"
@@ -363,15 +365,15 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                   price_tier: "standard", loyalty_tier: "bronze", tax_id: "", tags: []
                 });
                 setShowAddForm(true);
-              }} className="btn-accent p-2.5" data-testid="add-customer-btn" aria-label="Add New Customer">
+              }} className="btn-accent p-2.5" data-testid="add-customer-btn" aria-label={t("customers.addNewCustomer")}>
                 <Plus size={18} />
               </button>
             </div>
 
             {loading && customers.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center text-gray-500 italic">Loading customers...</div>
+              <div className="flex-1 flex items-center justify-center text-gray-500 italic">{t("customers.loadingCustomers")}</div>
             ) : filteredCustomers.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center text-gray-500 italic">No customers found</div>
+              <div className="flex-1 flex items-center justify-center text-gray-500 italic">{t("customers.noCustomersFound")}</div>
             ) : (
               <div className="flex-1 overflow-y-auto space-y-2 pr-2">
                 {filteredCustomers.map(customer => (
@@ -421,7 +423,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                       </h3>
                       <div className="flex gap-4 mt-1 text-xs text-gray-400">
                         <span className="flex items-center gap-1"><Phone size={12} /> {selectedCustomer.phone}</span>
-                        <span className="flex items-center gap-1"><Mail size={12} /> {selectedCustomer.email || "No email"}</span>
+                        <span className="flex items-center gap-1"><Mail size={12} /> {selectedCustomer.email || t("customers.noEmail")}</span>
                         <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 uppercase font-bold text-[9px]">{selectedCustomer.group_name || 'retail'}</span>
                         {(selectedCustomer.tags || []).length > 0 && (
                           <div className="flex gap-1">
@@ -443,11 +445,11 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
 
                 <div className="flex gap-1 mb-6 bg-[#141418] p-1 rounded-xl w-fit">
                   {[
-                    { id: "profile", icon: UserIcon, label: "Profile" },
-                    { id: "addresses", icon: MapPin, label: "Addresses" },
-                    { id: "history", icon: History, label: "History" },
-                    { id: "stats", icon: BarChart2, label: "Stats" },
-                    { id: "ledger", icon: Wallet, label: "Digital Ledger" },
+                    { id: "profile", icon: UserIcon, label: t("customers.tabs.profile") },
+                    { id: "addresses", icon: MapPin, label: t("customers.tabs.addresses") },
+                    { id: "history", icon: History, label: t("customers.tabs.history") },
+                    { id: "stats", icon: BarChart2, label: t("customers.tabs.stats") },
+                    { id: "ledger", icon: Wallet, label: t("customers.tabs.ledger") },
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -468,25 +470,25 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                     <div className="grid grid-cols-2 gap-6">
                       <div className="space-y-4">
                          <div className="card bg-[#141418] p-4">
-                            <h4 className="text-xs font-bold text-gray-500 uppercase mb-4 flex items-center gap-2">
-                              <Star size={14} className="text-yellow-400" /> Loyalty Program
+                             <h4 className="text-xs font-bold text-gray-500 uppercase mb-4 flex items-center gap-2">
+                               <Star size={14} className="text-yellow-400" /> {t("customers.loyaltyProgram")}
                             </h4>
                              <div className="text-center">
-                                <div className="text-[10px] text-gray-600 uppercase font-bold">Tier</div>
+                                <div className="text-[10px] text-gray-600 uppercase font-bold">{t("customers.tier")}</div>
                                 <div className="text-lg font-bold capitalize">{selectedCustomer.loyalty_tier || 'bronze'}</div>
                              </div>
                          </div>
                          <div className="card bg-[#141418] p-4">
-                            <h4 className="text-xs font-bold text-gray-500 uppercase mb-4 flex items-center gap-2">
-                              <CreditCard size={14} className="text-green-400" /> Finance & Pricing
+                             <h4 className="text-xs font-bold text-gray-500 uppercase mb-4 flex items-center gap-2">
+                               <CreditCard size={14} className="text-green-400" /> {t("customers.financePricing")}
                             </h4>
                             <div className="grid grid-cols-2 gap-4">
                                <div>
-                                  <div className="text-[10px] text-gray-600 uppercase font-bold">Credit Limit</div>
+                                  <div className="text-[10px] text-gray-600 uppercase font-bold">{t("customers.creditLimit")}</div>
                                   <div className="text-lg font-bold">{curr}{selectedCustomer.credit_limit || 0}</div>
                                </div>
-                               <div>
-                                  <div className="text-[10px] text-gray-600 uppercase font-bold">Price Tier</div>
+                                <div>
+                                  <div className="text-[10px] text-gray-600 uppercase font-bold">{t("customers.priceTier")}</div>
                                   <div className="text-lg font-bold capitalize">{selectedCustomer.price_tier || 'standard'}</div>
                                </div>
                             </div>
@@ -494,26 +496,26 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                       </div>
                       <div className="space-y-4">
                          <div className="card bg-[#141418] p-4">
-                            <h4 className="text-xs font-bold text-gray-500 uppercase mb-4 flex items-center gap-2">
-                              <Calendar size={14} className="text-blue-400" /> Special Dates
+                             <h4 className="text-xs font-bold text-gray-500 uppercase mb-4 flex items-center gap-2">
+                               <Calendar size={14} className="text-blue-400" /> {t("customers.specialDates")}
                             </h4>
                             <div className="grid grid-cols-2 gap-4">
                                <div>
-                                  <div className="text-[10px] text-gray-600 uppercase font-bold">Birthday</div>
-                                  <div className="text-sm font-bold">{selectedCustomer.birthday || "Not set"}</div>
+                                  <div className="text-[10px] text-gray-600 uppercase font-bold">{t("customers.birthday")}</div>
+                                  <div className="text-sm font-bold">{selectedCustomer.birthday || t("customers.notSet")}</div>
                                </div>
                                <div>
-                                  <div className="text-[10px] text-gray-600 uppercase font-bold">Anniversary</div>
-                                  <div className="text-sm font-bold">{selectedCustomer.anniversary || "Not set"}</div>
+                                  <div className="text-[10px] text-gray-600 uppercase font-bold">{t("customers.anniversary")}</div>
+                                  <div className="text-sm font-bold">{selectedCustomer.anniversary || t("customers.notSet")}</div>
                                </div>
                             </div>
                          </div>
                          <div className="card bg-[#141418] p-4">
-                            <h4 className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2">
-                               Notes
+                             <h4 className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2">
+                               {t("customers.notesHeading")}
                             </h4>
                             <p className="text-sm text-gray-400 leading-relaxed italic">
-                               {selectedCustomer.notes || "No special instructions or preferences recorded for this customer."}
+                               {selectedCustomer.notes || t("customers.noNotes")}
                             </p>
                          </div>
                       </div>
@@ -523,12 +525,12 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                   {activeTab === "addresses" && (
                     <div className="space-y-4">
                       <div className="flex justify-between items-center">
-                        <h4 className="font-bold text-sm">Saved Addresses ({addresses.length})</h4>
+                        <h4 className="font-bold text-sm">{t("customers.savedAddresses", { count: addresses.length })}</h4>
                         <button onClick={() => {
                           setNewAddress({ label: "Home", address: "", city: "", state: "", zip: "", phone: selectedCustomer.phone });
                           setShowAddressForm(true);
                         }} className="btn-accent py-1.5 px-3 text-xs flex items-center gap-1.5">
-                          <Plus size={14} /> Add New Address
+                          <Plus size={14} /> {t("customers.addNewAddress")}
                         </button>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
@@ -548,7 +550,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                         ))}
                         {addresses.length === 0 && (
                           <div className="col-span-2 py-12 text-center text-gray-500 bg-[#141418] rounded-2xl italic">
-                             No saved addresses. Add an address for deliveries.
+                             {t("customers.noAddresses")}
                           </div>
                         )}
                       </div>
@@ -558,9 +560,9 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                   {activeTab === "history" && (
                     <div className="space-y-3">
                        {customerOrders.length === 0 ? (
-                         <div className="py-20 text-center text-gray-500">
-                            <History size={48} className="mx-auto mb-4 opacity-20" />
-                            <p>No order history found for this customer.</p>
+                          <div className="py-20 text-center text-gray-500">
+                             <History size={48} className="mx-auto mb-4 opacity-20" />
+                             <p>{t("customers.noOrderHistory")}</p>
                          </div>
                        ) : (
                          customerOrders.map(order => (
@@ -592,26 +594,26 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                   {activeTab === "stats" && stats && (
                     <div className="grid grid-cols-3 gap-6">
                        <div className="card bg-[#141418] p-6 text-center">
-                          <div className="text-gray-500 text-xs uppercase font-bold mb-1">Total Lifetime Spend</div>
+                           <div className="text-gray-500 text-xs uppercase font-bold mb-1">{t("customers.totalLifetimeSpend")}</div>
                           <div className="text-2xl font-bold font-display text-green-400">{curr}{stats.total_spent.toFixed(2)}</div>
                        </div>
                        <div className="card bg-[#141418] p-6 text-center">
-                          <div className="text-gray-500 text-xs uppercase font-bold mb-1">Total Visits</div>
+                           <div className="text-gray-500 text-xs uppercase font-bold mb-1">{t("customers.totalVisits")}</div>
                           <div className="text-2xl font-bold font-display text-blue-400">{stats.visits}</div>
                        </div>
                        <div className="card bg-[#141418] p-6 text-center">
-                          <div className="text-gray-500 text-xs uppercase font-bold mb-1">Avg. Order Value</div>
+                           <div className="text-gray-500 text-xs uppercase font-bold mb-1">{t("customers.avgOrderValue")}</div>
                           <div className="text-2xl font-bold font-display text-[#F5C842]">{curr}{stats.avg_order_value.toFixed(2)}</div>
                        </div>
                        <div className="col-span-3 card bg-[#141418] p-6">
-                          <h4 className="font-bold text-sm mb-4">Engagement Status</h4>
+                           <h4 className="font-bold text-sm mb-4">{t("customers.engagementStatus")}</h4>
                           <div className="h-2 bg-[#1E1E26] rounded-full overflow-hidden">
                              <div className="h-full bg-[#F5C842]" style={{ width: `${Math.min(100, stats.visits * 10)}%` }}></div>
                           </div>
                           <div className="flex justify-between mt-2 text-[10px] text-gray-600 font-bold uppercase">
-                             <span>New Customer</span>
-                             <span>Regular</span>
-                             <span>VIP Champion</span>
+                              <span>{t("customers.newCustomer")}</span>
+                              <span>{t("customers.regular")}</span>
+                              <span>{t("customers.vipChampion")}</span>
                           </div>
                        </div>
                     </div>
@@ -622,36 +624,36 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                        <div className="grid grid-cols-2 gap-4">
                          <div className="card p-6 bg-gradient-to-br from-[#1E1E26] to-[#141418] border-red-500/20 flex flex-col items-center text-center">
                             <CreditCard size={32} className="text-red-500 mb-2" />
-                            <div className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">Total Udhar (Due)</div>
+                             <div className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">{t("customers.totalUdhar")}</div>
                             <div className="text-3xl font-bold font-display text-red-500" data-testid="total-due">
                               {curr}{unpaidOrders.reduce((sum, o) => sum + o.total, 0).toFixed(2)}
                             </div>
                             <button onClick={handleSendReminder} disabled={unpaidOrders.length === 0} className="mt-4 btn-accent py-1.5 px-4 text-[10px] uppercase font-bold flex items-center gap-2 disabled:opacity-50">
-                              <Phone size={12} /> Send Reminder
+                              <Phone size={12} /> {t("customers.sendReminder")}
                             </button>
                          </div>
                          <div className="card p-6 bg-gradient-to-br from-[#1E1E26] to-[#141418] border-[#2ECC71]/20 flex flex-col items-center text-center">
                             <Wallet size={32} className="text-[#2ECC71] mb-2" />
-                            <div className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">Credit Limit</div>
+                             <div className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">{t("customers.creditLimit")}</div>
                             <div className="text-3xl font-bold font-display text-white" data-testid="credit-limit">
                               {curr}{selectedCustomer.credit_limit?.toFixed(2) || "0.00"}
                             </div>
                             <button onClick={generateStatement} className="mt-4 btn-ghost py-1.5 px-4 text-[10px] uppercase font-bold flex items-center gap-2 border border-border">
-                              <Download size={12} /> Get Statement
+                              <Download size={12} /> {t("customers.getStatement")}
                             </button>
                          </div>
                        </div>
                        <div className="space-y-3">
                           <div className="flex items-center justify-between px-1">
-                            <h4 className="text-xs font-bold uppercase text-gray-500">Unpaid Bills (Udhar)</h4>
+                            <h4 className="text-xs font-bold uppercase text-gray-500">{t("customers.unpaidBills")}</h4>
                             {unpaidOrders.length > 0 && (
                               <button onClick={() => setShowBulkSettle(true)} className="text-[10px] font-bold text-[#F5C842] hover:underline">
-                                Bulk Settle (Jama)
+                                {t("customers.bulkSettle")}
                               </button>
                             )}
                           </div>
                           {unpaidOrders.length === 0 ? (
-                            <div className="py-8 text-center text-gray-500 bg-[#141418] rounded-2xl italic text-sm">No outstanding dues for this customer.</div>
+                            <div className="py-8 text-center text-gray-500 bg-[#141418] rounded-2xl italic text-sm">{t("customers.noOutstandingDues")}</div>
                           ) : (
                             unpaidOrders.map(order => (
                               <div key={order.id} className="flex items-center justify-between p-4 rounded-2xl bg-red-500/5 border border-red-500/10 hover:bg-red-500/10 transition-colors">
@@ -668,11 +670,11 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                                    <div className="text-right">
                                       <div className="text-sm font-bold text-red-500">{curr}{order.total.toFixed(2)}</div>
                                       <div className="text-[10px] uppercase font-bold flex items-center gap-1 justify-end">
-                                        {isOverdue(order.created_at) && <span className="text-red-500 flex items-center gap-0.5 animate-pulse"><AlertCircle size={10} /> Overdue</span>}
-                                        <span className="text-gray-500">Unpaid</span>
+                                        {isOverdue(order.created_at) && <span className="text-red-500 flex items-center gap-0.5 animate-pulse"><AlertCircle size={10} /> {t("customers.overdue")}</span>}
+                                        <span className="text-gray-500">{t("common.unpaid")}</span>
                                       </div>
                                    </div>
-                                   <button onClick={() => handleSettleOrder(order.id, order.total)} disabled={settling} data-testid={`settle-btn-${order.id.slice(-6)}`} className="btn-accent py-1.5 px-3 text-[10px] uppercase font-bold">Jama (Settle)</button>
+                                    <button onClick={() => handleSettleOrder(order.id, order.total)} disabled={settling} data-testid={`settle-btn-${order.id.slice(-6)}`} className="btn-accent py-1.5 px-3 text-[10px] uppercase font-bold">{t("customers.jamaSettle")}</button>
                                 </div>
                               </div>
                             ))
@@ -687,8 +689,8 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                 <div className="w-24 h-24 rounded-3xl bg-[#141418] flex items-center justify-center mb-4">
                    <Users size={40} className="opacity-20" />
                 </div>
-                <p className="text-base font-medium">Select a customer to view their profile</p>
-                <p className="text-sm opacity-50 mt-1">Manage loyalty, addresses, and history here.</p>
+                <p className="text-base font-medium">{t("customers.selectCustomerPrompt")}</p>
+                <p className="text-sm opacity-50 mt-1">{t("customers.selectCustomerSubtitle")}</p>
               </div>
             )}
           </div>
@@ -699,79 +701,79 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
           <div className="fixed inset-0 flex items-center justify-center z-[60] bg-black/80 backdrop-blur-sm p-4">
             <div className="card p-6 w-[600px] max-h-[90vh] overflow-y-auto fade-in shadow-2xl">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold font-display">{newCustomer.id ? "Edit Customer" : "Add New Customer"}</h3>
+                <h3 className="text-lg font-bold font-display">{newCustomer.id ? t("customers.editCustomer") : t("customers.addNewCustomer")}</h3>
                 <button onClick={() => setShowAddForm(false)} className="btn-ghost p-1.5"><X size={18} /></button>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Full Name *</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.form.fullName")}</label>
                   <input
                     value={newCustomer.name}
                     onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
-                    placeholder="e.g. John Doe"
+                    placeholder={t("customers.form.namePlaceholder")}
                     autoFocus
                   />
                 </div>
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Phone Number *</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.form.phoneNumber")}</label>
                   <input
                     value={newCustomer.phone}
                     onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
-                    placeholder="+1 234 567 8900"
+                    placeholder={t("customers.form.phonePlaceholder")}
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Email Address</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.form.emailAddress")}</label>
                   <input
                     value={newCustomer.email}
                     onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
-                    placeholder="john@example.com"
+                    placeholder={t("customers.form.emailPlaceholder")}
                   />
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Customer Group</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.form.customerGroup")}</label>
                   <select
                     value={newCustomer.group_name || 'retail'}
                     onChange={(e) => setNewCustomer({ ...newCustomer, group_name: e.target.value })}
                     className="w-full"
                   >
-                    <option value="retail">Retail</option>
-                    <option value="wholesale">Wholesale</option>
-                    <option value="vip">VIP</option>
-                    <option value="corporate">Corporate</option>
+                    <option value="retail">{t("customers.form.groupRetail")}</option>
+                    <option value="wholesale">{t("customers.form.groupWholesale")}</option>
+                    <option value="vip">{t("customers.form.groupVip")}</option>
+                    <option value="corporate">{t("customers.form.groupCorporate")}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Loyalty Tier</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.form.loyaltyTier")}</label>
                   <select
                     value={newCustomer.loyalty_tier || 'bronze'}
                     onChange={(e) => setNewCustomer({ ...newCustomer, loyalty_tier: e.target.value as "bronze" | "silver" | "gold" | "platinum" })}
                     className="w-full"
                   >
-                    <option value="bronze">Bronze</option>
-                    <option value="silver">Silver</option>
-                    <option value="gold">Gold</option>
-                    <option value="platinum">Platinum</option>
+                    <option value="bronze">{t("customers.form.tierBronze")}</option>
+                    <option value="silver">{t("customers.form.tierSilver")}</option>
+                    <option value="gold">{t("customers.form.tierGold")}</option>
+                    <option value="platinum">{t("customers.form.tierPlatinum")}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Price Tier</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.form.priceTier")}</label>
                   <select
                     value={newCustomer.price_tier || 'standard'}
                     onChange={(e) => setNewCustomer({ ...newCustomer, price_tier: e.target.value as "standard" | "premium" | "vip" })}
                     className="w-full"
                   >
-                    <option value="standard">Standard</option>
-                    <option value="discount">Discount (10% Off)</option>
-                    <option value="premium">Premium (+10%)</option>
-                    <option value="wholesale">Wholesale Pricing</option>
+                    <option value="standard">{t("customers.form.priceStandard")}</option>
+                    <option value="discount">{t("customers.form.priceDiscount")}</option>
+                    <option value="premium">{t("customers.form.pricePremium")}</option>
+                    <option value="wholesale">{t("customers.form.priceWholesale")}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Credit Limit ({curr})</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.form.creditLimit", { currency: curr })}</label>
                   <input
                     type="number"
                     value={newCustomer.credit_limit || 0}
@@ -779,24 +781,24 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Tags (comma separated)</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.form.tags")}</label>
                   <input
                     value={(newCustomer.tags || []).join(', ')}
                     onChange={(e) => setNewCustomer({ ...newCustomer, tags: e.target.value.split(',').map(t => t.trim()).filter(t => t) })}
-                    placeholder="vip, regular, new"
+                    placeholder={t("customers.form.tagsPlaceholder")}
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Tax ID / GSTIN</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.form.taxId")}</label>
                   <input
                     value={newCustomer.tax_id || ""}
                     onChange={(e) => setNewCustomer({ ...newCustomer, tax_id: e.target.value })}
-                    placeholder="e.g., 29AAAAA0000A1Z5"
+                    placeholder={t("customers.form.taxIdPlaceholder")}
                   />
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Birthday</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.form.birthday")}</label>
                   <input
                     type="date"
                     value={newCustomer.birthday || ""}
@@ -804,7 +806,7 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Anniversary</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.form.anniversary")}</label>
                   <input
                     type="date"
                     value={newCustomer.anniversary || ""}
@@ -813,11 +815,11 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                 </div>
 
                 <div className="col-span-2">
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Private Notes</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.form.privateNotes")}</label>
                   <textarea
                     value={newCustomer.notes}
                     onChange={(e) => setNewCustomer({ ...newCustomer, notes: e.target.value })}
-                    placeholder="Preferences, allergy info, special handling..."
+                    placeholder={t("customers.form.privateNotesPlaceholder")}
                     className="h-20"
                   />
                 </div>
@@ -825,9 +827,9 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
 
               <div className="flex gap-3 mt-8">
                 <button onClick={handleSaveCustomer} className="btn-accent flex-1 py-3 flex items-center justify-center gap-2">
-                  <Save size={18} /> {newCustomer.id ? "Update Profile" : "Create Customer"}
+                  <Save size={18} /> {newCustomer.id ? t("customers.form.updateProfile") : t("customers.form.createCustomer")}
                 </button>
-                <button onClick={() => setShowAddForm(false)} className="btn-ghost px-6 font-bold">Cancel</button>
+                <button onClick={() => setShowAddForm(false)} className="btn-ghost px-6 font-bold">{t("common.cancel")}</button>
               </div>
             </div>
           </div>
@@ -839,36 +841,36 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
             <div className="card p-6 w-[450px] shadow-2xl fade-in">
               <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                 <MapPin size={20} className="text-[#F5C842]" />
-                {newAddress.id ? "Edit Address" : "Add New Address"}
+                {newAddress.id ? t("customers.addressForm.title") : t("customers.addNewAddress")}
               </h3>
               <div className="space-y-4">
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Label</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.addressForm.label")}</label>
                   <input
                     value={newAddress.label}
                     onChange={(e) => setNewAddress({ ...newAddress, label: e.target.value })}
-                    placeholder="e.g. Home, Office, Summer House"
+                    placeholder={t("customers.addressForm.labelPlaceholder")}
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Street Address *</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.addressForm.street")}</label>
                   <input
                     value={newAddress.address}
                     onChange={(e) => setNewAddress({ ...newAddress, address: e.target.value })}
-                    placeholder="123 POS Lane"
+                    placeholder={t("customers.addressForm.streetPlaceholder")}
                     autoFocus
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                    <div>
-                      <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">City</label>
+                      <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.addressForm.city")}</label>
                       <input
                         value={newAddress.city}
                         onChange={(e) => setNewAddress({ ...newAddress, city: e.target.value })}
                       />
                    </div>
                    <div>
-                      <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Zip / Postcode</label>
+                      <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.addressForm.zip")}</label>
                       <input
                         value={newAddress.zip}
                         onChange={(e) => setNewAddress({ ...newAddress, zip: e.target.value })}
@@ -876,15 +878,15 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
                    </div>
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Phone for Delivery</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.addressForm.deliveryPhone")}</label>
                   <input
                     value={newAddress.phone}
                     onChange={(e) => setNewAddress({ ...newAddress, phone: e.target.value })}
                   />
                 </div>
                 <div className="flex gap-2 pt-4">
-                  <button onClick={handleSaveAddress} className="btn-accent flex-1 py-3 font-bold">Save Address</button>
-                  <button onClick={() => setShowAddressForm(false)} className="btn-ghost px-6 font-bold">Cancel</button>
+                  <button onClick={handleSaveAddress} className="btn-accent flex-1 py-3 font-bold">{t("customers.addressForm.saveAddress")}</button>
+                  <button onClick={() => setShowAddressForm(false)} className="btn-ghost px-6 font-bold">{t("customers.addressForm.cancel")}</button>
                 </div>
               </div>
             </div>
@@ -895,17 +897,17 @@ export default function CustomerCRM({ onClose, isOpen = true }: CustomerCRMProps
           <div className="fixed inset-0 flex items-center justify-center z-[70] bg-black/80 backdrop-blur-sm p-4">
             <div className="card p-6 w-[400px] shadow-2xl fade-in">
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <CreditCard size={20} className="text-[#2ECC71]" /> Bulk Settlement
+                <CreditCard size={20} className="text-[#2ECC71]" /> {t("customers.bulkSettlement.title")}
               </h3>
-              <p className="text-xs text-gray-400 mb-6">Enter the amount received from the customer. Oldest unpaid bills settled first.</p>
+              <p className="text-xs text-gray-400 mb-6">{t("customers.bulkSettlement.description")}</p>
               <div className="space-y-4">
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Amount Received ({curr})</label>
+                  <label className="text-[10px] uppercase font-bold text-gray-500 mb-1 block">{t("customers.bulkSettlement.amountReceived", { currency: curr })}</label>
                   <input type="number" value={bulkSettleAmount} onChange={(e) => setBulkSettleAmount(e.target.value)} placeholder="0.00" autoFocus />
                 </div>
                 <div className="flex gap-2 pt-4">
-                  <button disabled={settling || !bulkSettleAmount} onClick={handleBulkSettle} className="btn-accent flex-1 py-3 font-bold">Confirm Jama</button>
-                  <button onClick={() => setShowBulkSettle(false)} className="btn-ghost px-6 font-bold">Cancel</button>
+                  <button disabled={settling || !bulkSettleAmount} onClick={handleBulkSettle} className="btn-accent flex-1 py-3 font-bold">{t("customers.bulkSettlement.confirmJama")}</button>
+                  <button onClick={() => setShowBulkSettle(false)} className="btn-ghost px-6 font-bold">{t("customers.bulkSettlement.cancel")}</button>
                 </div>
               </div>
             </div>

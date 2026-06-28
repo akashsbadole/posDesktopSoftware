@@ -17,9 +17,9 @@ export const nonNegativeNumber = z.number().min(0, "Cannot be negative");
 // Common field patterns
 export const nameString = z
   .string()
-  .min(2, "Name must be at least 2 characters")
+  .min(1, "Name must be at least 1 character")
   .max(100, "Name cannot exceed 100 characters")
-  .regex(/^[a-zA-Z\s\-'\.]+$/, "Name contains invalid characters");
+  .regex(/^[\p{L}\p{M}\s\-'\.]+$/u, "Name contains invalid characters");
 
 export const descriptionString = z
   .string()
@@ -76,7 +76,7 @@ export const orderSchema = z.object({
   tax_amount: nonNegativeNumber,
   discount_amount: nonNegativeNumber,
   total: positiveNumber,
-  payment_method: z.enum(["cash", "card", "upi", "wallet"]),
+  payment_method: z.enum(["cash", "card", "upi", "wallet", "store_credit", "gift_card", "split"]),
   amount_paid: nonNegativeNumber,
   change_amount: nonNegativeNumber,
   customer_name: z.string().optional(),
@@ -116,7 +116,7 @@ export const customerAddressSchema = z.object({
   address: nonEmptyString,
   city: nonEmptyString,
   state: nonEmptyString,
-  zip: z.string().regex(/^\d{5,6}$/, "Invalid ZIP/postal code"),
+  zip: z.string().regex(/^[\d\w\s\-]+$/, "Invalid ZIP/postal code").min(3, "Postal code too short").max(12, "Postal code too long"),
   phone: phoneString.optional(),
 });
 

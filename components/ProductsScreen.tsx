@@ -5,6 +5,7 @@ import { dbSaveProduct, dbDeleteProduct, Product, dbGetCombos, dbSaveCombo, dbDe
 import { useProductsStore, useSettingsStore, useStoresStore } from "@/lib/stores";
 import { useRef } from "react";
 import { v4 as uuid } from "uuid";
+import { useTranslation } from "@/lib/i18n";
 
 const EMPTY_PRODUCT: Product = {
   id: "",
@@ -29,23 +30,23 @@ const EMPTY_PRODUCT: Product = {
 const CATEGORIES = ["Beverages", "Food", "Snacks", "Bakery", "Electronics", "Medicines", "Clothing", "Other"];
 const ITEMS_PER_PAGE = 30;
 
-const validateProduct = (product: Product): Record<string, string> => {
+const validateProduct = (product: Product, t: (key: string, params?: any) => string): Record<string, string> => {
   const errors: Record<string, string> = {};
   
   if (!product.name || product.name.trim().length === 0) {
-    errors.name = "Product name is required";
+    errors.name = t("products.errors.nameRequired");
   }
   
   if (isNaN(product.price) || product.price < 0) {
-    errors.price = "Price must be a positive number";
+    errors.price = t("products.errors.pricePositive");
   }
   
   if (isNaN(product.tax) || product.tax < 0 || product.tax > 100) {
-    errors.tax = "Tax must be between 0 and 100";
+    errors.tax = t("products.errors.taxRange");
   }
   
   if (isNaN(product.stock) || product.stock < 0) {
-    errors.stock = "Stock must be a non-negative number";
+    errors.stock = t("products.errors.stockNonNegative");
   }
   
   return errors;
@@ -64,6 +65,7 @@ const EMPTY_COMBO: Combo = {
 };
 
 export default function ProductsScreen() {
+  const t = useTranslation();
   const { activeStoreId } = useSettingsStore();
   const { stores } = useStoresStore();
   const {
@@ -159,7 +161,7 @@ export default function ProductsScreen() {
 
   const handleSave = async () => {
     if (!editing || !editing.name) return;
-    const errors = validateProduct(editing);
+    const errors = validateProduct(editing, t);
     if (Object.keys(errors).length > 0) {
       setErrors(errors);
       return;
@@ -206,24 +208,24 @@ export default function ProductsScreen() {
       initialVariantIds.current = new Set();
     } catch (err) {
       console.error("Failed to save product:", err);
-      alert("Failed to save product. Please try again.");
+      alert(t("products.errors.failedToSave"));
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this product?")) return;
+    if (!confirm(t("products.errors.confirmDelete"))) return;
     try {
       await deleteProduct(id);
     } catch (err) {
       console.error("Failed to delete product:", err);
-      alert("Failed to delete product. Please try again.");
+      alert(t("products.errors.failedToDelete"));
     }
   };
 
   const handleSaveCombo = async () => {
     if (!editingCombo || !editingCombo.name) return;
     if (comboItems.length === 0) {
-      alert("Please add at least one item to the combo");
+      alert(t("products.errors.comboAtLeastOne"));
       return;
     }
     const totalItemsPrice = comboItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -246,18 +248,18 @@ export default function ProductsScreen() {
       setComboItems([]);
     } catch (err) {
       console.error("Failed to save combo:", err);
-      alert("Failed to save combo. Please try again.");
+      alert(t("products.errors.comboFailedToSave"));
     }
   };
 
   const handleDeleteCombo = async (id: string) => {
-    if (!confirm("Delete this combo?")) return;
+    if (!confirm(t("products.errors.comboConfirmDelete"))) return;
     try {
       await dbDeleteCombo(id, activeStoreId);
       await fetchCombos();
     } catch (err) {
       console.error("Failed to delete combo:", err);
-      alert("Failed to delete combo. Please try again.");
+      alert(t("products.errors.comboFailedToDelete"));
     }
   };
 
@@ -267,7 +269,7 @@ export default function ProductsScreen() {
       await fetchCombos();
     } catch (err) {
       console.error("Failed to toggle combo:", err);
-      alert("Failed to toggle combo. Please try again.");
+      alert(t("products.errors.comboFailedToToggle"));
     }
   };
 
@@ -319,7 +321,7 @@ export default function ProductsScreen() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Failed to export products:", err);
-      alert("Failed to export products");
+      alert(t("products.errors.exportFailed"));
     }
   };
 
@@ -379,11 +381,11 @@ export default function ProductsScreen() {
       const csvData = event.target?.result as string;
       try {
         const result = await importProducts(csvData);
-        alert(`Import complete! Imported: ${result.imported}, Errors: ${result.errors}`);
+        alert(t("products.errors.importResult", { imported: result.imported, errors: result.errors }));
         if (fileInputRef.current) fileInputRef.current.value = "";
       } catch (err) {
         console.error("Failed to import products:", err);
-        alert("Failed to import products. Please check the CSV format.");
+        alert(t("products.errors.importFailed"));
       }
     };
     reader.readAsText(file);
@@ -395,7 +397,7 @@ export default function ProductsScreen() {
     <div className="h-full flex overflow-hidden">
       <div className="flex-1 flex flex-col p-5 overflow-hidden">
         <div className="flex items-center justify-between mb-5">
-           <h1 className="font-display text-xl font-bold">Products</h1>
+           <h1 className="font-display text-xl font-bold">{t("products.title")}</h1>
            <div className="flex gap-2">
             <div className="flex rounded-lg overflow-hidden" style={{ background: "#1E1E26" }}>
               <button
@@ -403,24 +405,24 @@ export default function ProductsScreen() {
                 className="px-3 py-2 text-xs font-medium transition-colors"
                 style={{ background: view === "products" ? "#F5C842" : "transparent", color: view === "products" ? "#0D0D0F" : "#9090A8" }}
               >
-                <Package size={14} className="inline mr-1" /> Products
+                <Package size={14} className="inline mr-1" /> {t("products.productsTab")}
               </button>
               <button
                 onClick={() => setView("combos")}
                 className="px-3 py-2 text-xs font-medium transition-colors"
                 style={{ background: view === "combos" ? "#F5C842" : "transparent", color: view === "combos" ? "#0D0D0F" : "#9090A8" }}
               >
-                <Tag size={14} className="inline mr-1" /> Combos
+                <Tag size={14} className="inline mr-1" /> {t("products.combosTab")}
               </button>
             </div>
-            <button onClick={() => fetchProducts()} className="btn-ghost py-2 px-3" title="Refresh"><RefreshCw size={14} className={isLoading ? "spin" : ""} /></button>
+            <button onClick={() => fetchProducts()} className="btn-ghost py-2 px-3" title={t("common.refresh")}><RefreshCw size={14} className={isLoading ? "spin" : ""} /></button>
 
             {view === "products" && (
               <>
-                <button onClick={handleExport} className="btn-ghost py-2 px-3" title="Export CSV">
+                <button onClick={handleExport} className="btn-ghost py-2 px-3" title={t("products.exportCsv")}>
                   <Download size={14} />
                 </button>
-                <button onClick={handleImportClick} className="btn-ghost py-2 px-3" title="Import CSV">
+                <button onClick={handleImportClick} className="btn-ghost py-2 px-3" title={t("products.importCsv")}>
                   <Upload size={14} />
                 </button>
                 <input
@@ -431,13 +433,13 @@ export default function ProductsScreen() {
                   className="hidden"
                 />
                 <button className="btn-accent flex items-center gap-2 text-sm" onClick={() => setEditing({ ...EMPTY_PRODUCT, store_id: activeStoreId })}>
-                  <Plus size={15} /> Add Product
+                  <Plus size={15} /> {t("products.addProduct")}
                 </button>
               </>
             )}
             {view === "combos" && (
               <button className="btn-accent flex items-center gap-2 text-sm" onClick={() => { setEditingCombo({ ...EMPTY_COMBO, store_id: activeStoreId }); setComboItems([]); }}>
-                <Plus size={15} /> Create Combo
+                <Plus size={15} /> {t("products.createCombo")}
               </button>
             )}
           </div>
@@ -448,7 +450,7 @@ export default function ProductsScreen() {
             <div className="flex gap-4 mb-4">
               <div className="relative flex-1">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#4A4A5A" }} />
-                <input placeholder="Search products, SKU or barcode..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 36 }} />
+                <input placeholder={t("products.searchPlaceholder")} value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 36 }} />
               </div>
               <div className="flex gap-2">
                 <div className="flex items-center gap-1 px-3 rounded-lg border border-border bg-[#141418]">
@@ -458,7 +460,7 @@ export default function ProductsScreen() {
                     value={selectedCategory || ""}
                     onChange={(e) => setSelectedCategory(e.target.value || null)}
                   >
-                    <option value="">All Categories</option>
+                    <option value="">{t("products.allCategories")}</option>
                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
@@ -470,7 +472,7 @@ export default function ProductsScreen() {
                       value={selectedSubcategory || ""}
                       onChange={(e) => setSelectedSubcategory(e.target.value || null)}
                     >
-                      <option value="">All Subcategories</option>
+                      <option value="">{t("products.allSubcategories")}</option>
                       {subcategories.filter(s => products.some(p => p.category === selectedCategory && p.subcategory === s)).map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
@@ -486,19 +488,19 @@ export default function ProductsScreen() {
                   <thead className="sticky top-0" style={{ background: "#0D0D0F" }}>
                     <tr style={{ color: "#4A4A5A", fontSize: 11 }}>
                       <th scope="col" className="text-left pb-3 pl-3 cursor-pointer" onClick={() => setSorting('name', sortBy === 'name' && sortOrder === 'asc' ? 'desc' : 'asc')}>
-                        PRODUCT {sortBy === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
+                        {t("products.tableHeaders.product")} {sortBy === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
                       </th>
                       <th scope="col" className="text-left pb-3 cursor-pointer" onClick={() => setSorting('category', sortBy === 'category' && sortOrder === 'asc' ? 'desc' : 'asc')}>
-                        CATEGORY {sortBy === 'category' && (sortOrder === 'asc' ? '↑' : '↓')}
+                        {t("products.tableHeaders.category")} {sortBy === 'category' && (sortOrder === 'asc' ? '↑' : '↓')}
                       </th>
                       <th scope="col" className="text-right pb-3 cursor-pointer" onClick={() => setSorting('price', sortBy === 'price' && sortOrder === 'asc' ? 'desc' : 'asc')}>
-                        PRICE {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}
+                        {t("products.tableHeaders.price")} {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}
                       </th>
-                      <th scope="col" className="text-right pb-3">TAX</th>
+                      <th scope="col" className="text-right pb-3">{t("products.tableHeaders.tax")}</th>
                       <th scope="col" className="text-right pb-3 cursor-pointer" onClick={() => setSorting('stock', sortBy === 'stock' && sortOrder === 'asc' ? 'desc' : 'asc')}>
-                        STOCK {sortBy === 'stock' && (sortOrder === 'asc' ? '↑' : '↓')}
+                        {t("products.tableHeaders.stock")} {sortBy === 'stock' && (sortOrder === 'asc' ? '↑' : '↓')}
                       </th>
-                      <th scope="col" className="text-right pb-3 pr-3">ACTIONS</th>
+                      <th scope="col" className="text-right pb-3 pr-3">{t("products.tableHeaders.actions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -517,8 +519,8 @@ export default function ProductsScreen() {
                               <div className="flex items-center gap-2">
                                 <div className="font-medium">{p.name}</div>
                                 {p.is_favorite && <Star size={12} fill="#F5C842" color="#F5C842" />}
-                                {p.is_digital && <div className="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30">DIGITAL</div>}
-                                {p.status !== 'active' && <div className="px-1.5 py-0.5 rounded text-[10px] bg-gray-500/20 text-gray-400 border border-gray-500/30 uppercase">{p.status}</div>}
+                                {p.is_digital && <div className="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30">{t("products.digital")}</div>}
+                                {p.status !== 'active' && <div className="px-1.5 py-0.5 rounded text-[10px] bg-gray-500/20 text-gray-400 border border-gray-500/30 uppercase">{p.status === 'inactive' ? t("products.form.statusInactive") : p.status === 'discontinued' ? t("products.form.statusDiscontinued") : p.status}</div>}
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
                                 {p.barcode && <div className="text-[10px] font-mono" style={{ color: "#4A4A5A" }}>#{p.barcode}</div>}
@@ -539,7 +541,7 @@ export default function ProductsScreen() {
                               onClick={() => toggleFavorite(p)}
                               className="p-1.5 rounded-lg"
                               style={{ color: p.is_favorite ? "#F5C842" : "#4A4A5A" }}
-                              title="Toggle favorite"
+                              title={t("products.toggleFavorite")}
                             >
                               <Star size={14} fill={p.is_favorite ? "#F5C842" : "none"} />
                             </button>
@@ -547,8 +549,8 @@ export default function ProductsScreen() {
                               onClick={() => setEditing({ ...p })}
                               className="p-1.5 rounded-lg"
                               style={{ color: "#9090A8" }}
-                              title="Edit product"
-                              aria-label="Edit product"
+                              title={t("products.editProduct")}
+                              aria-label={t("products.editProduct")}
                               onMouseEnter={(e) => (e.currentTarget.style.color = "#F5C842")} onMouseLeave={(e) => (e.currentTarget.style.color = "#9090A8")}>
                               <Pencil size={14} />
                             </button>
@@ -556,8 +558,8 @@ export default function ProductsScreen() {
                               onClick={() => handleDelete(p.id)}
                               className="p-1.5 rounded-lg"
                               style={{ color: "#9090A8" }}
-                              title="Delete product"
-                              aria-label="Delete product"
+                              title={t("products.deleteProduct")}
+                              aria-label={t("products.deleteProduct")}
                               onMouseEnter={(e) => (e.currentTarget.style.color = "#E74C3C")} onMouseLeave={(e) => (e.currentTarget.style.color = "#9090A8")}>
                               <Trash2 size={14} />
                             </button>
@@ -570,7 +572,7 @@ export default function ProductsScreen() {
               )}
               {hasMore && <div className="text-center py-4">
                 <button onClick={() => setDisplayLimit(d => d + ITEMS_PER_PAGE)} className="btn-ghost text-sm">
-                  Show More ({filtered.length - displayLimit} more)
+                  {t("common.showMore", { count: filtered.length - displayLimit })}
                 </button>
               </div>}
             </div>
@@ -583,10 +585,10 @@ export default function ProductsScreen() {
               {combos.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full" style={{ color: "#4A4A5A" }}>
                   <Tag size={48} className="mb-4 opacity-50" />
-                  <p className="text-base mb-2">No Combos Yet</p>
-                  <p className="text-sm">Create combo deals to boost sales</p>
+                  <p className="text-base mb-2">{t("products.noCombos")}</p>
+                  <p className="text-sm">{t("products.noCombosHint")}</p>
                   <button onClick={() => { setEditingCombo({ ...EMPTY_COMBO, store_id: activeStoreId }); setComboItems([]); }} className="btn-accent mt-4">
-                    <Plus size={15} className="inline mr-2" /> Create Combo
+                    <Plus size={15} className="inline mr-2" /> {t("products.createCombo")}
                   </button>
                 </div>
               ) : (
@@ -600,14 +602,14 @@ export default function ProductsScreen() {
                           </div>
                           <div>
                             <h3 className="font-semibold">{combo.name}</h3>
-                            <p className="text-xs" style={{ color: "#9090A8" }}>{combo.description || "No description"}</p>
+                            <p className="text-xs" style={{ color: "#9090A8" }}>{combo.description || t("products.noDescription")}</p>
                           </div>
                         </div>
                         <span 
                           className="px-2 py-1 rounded text-xs font-medium"
                           style={{ background: combo.is_active ? "rgba(46,204,113,0.2)" : "rgba(231,76,60,0.2)", color: combo.is_active ? "#2ECC71" : "#E74C3C" }}
                         >
-                          {combo.is_active ? "Active" : "Inactive"}
+                          {combo.is_active ? t("common.active") : t("common.inactive")}
                         </span>
                       </div>
                       <div className="space-y-2 mb-4">
@@ -629,13 +631,13 @@ export default function ProductsScreen() {
                           <div className="font-bold text-base" style={{ color: "#2ECC71" }}>{curr}{combo.combo_price.toFixed(2)}</div>
                           {combo.discount_percent > 0 && (
                             <span className="text-xs px-1 rounded" style={{ background: "#2ECC71", color: "#0D0D0F" }}>
-                              {combo.discount_percent.toFixed(0)}% OFF
+                              {combo.discount_percent.toFixed(0)}{t("products.percentOff")}
                             </span>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
                           <button onClick={() => handleToggleCombo(combo.id, combo.is_active)} className="btn-ghost py-1 px-2 text-xs">
-                            {combo.is_active ? "Pause" : "Activate"}
+                            {combo.is_active ? t("products.pause") : t("products.activate")}
                           </button>
                           <button onClick={() => { setEditingCombo(combo); setComboItems(combo.items); }} className="p-1.5 rounded-lg" style={{ color: "#9090A8" }}>
                             <Pencil size={14} />
@@ -658,36 +660,36 @@ export default function ProductsScreen() {
       {editing && (
         <div className="border-l border-border p-5 overflow-y-auto slide-in" style={{ width: 360 }}>
           <div className="flex items-center justify-between mb-5">
-            <h2 className="font-display font-bold">{editing.id ? "Edit" : "Add"} Product</h2>
+            <h2 className="font-display font-bold">{editing.id ? t("products.editProduct") : t("products.addProduct")}</h2>
             <button onClick={() => { setEditing(null); setErrors({}); setVariantsToDelete([]); initialVariantIds.current = new Set(); }} style={{ color: "#4A4A5A" }}><X size={18} /></button>
           </div>
           <div className="space-y-4">
             <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Name *</label>
-              <input name="name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Product name" />
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.name")}</label>
+              <input name="name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder={t("products.form.namePlaceholder")} />
               {errors.name && <p className="text-xs mt-1" style={{ color: "#E74C3C" }}>{errors.name}</p>}
             </div>
 
             <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Description</label>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.description")}</label>
               <textarea
                 className="w-full p-2 rounded-lg text-sm"
                 rows={3}
                 style={{ background: "#1E1E26", color: "white", border: "1px solid #2A2A32" }}
                 value={editing.description || ""}
                 onChange={(e) => setEditing({ ...editing, description: e.target.value })}
-                placeholder="Product description..."
+                placeholder={t("products.form.descriptionPlaceholder")}
               />
             </div>
             
             <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Image URL</label>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.imageUrl")}</label>
               <div className="flex gap-2">
                 <input 
                   name="image_url"
                   value={editing.image_url || ""} 
                   onChange={(e) => setEditing({ ...editing, image_url: e.target.value })} 
-                  placeholder="https://example.com/image.jpg"
+                  placeholder={t("products.form.imageUrlPlaceholder")}
                   className="flex-1"
                 />
               </div>
@@ -701,29 +703,29 @@ export default function ProductsScreen() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Category</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.category")}</label>
                 <select value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>
                   {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Subcategory</label>
-                <input value={editing.subcategory || ""} onChange={(e) => setEditing({ ...editing, subcategory: e.target.value })} placeholder="e.g., Hot Drinks" />
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.subcategory")}</label>
+                <input value={editing.subcategory || ""} onChange={(e) => setEditing({ ...editing, subcategory: e.target.value })} placeholder={t("products.form.subcategoryPlaceholder")} />
               </div>
             </div>
             
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Selling ({curr}) *</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.sellingPrice", { currency: curr })}</label>
                 <input name="price" type="number" value={editing.price} onChange={(e) => setEditing({ ...editing, price: parseFloat(e.target.value) || 0 })} min={0} />
                 {errors.price && <p className="text-xs mt-1" style={{ color: "#E74C3C" }}>{errors.price}</p>}
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Cost ({curr})</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.costPrice", { currency: curr })}</label>
                 <input type="number" value={editing.cost_price} onChange={(e) => setEditing({ ...editing, cost_price: parseFloat(e.target.value) || 0 })} min={0} />
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Wholesale ({curr})</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.wholesalePrice", { currency: curr })}</label>
                 <input type="number" value={editing.wholesale_price} onChange={(e) => setEditing({ ...editing, wholesale_price: parseFloat(e.target.value) || 0 })} min={0} />
               </div>
             </div>
@@ -731,13 +733,13 @@ export default function ProductsScreen() {
             {(editing.price > 0 && editing.cost_price > 0) && (
               <div className="flex gap-4 p-2 rounded-lg bg-[#141418] border border-[#1E1E26]">
                 <div className="flex-1">
-                  <div className="text-[10px] text-[#4A4A5A] uppercase font-bold">Margin %</div>
+                  <div className="text-[10px] text-[#4A4A5A] uppercase font-bold">{t("products.form.marginPercent")}</div>
                   <div className="text-sm font-bold text-[#2ECC71]">
                     {(((editing.price - editing.cost_price) / editing.price) * 100).toFixed(1)}%
                   </div>
                 </div>
                 <div className="flex-1 border-l border-[#1E1E26] pl-4">
-                  <div className="text-[10px] text-[#4A4A5A] uppercase font-bold">Profit</div>
+                  <div className="text-[10px] text-[#4A4A5A] uppercase font-bold">{t("products.form.profit")}</div>
                   <div className="text-sm font-bold text-[#2ECC71]">
                     {curr}{(editing.price - editing.cost_price).toFixed(2)}
                   </div>
@@ -747,45 +749,45 @@ export default function ProductsScreen() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Stock</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.stock")}</label>
                 <input name="stock" type="number" value={editing.stock} onChange={(e) => setEditing({ ...editing, stock: parseInt(e.target.value) || 0 })} min={0} />
                 {errors.stock && <p className="text-xs mt-1" style={{ color: "#E74C3C" }}>{errors.stock}</p>}
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Tax %</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.taxPercent")}</label>
                 <input name="tax" type="number" value={editing.tax} onChange={(e) => setEditing({ ...editing, tax: parseFloat(e.target.value) || 0 })} min={0} max={100} />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>SKU</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.sku")}</label>
                 <div className="flex gap-1">
-                  <input className="flex-1" value={editing.sku || ""} onChange={(e) => setEditing({ ...editing, sku: e.target.value })} placeholder="Auto" />
-                  <button onClick={() => setEditing({ ...editing, sku: generateSKU(editing.name, editing.category) })} className="p-2 bg-[#1E1E26] rounded-lg" title="Generate SKU"><Hash size={14} /></button>
+                  <input className="flex-1" value={editing.sku || ""} onChange={(e) => setEditing({ ...editing, sku: e.target.value })} placeholder={t("products.form.skuAuto")} />
+                  <button onClick={() => setEditing({ ...editing, sku: generateSKU(editing.name, editing.category) })} className="p-2 bg-[#1E1E26] rounded-lg" title={t("products.form.generateSku")}><Hash size={14} /></button>
                 </div>
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Barcode</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.barcode")}</label>
                 <div className="flex gap-1">
-                  <input className="flex-1" value={editing.barcode || ""} onChange={(e) => setEditing({ ...editing, barcode: e.target.value })} placeholder="Auto" />
-                  <button onClick={() => setEditing({ ...editing, barcode: generateBarcode() })} className="p-2 bg-[#1E1E26] rounded-lg" title="Generate Barcode"><Barcode size={14} /></button>
+                  <input className="flex-1" value={editing.barcode || ""} onChange={(e) => setEditing({ ...editing, barcode: e.target.value })} placeholder={t("products.form.skuAuto")} />
+                  <button onClick={() => setEditing({ ...editing, barcode: generateBarcode() })} className="p-2 bg-[#1E1E26] rounded-lg" title={t("products.form.generateBarcode")}><Barcode size={14} /></button>
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Status</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.status")}</label>
                 <select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value as 'active' | 'inactive' | 'discontinued' })}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="discontinued">Discontinued</option>
+                  <option value="active">{t("products.form.statusActive")}</option>
+                  <option value="inactive">{t("products.form.statusInactive")}</option>
+                  <option value="discontinued">{t("products.form.statusDiscontinued")}</option>
                 </select>
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Tags (comma separated)</label>
-                <input value={editing.tags || ""} onChange={(e) => setEditing({ ...editing, tags: e.target.value })} placeholder="tag1, tag2" />
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.form.tags")}</label>
+                <input value={editing.tags || ""} onChange={(e) => setEditing({ ...editing, tags: e.target.value })} placeholder={t("products.form.tagsPlaceholder")} />
               </div>
             </div>
 
@@ -797,7 +799,7 @@ export default function ProductsScreen() {
                   onChange={(e) => setEditing({ ...editing, is_digital: e.target.checked })}
                   className="w-4 h-4 rounded"
                 />
-                <span className="text-sm">Digital Product</span>
+                <span className="text-sm">{t("products.form.digitalProduct")}</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -806,17 +808,17 @@ export default function ProductsScreen() {
                   onChange={(e) => setEditing({ ...editing, is_favorite: e.target.checked })}
                   className="w-4 h-4 rounded"
                 />
-                <span className="text-sm">Pin to Favorites</span>
+                <span className="text-sm">{t("products.form.pinToFavorites")}</span>
               </label>
             </div>
 
             {/* Industry Specific Metadata */}
             <div className="pt-4 border-t border-[#1E1E26] space-y-4">
-               <h3 className="text-xs font-bold uppercase tracking-wider text-[#4A4A5A]">Industry Specific Info</h3>
+               <h3 className="text-xs font-bold uppercase tracking-wider text-[#4A4A5A]">{t("products.form.industryInfo")}</h3>
 
                {activeStore?.industry === 'salon_spa' && (
                  <div>
-                   <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}><Clock size={12} className="inline mr-1" /> Duration (minutes)</label>
+                    <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}><Clock size={12} className="inline mr-1" /> {t("products.form.durationMinutes")}</label>
                    <input
                      type="number"
                      value={editing.metadata?.duration || ""}
@@ -834,13 +836,13 @@ export default function ProductsScreen() {
                      onChange={(e) => setEditing({ ...editing, metadata: { ...editing.metadata, track_serial: e.target.checked } })}
                      className="w-4 h-4 rounded"
                    />
-                   <span className="text-sm"><ShieldCheck size={12} className="inline mr-1" /> Track IMEI / Serial Number</span>
+                    <span className="text-sm"><ShieldCheck size={12} className="inline mr-1" /> {t("products.form.trackImei")}</span>
                  </label>
                )}
 
                {activeStore?.industry === 'pharmacy' && (
                  <div>
-                   <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}><Calendar size={12} className="inline mr-1" /> Default Expiry Months</label>
+                    <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}><Calendar size={12} className="inline mr-1" /> {t("products.form.defaultExpiryMonths")}</label>
                    <input
                      type="number"
                      value={editing.metadata?.expiry_months || ""}
@@ -854,24 +856,24 @@ export default function ProductsScreen() {
             {/* Custom Attributes Section */}
             <div className="pt-4 border-t border-[#1E1E26] space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#4A4A5A]">Custom Attributes</h3>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#4A4A5A]">{t("products.form.customAttributes")}</h3>
                 <button
                   onClick={() => setCustomAttributes([...customAttributes, { key: "", value: "" }])}
                   className="text-[10px] px-2 py-1 bg-[#1E1E26] rounded text-[#F5C842] hover:bg-[#2A2A32]"
                 >
-                  <Plus size={10} className="inline mr-1" /> Add Field
+                  <Plus size={10} className="inline mr-1" /> {t("products.form.addField")}
                 </button>
               </div>
 
               {customAttributes.length === 0 ? (
-                <p className="text-[10px] text-center py-2 text-[#4A4A5A] italic">No custom fields added</p>
+                <p className="text-[10px] text-center py-2 text-[#4A4A5A] italic">{t("products.form.noCustomFields")}</p>
               ) : (
                 <div className="space-y-2">
                   {customAttributes.map((attr, idx) => (
                     <div key={idx} className="flex gap-2 items-center">
                       <input
                         className="text-[10px] p-1.5 flex-1"
-                        placeholder="Key (e.g., Brand)"
+                        placeholder={t("products.form.keyPlaceholder")}
                         value={attr.key}
                         onChange={(e) => {
                           const newAttrs = [...customAttributes];
@@ -881,7 +883,7 @@ export default function ProductsScreen() {
                       />
                       <input
                         className="text-[10px] p-1.5 flex-1"
-                        placeholder="Value"
+                        placeholder={t("products.form.valuePlaceholder")}
                         value={attr.value}
                         onChange={(e) => {
                           const newAttrs = [...customAttributes];
@@ -899,14 +901,14 @@ export default function ProductsScreen() {
             {/* Product Variants Section */}
             <div className="pt-4 border-t border-[#1E1E26] space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#4A4A5A]"><Activity size={12} className="inline mr-1" /> Product Variants</h3>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#4A4A5A]"><Activity size={12} className="inline mr-1" /> {t("products.form.variants")}</h3>
                 <button onClick={handleAddVariant} className="text-[10px] px-2 py-1 bg-[#1E1E26] rounded text-[#F5C842] hover:bg-[#2A2A32]">
-                  <Plus size={10} className="inline mr-1" /> Add Variant
+                  <Plus size={10} className="inline mr-1" /> {t("products.form.addVariant")}
                 </button>
               </div>
 
               {editingVariants.length === 0 ? (
-                <p className="text-[10px] text-center py-4 text-[#4A4A5A] italic">No variants defined for this product</p>
+                <p className="text-[10px] text-center py-4 text-[#4A4A5A] italic">{t("products.form.noVariants")}</p>
               ) : (
                 <div className="space-y-2">
                   {editingVariants.map((v) => (
@@ -914,13 +916,13 @@ export default function ProductsScreen() {
                       <div className="grid grid-cols-2 gap-2">
                         <input
                           className="text-[10px] p-1.5"
-                          placeholder="Name (e.g., Color)"
+                          placeholder={t("products.form.variantNamePlaceholder")}
                           value={v.name}
                           onChange={(e) => handleUpdateVariant(v.id, { name: e.target.value })}
                         />
                         <input
                           className="text-[10px] p-1.5"
-                          placeholder="Value (e.g., Red)"
+                          placeholder={t("products.form.variantValuePlaceholder")}
                           value={v.value}
                           onChange={(e) => handleUpdateVariant(v.id, { value: e.target.value })}
                         />
@@ -931,7 +933,7 @@ export default function ProductsScreen() {
                           <input
                             type="number"
                             className="text-[10px] p-1.5 pl-4"
-                            placeholder="Price"
+                            placeholder={t("products.form.variantPricePlaceholder")}
                             value={v.price}
                             onChange={(e) => handleUpdateVariant(v.id, { price: parseFloat(e.target.value) || 0 })}
                           />
@@ -939,14 +941,14 @@ export default function ProductsScreen() {
                         <input
                           type="number"
                           className="text-[10px] p-1.5"
-                          placeholder="Stock"
+                          placeholder={t("products.form.variantStockPlaceholder")}
                           value={v.stock}
                           onChange={(e) => handleUpdateVariant(v.id, { stock: parseInt(e.target.value) || 0 })}
                         />
                         <div className="flex gap-1">
                           <input
                             className="text-[10px] p-1.5 flex-1"
-                            placeholder="SKU"
+                            placeholder={t("products.form.variantSkuPlaceholder")}
                             value={v.sku}
                             onChange={(e) => handleUpdateVariant(v.id, { sku: e.target.value })}
                           />
@@ -961,9 +963,9 @@ export default function ProductsScreen() {
 
             <div className="flex gap-2 pt-4">
               <button className="btn-accent flex-1 flex items-center justify-center gap-2 py-2.5 text-sm" onClick={handleSave}>
-                <Check size={15} /> Save
+                <Check size={15} /> {t("common.save")}
               </button>
-              <button className="btn-ghost py-2.5 px-4 text-sm" onClick={() => { setEditing(null); setErrors({}); setVariantsToDelete([]); initialVariantIds.current = new Set(); }}>Cancel</button>
+              <button className="btn-ghost py-2.5 px-4 text-sm" onClick={() => { setEditing(null); setErrors({}); setVariantsToDelete([]); initialVariantIds.current = new Set(); }}>{t("common.cancel")}</button>
             </div>
           </div>
         </div>
@@ -973,22 +975,22 @@ export default function ProductsScreen() {
       {editingCombo && (
         <div className="border-l border-border p-5 overflow-y-auto slide-in" style={{ width: 420 }}>
           <div className="flex items-center justify-between mb-5">
-            <h2 className="font-display font-bold">{editingCombo.id ? "Edit" : "Create"} Combo</h2>
+            <h2 className="font-display font-bold">{editingCombo.id ? `${t("common.edit")} ${t("products.combo.title")}` : t("products.createCombo")}</h2>
             <button onClick={() => { setEditingCombo(null); setComboItems([]); }} style={{ color: "#4A4A5A" }}><X size={18} /></button>
           </div>
           <div className="space-y-4">
             <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Combo Name *</label>
-              <input value={editingCombo.name} onChange={(e) => setEditingCombo({ ...editingCombo, name: e.target.value })} placeholder="e.g., Lunch Special" />
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.combo.name")}</label>
+              <input value={editingCombo.name} onChange={(e) => setEditingCombo({ ...editingCombo, name: e.target.value })} placeholder={t("products.combo.namePlaceholder")} />
             </div>
 
             <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Description</label>
-              <input value={editingCombo.description || ""} onChange={(e) => setEditingCombo({ ...editingCombo, description: e.target.value })} placeholder="Optional description" />
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.combo.description")}</label>
+              <input value={editingCombo.description || ""} onChange={(e) => setEditingCombo({ ...editingCombo, description: e.target.value })} placeholder={t("products.combo.descriptionPlaceholder")} />
             </div>
 
             <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Combo Price ({curr})</label>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.combo.price", { currency: curr })}</label>
               <input 
                 type="number" 
                 value={editingCombo.combo_price} 
@@ -998,7 +1000,7 @@ export default function ProductsScreen() {
             </div>
 
             <div>
-              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Active</label>
+              <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("products.combo.active")}</label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input 
                   type="checkbox" 
@@ -1006,17 +1008,17 @@ export default function ProductsScreen() {
                   onChange={(e) => setEditingCombo({ ...editingCombo, is_active: e.target.checked })}
                   className="w-4 h-4 rounded"
                 />
-                <span className="text-sm">Combo is active</span>
+                <span className="text-sm">{t("products.combo.isActive")}</span>
               </label>
             </div>
 
             {/* Selected Items */}
             <div>
-              <label className="text-xs mb-2 block" style={{ color: "#4A4A5A" }}>Combo Items ({comboItems.length})</label>
+              <label className="text-xs mb-2 block" style={{ color: "#4A4A5A" }}>{t("products.combo.items", { count: comboItems.length })}</label>
               {comboItems.length === 0 ? (
                 <div className="p-4 rounded-lg text-center" style={{ background: "#1E1E26", color: "#4A4A5A" }}>
                   <Package size={24} className="mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Click products on the right to add</p>
+                  <p className="text-sm">{t("products.combo.addHint")}</p>
                 </div>
               ) : (
                 <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -1045,16 +1047,16 @@ export default function ProductsScreen() {
             {comboItems.length > 0 && (
               <div className="p-3 rounded-lg" style={{ background: "#1E1E26" }}>
                 <div className="flex justify-between text-sm mb-2">
-                  <span style={{ color: "#9090A8" }}>Total Items Price:</span>
+                  <span style={{ color: "#9090A8" }}>{t("products.combo.totalItemsPrice")}</span>
                   <span>{curr}{calculateComboPrice().toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm mb-2">
-                  <span style={{ color: "#9090A8" }}>Combo Price:</span>
+                  <span style={{ color: "#9090A8" }}>{t("products.combo.comboPrice")}</span>
                   <span style={{ color: "#F5C842" }}>{curr}{editingCombo.combo_price.toFixed(2)}</span>
                 </div>
                 {calculateComboPrice() > editingCombo.combo_price && (
                   <div className="flex justify-between text-sm">
-                    <span style={{ color: "#2ECC71" }}>Savings:</span>
+                    <span style={{ color: "#2ECC71" }}>{t("products.combo.savings")}</span>
                     <span style={{ color: "#2ECC71" }}>{curr}{(calculateComboPrice() - editingCombo.combo_price).toFixed(2)}</span>
                   </div>
                 )}
@@ -1063,7 +1065,7 @@ export default function ProductsScreen() {
 
             {/* Add Products to Combo */}
             <div>
-              <label className="text-xs mb-2 block" style={{ color: "#4A4A5A" }}>Add Products to Combo</label>
+              <label className="text-xs mb-2 block" style={{ color: "#4A4A5A" }}>{t("products.combo.addProducts")}</label>
               <div className="max-h-48 overflow-y-auto space-y-1">
                 {products.filter(p => !p.is_combo).slice(0, 15).map((product) => {
                   const inCombo = comboItems.some(item => item.product_id === product.id);
@@ -1098,9 +1100,9 @@ export default function ProductsScreen() {
 
             <div className="flex gap-2 pt-4">
               <button className="btn-accent flex-1 flex items-center justify-center gap-2 py-2.5 text-sm" onClick={handleSaveCombo}>
-                <Check size={15} /> Save Combo
+                <Check size={15} /> {t("products.combo.saveCombo")}
               </button>
-              <button className="btn-ghost py-2.5 px-4 text-sm" onClick={() => { setEditingCombo(null); setComboItems([]); }}>Cancel</button>
+              <button className="btn-ghost py-2.5 px-4 text-sm" onClick={() => { setEditingCombo(null); setComboItems([]); }}>{t("common.cancel")}</button>
             </div>
           </div>
         </div>

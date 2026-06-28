@@ -4,6 +4,7 @@ import type { User } from "@/lib/db";
 import type { StaffAttendance } from "@/lib/db";
 import { X, Clock, LogIn, LogOut } from "lucide-react";
 import { useStaffStore, useAuthStore } from "@/lib/stores";
+import { useTranslation } from "@/lib/i18n";
 
 interface StaffAttendanceProps {
   onClose?: () => void;
@@ -14,6 +15,7 @@ export default function StaffAttendance({ onClose, isOpen = true }: StaffAttenda
   const { todayAttendance, isLoading, fetchTodayAttendance, clockIn, clockOut, currentUserClockedIn, checkClockedIn } = useStaffStore();
   const { user } = useAuthStore();
   const [showModal, setShowModal] = useState(isOpen);
+  const t = useTranslation();
 
   useEffect(() => {
     setShowModal(isOpen);
@@ -63,8 +65,8 @@ export default function StaffAttendance({ onClose, isOpen = true }: StaffAttenda
      >
        <div className="card p-6 w-[500px] max-h-[80vh] overflow-y-auto fade-in" role="dialog" aria-modal="true" aria-labelledby="attendance-title">
          <div className="flex items-center justify-between mb-4">
-           <h2 id="attendance-title" className="font-display text-base" style={{ color: "#F5C842" }}>Staff Attendance</h2>
-              <button onClick={handleClose} className="btn-ghost py-1 px-3" aria-label="Close"><X size={16} /></button>
+            <h2 id="attendance-title" className="font-display text-base" style={{ color: "#F5C842" }}>{t("staff.attendance.title")}</h2>
+               <button onClick={handleClose} className="btn-ghost py-1 px-3" aria-label={t("common.close")}><X size={16} /></button>
          </div>
 
         <div className="mb-4">
@@ -74,28 +76,28 @@ export default function StaffAttendance({ onClose, isOpen = true }: StaffAttenda
               <div>
                 <div className="font-medium">{user.name}</div>
                 <div className="text-xs" style={{ color: "#4A4A5A" }}>
-                  {currentUserClockedIn ? "Currently on shift" : "Not on shift"}
+                  {currentUserClockedIn ? t("staff.attendance.onShift") : t("staff.attendance.notOnShift")}
                 </div>
               </div>
             </div>
             {currentUserClockedIn ? (
               <button onClick={handleClockOut} className="btn-danger flex items-center gap-2 py-2 px-4 text-sm">
-                <LogOut size={14} /> Clock Out
+                <LogOut size={14} /> {t("staff.attendance.clockOut")}
               </button>
             ) : (
               <button onClick={handleClockIn} className="btn-accent flex items-center gap-2 py-2 px-4 text-sm">
-                <LogIn size={14} /> Clock In
+                <LogIn size={14} /> {t("staff.attendance.clockIn")}
               </button>
             )}
           </div>
         </div>
 
         <div>
-          <h3 className="text-sm font-semibold mb-3" style={{ color: "#9090A8" }}>Today's Attendance</h3>
+          <h3 className="text-sm font-semibold mb-3" style={{ color: "#9090A8" }}>{t("staff.attendance.todayAttendance")}</h3>
           {isLoading ? (
-            <div className="text-center py-4" style={{ color: "#4A4A5A" }}>Loading...</div>
+            <div className="text-center py-4" style={{ color: "#4A4A5A" }}>{t("common.loading")}</div>
           ) : todayAttendance.length === 0 ? (
-            <div className="text-center py-4" style={{ color: "#4A4A5A" }}>No attendance records today</div>
+            <div className="text-center py-4" style={{ color: "#4A4A5A" }}>{t("staff.attendance.noRecords")}</div>
           ) : (
             <div className="space-y-2">
               {todayAttendance.map((record) => (
@@ -103,7 +105,7 @@ export default function StaffAttendance({ onClose, isOpen = true }: StaffAttenda
                   <div className="flex items-center justify-between">
                     <div className="font-medium">{record.user_name}</div>
                     <div className="text-xs" style={{ color: record.clock_out ? "#9090A8" : "#2ECC71" }}>
-                      {record.clock_out ? "Completed" : "On Shift"}
+                      {record.clock_out ? t("staff.attendance.completed") : t("staff.attendance.onShiftLabel")}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: "#4A4A5A" }}>

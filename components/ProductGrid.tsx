@@ -5,6 +5,7 @@ import { Product, ProductVariant, Batch, SerialNumber, Combo } from "@/lib/db";
 import { useGridNavigation } from "@/lib/keyboard";
 import { convertFileSrc } from "@tauri-apps/api/tauri";
 import { uiLogger } from "@/lib/logger";
+import { useSettingsStore } from "@/lib/stores";
 
 interface ProductGridProps {
   products: Product[];
@@ -27,6 +28,7 @@ export default function ProductGrid({
   onSelectSerial,
   labels,
 }: ProductGridProps) {
+  const currencySymbol = useSettingsStore((s) => s.settings?.currency_symbol) ?? "$";
   const [searchTerm, setSearchTerm] = useState("");
   const [focusedProductIndex, setFocusedProductIndex] = useState<number>(-1);
   const [isGridFocused, setIsGridFocused] = useState(false);
@@ -179,7 +181,7 @@ export default function ProductGrid({
                 {combo.name}
               </h3>
               <p className="text-lg font-bold text-gray-900">
-                ₹{combo.combo_price.toFixed(2)}
+                {currencySymbol}{combo.combo_price.toFixed(2)}
               </p>
               <div className="text-xs text-gray-500 mt-1">
                 {combo.items.length} items
@@ -223,7 +225,7 @@ export default function ProductGrid({
 
                 <div className="flex items-center justify-between">
                   <span className="text-lg font-bold text-gray-900">
-                    ₹{product.price.toFixed(2)}
+                    {currencySymbol}{product.price.toFixed(2)}
                   </span>
                   {product.stock <= 5 && (
                     <span className="text-xs text-red-600 font-medium">

@@ -3,6 +3,7 @@ import { Lock, Keyboard, User, LogOut, Building2, ChevronDown } from "lucide-rea
 import { User as UserType, Store } from "@/lib/db";
 import { useAuthStore, useSettingsStore, useStoresStore } from "@/lib/stores";
 import { useState } from "react";
+import { useTranslation } from "@/lib/i18n";
 
 interface HeaderBarProps {
   user?: UserType | null;
@@ -13,9 +14,10 @@ interface HeaderBarProps {
 
 export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen }: HeaderBarProps) {
   const { logout } = useAuthStore();
-  const { activeStoreId, setActiveStore, settings } = useSettingsStore();
+  const { activeStoreId, setActiveStore, settings, fontScale, setFontScale } = useSettingsStore();
   const { stores, fetchStores } = useStoresStore();
   const [showStoreDropdown, setShowStoreDropdown] = useState(false);
+  const t = useTranslation();
 
   const activeStore = stores.find(s => s.id === activeStoreId);
 
@@ -30,14 +32,14 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
   };
 
   const shortcuts = [
-    { key: "F1", label: "POS" },
-    { key: "F2", label: "Dashboard" },
-    { key: "F3", label: "Orders" },
-    { key: "F4", label: "Products" },
-    { key: "F5", label: "Kitchen" },
-    { key: "F6", label: "Reports" },
-    { key: "F7", label: "Logs" },
-    { key: "F8", label: "Settings" },
+    { key: "F1", label: t("header.kbdPos") },
+    { key: "F2", label: t("header.kbdDashboard") },
+    { key: "F3", label: t("header.kbdOrders") },
+    { key: "F4", label: t("header.kbdProducts") },
+    { key: "F5", label: t("header.kbdKitchen") },
+    { key: "F6", label: t("header.kbdReports") },
+    { key: "F7", label: t("header.kbdLogs") },
+    { key: "F8", label: t("header.kbdSettings") },
   ];
 
   return (
@@ -47,7 +49,9 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
     >
       <div className="flex items-center gap-6">
         <span className="text-sm font-medium" style={{ color: "#9090A8" }}>
-          {getScreenLabel(currentScreen, settings?.tax_name)}
+          {currentScreen === "gst"
+            ? t("header.screenGst", { taxName: settings?.tax_name || "GST" })
+            : t(`header.screen${currentScreen.charAt(0).toUpperCase() + currentScreen.slice(1)}` as any, {}) || currentScreen}
         </span>
       </div>
       
@@ -65,7 +69,7 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
                 key={s.key}
                 className="inline-flex items-center justify-center w-6 h-5 rounded mx-0.5 font-mono text-[10px]"
                 style={{ background: "#141418", color: "#F5C842" }}
-                title={`${s.key}: ${s.label}`}
+                title={s.label}
               >
                 {s.key}
               </kbd>
@@ -73,7 +77,7 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
             <kbd 
               className="inline-flex items-center justify-center w-6 h-5 rounded mx-0.5 font-mono text-[10px]"
               style={{ background: "#141418", color: "#F5C842" }}
-              title="Show Help: ?"
+              title={t("header.showHelp")}
             >
               ?
             </kbd>
@@ -86,10 +90,10 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border hover:border-[#F5C842] transition-colors"
             aria-haspopup="listbox"
             aria-expanded={showStoreDropdown}
-            aria-label={`Current store: ${activeStore?.name || 'Select Store'}. Click to switch store.`}
+            aria-label={t("header.currentStore", { name: activeStore?.name || t("header.selectStore") })}
           >
             <Building2 size={14} className="text-[#F5C842]" aria-hidden="true" />
-            <span className="text-xs font-medium">{activeStore?.name || 'Select Store'}</span>
+            <span className="text-xs font-medium">{activeStore?.name || t("header.selectStore")}</span>
             <ChevronDown size={12} aria-hidden="true" />
           </button>
           
@@ -97,7 +101,7 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
             <div
               className="absolute top-full right-0 mt-1 w-48 bg-surface border border-border rounded-lg shadow-lg z-50 py-1"
               role="listbox"
-              aria-label="Stores"
+              aria-label={t("header.stores")}
             >
               {stores.map((store) => (
                 <button
@@ -114,7 +118,7 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
                 </button>
               ))}
               {stores.length === 0 && (
-                <div className="px-3 py-2 text-sm text-muted-foreground">No stores</div>
+                <div className="px-3 py-2 text-sm text-muted-foreground">{t("header.noStores")}</div>
               )}
             </div>
           )}
@@ -125,31 +129,64 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors hover:bg-[rgba(245,200,66,0.1)]"
           style={{ background: "#1E1E26", color: "#9090A8" }}
           aria-label="Show keyboard shortcuts"
-          title="Keyboard Shortcuts (?)"
+          title={t("header.keyboardShortcuts")}
         >
           <Keyboard size={14} aria-hidden="true" />
-          <span>Shortcuts</span>
+          <span>{t("header.shortcuts")}</span>
         </button>
 
         <button
           onClick={onLock}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors hover:bg-[rgba(245,200,66,0.1)]"
           style={{ background: "#1E1E26", color: "#9090A8" }}
-          aria-label="Lock screen"
-          title="Lock Screen (Ctrl+L)"
+          aria-label={t("header.lockScreen")}
+          title={t("header.lockScreen")}
         >
           <Lock size={14} aria-hidden="true" />
-          <span>Lock</span>
+          <span>{t("header.lock")}</span>
         </button>
+
+        <div className="flex items-center gap-1" role="group" aria-label={t("header.fontSize")}>
+          <button
+            onClick={() => {
+              const newVal = Math.max(0.75, +(fontScale - 0.125).toFixed(3));
+              setFontScale(newVal);
+            }}
+            className="flex items-center justify-center w-7 h-7 rounded text-xs transition-colors hover:bg-[rgba(245,200,66,0.1)]"
+            style={{ background: "#1E1E26", color: "#9090A8" }}
+            title={t("header.decreaseFont")}
+            aria-label={t("header.decreaseFont")}
+          >
+            A-
+          </button>
+          <span
+            className="text-[10px] font-mono w-7 text-center"
+            style={{ color: "#4A4A5A" }}
+          >
+            {Math.round(fontScale * 100)}%
+          </span>
+          <button
+            onClick={() => {
+              const newVal = Math.min(1.5, +(fontScale + 0.125).toFixed(3));
+              setFontScale(newVal);
+            }}
+            className="flex items-center justify-center w-7 h-7 rounded text-xs transition-colors hover:bg-[rgba(245,200,66,0.1)]"
+            style={{ background: "#1E1E26", color: "#9090A8" }}
+            title={t("header.increaseFont")}
+            aria-label={t("header.increaseFont")}
+          >
+            A+
+          </button>
+        </div>
 
         <button
           onClick={() => useAuthStore.getState().logout()}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors hover:bg-red-500/10 text-[#9090A8] hover:text-red-400"
           style={{ background: "#1E1E26" }}
-          title="Sign Out"
+          title={t("header.signOut")}
         >
           <LogOut size={14} />
-          <span>Sign Out</span>
+          <span>{t("header.signOut")}</span>
         </button>
 
         {user && (
@@ -157,7 +194,7 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
             style={{ background: "#1E1E26" }}
             role="status"
-            aria-label={`Logged in as ${user.name}`}
+            aria-label={t("header.loggedInAs", { name: user.name })}
           >
             <div 
               className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
@@ -181,36 +218,4 @@ export default function HeaderBar({ user, onShowShortcuts, onLock, currentScreen
   );
 }
 
-function getScreenLabel(screen: string, taxName: string = "GST"): string {
-  const labels: Record<string, string> = {
-    pos: "Point of Sale",
-    dashboard: "Dashboard",
-    orders: "Orders",
-    products: "Products",
-    tables: "Table Management",
-    reservations: "Reservations",
-    kds: "Kitchen Display",
-    customers: "Customer CRM",
-    wallet: "Customer Wallet",
-    coupons: "Coupons & Offers",
-    inventory_alerts: "Inventory Alerts",
-    refund_requests: "Refund Requests",
-    gift_cards: "Gift Cards",
-    ingredients: "Ingredients & Stock",
-    suppliers: "Suppliers",
-    purchase_orders: "Purchase Orders",
-    scheduling: "Staff Scheduling",
-    reconciliation: "Day-End Reconciliation",
-    expenses: "Expenses",
-    staff: "Staff & Salary",
-    reports: "Reports",
-    gst: `${taxName} Reports`,
-    logs: "Activity Logs",
-    settings: "Settings",
-    contact_training: "Training Guide",
-    stores: "Stores",
-    donate: "Support Us",
-    inventory: "Inventory Management",
-  };
-  return labels[screen] || screen;
-}
+

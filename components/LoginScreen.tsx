@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuthStore } from "@/lib/stores";
 import { isOfflineMode, getAvailableOrganizations } from "@/lib/utils/offline";
 import RegistrationScreen from "./RegistrationScreen";
+import { useTranslation } from "@/lib/i18n";
 import ForgotPasswordScreen from "./ForgotPasswordScreen";
 
 type AuthMethod = "credentials" | "pin";
@@ -11,6 +12,7 @@ const MAX_ATTEMPTS = 3;
 const LOCKOUT_DURATION_MS = 60000; // 1 minute
 
 export default function LoginScreen() {
+  const t = useTranslation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pin, setPin] = useState("");
@@ -108,17 +110,17 @@ export default function LoginScreen() {
     const trimmedPassword = password.trim();
 
     if (!trimmedEmail || !trimmedPassword) {
-      setError("Email and password are required");
+      setError(t("login.errors.emailAndPasswordRequired"));
       return;
     }
 
     if (!trimmedEmail.includes("@")) {
-      setError("Please enter a valid email");
+      setError(t("login.errors.validEmail"));
       return;
     }
 
     if (trimmedPassword.length < 6) {
-      setError("Password must be at least 6 characters");
+      setError(t("login.errors.passwordMinLength"));
       return;
     }
 
@@ -126,14 +128,10 @@ export default function LoginScreen() {
     setError("");
 
     try {
-      console.log(
-        "[LoginScreen] Attempting credentials login with email:",
-        trimmedEmail,
-      );
       const success = await loginWithCredentials(trimmedEmail, trimmedPassword);
 
       if (!success) {
-        setError("Invalid email or password");
+        setError(t("login.errors.invalidEmailOrPassword"));
         setPassword("");
       } else {
         // Save email if remember me is checked
@@ -149,7 +147,7 @@ export default function LoginScreen() {
       // If success, the useEffect hook will handle switching to PIN view
     } catch (e) {
       console.error("[LoginScreen] Login error:", e);
-      setError("Login failed. Please try again.");
+      setError(t("login.errors.loginFailed"));
       setPassword("");
     } finally {
       setLoading(false);
@@ -163,22 +161,22 @@ export default function LoginScreen() {
     const trimmedPin = pin.trim();
 
     if (!trimmedEmail) {
-      setError("Email is required");
+      setError(t("login.errors.emailRequired"));
       return;
     }
 
     if (!trimmedEmail.includes("@")) {
-      setError("Please enter a valid email");
+      setError(t("login.errors.validEmail"));
       return;
     }
 
     if (lockoutEnd) {
-      setError(`Too many failed attempts. Try again in ${countdown} seconds.`);
+      setError(t("login.errors.tooManyAttempts", { count: countdown }));
       return;
     }
 
     if (trimmedPin.length < 4) {
-      setError("PIN must be at least 4 digits");
+      setError(t("login.errors.pinMinDigits"));
       return;
     }
 
@@ -186,10 +184,6 @@ export default function LoginScreen() {
     setError("");
 
     try {
-      console.log(
-        "[LoginScreen] Attempting PIN-only login with email:",
-        trimmedEmail,
-      );
       const success = await loginWithPinOnly(trimmedEmail, trimmedPin);
 
       if (!success) {
@@ -200,18 +194,18 @@ export default function LoginScreen() {
         if (newAttempts >= MAX_ATTEMPTS) {
           setLockoutEnd(Date.now() + LOCKOUT_DURATION_MS);
           setError(
-            `Too many failed attempts. Please wait ${Math.ceil(LOCKOUT_DURATION_MS / 1000)} seconds.`,
+            t("login.errors.tooManyAttemptsWait", { seconds: Math.ceil(LOCKOUT_DURATION_MS / 1000) }),
           );
         } else {
           const remaining = MAX_ATTEMPTS - newAttempts;
           setError(
-            `Invalid email or PIN. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.`,
+            t("login.errors.invalidEmailOrPin", { remaining }),
           );
         }
       }
     } catch (e) {
       console.error("[LoginScreen] PIN-only login error:", e);
-      setError("Login failed. Please try again.");
+      setError(t("login.errors.loginFailed"));
       setPin("");
     } finally {
       setLoading(false);
@@ -222,18 +216,18 @@ export default function LoginScreen() {
     e.preventDefault();
 
     if (!organization?.id) {
-      setError("Organization context not found. Please login again.");
+      setError(t("login.errors.orgContextNotFound"));
       return;
     }
 
     if (lockoutEnd) {
-      setError(`Too many failed attempts. Try again in ${countdown} seconds.`);
+      setError(t("login.errors.tooManyAttempts", { count: countdown }));
       return;
     }
 
     const trimmedPin = pin.trim();
     if (trimmedPin.length < 4) {
-      setError("PIN must be at least 4 digits");
+      setError(t("login.errors.pinMinDigits"));
       return;
     }
 
@@ -241,10 +235,6 @@ export default function LoginScreen() {
     setError("");
 
     try {
-      console.log(
-        "[LoginScreen] Attempting PIN login with orgId:",
-        organization.id,
-      );
       const success = await login(trimmedPin);
 
       if (!success) {
@@ -255,12 +245,12 @@ export default function LoginScreen() {
         if (newAttempts >= MAX_ATTEMPTS) {
           setLockoutEnd(Date.now() + LOCKOUT_DURATION_MS);
           setError(
-            `Too many failed attempts. Please wait ${Math.ceil(LOCKOUT_DURATION_MS / 1000)} seconds.`,
+            t("login.errors.tooManyAttemptsWait", { seconds: Math.ceil(LOCKOUT_DURATION_MS / 1000) }),
           );
         } else {
           const remaining = MAX_ATTEMPTS - newAttempts;
           setError(
-            `Invalid PIN. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.`,
+            t("login.errors.invalidPin", { remaining }),
           );
         }
       } else {
@@ -268,11 +258,10 @@ export default function LoginScreen() {
         setAttempts(0);
         setLockoutEnd(null);
         setPin("");
-        console.log("[LoginScreen] PIN login successful");
       }
     } catch (e) {
       console.error("[LoginScreen] PIN verification error:", e);
-      setError("PIN verification failed. Please try again.");
+      setError(t("login.errors.pinVerificationFailed"));
       setPin("");
     } finally {
       setLoading(false);
@@ -283,18 +272,18 @@ export default function LoginScreen() {
     e.preventDefault();
 
     if (!selectedOrgId) {
-      setError("Please select an organization");
+      setError(t("login.errors.selectOrg"));
       return;
     }
 
     if (lockoutEnd) {
-      setError(`Too many failed attempts. Try again in ${countdown} seconds.`);
+      setError(t("login.errors.tooManyAttempts", { count: countdown }));
       return;
     }
 
     const trimmedPin = pin.trim();
     if (trimmedPin.length < 4) {
-      setError("PIN must be at least 4 digits");
+      setError(t("login.errors.pinMinDigits"));
       return;
     }
 
@@ -302,10 +291,6 @@ export default function LoginScreen() {
     setError("");
 
     try {
-      console.log(
-        "[LoginScreen] Attempting offline PIN login with orgId:",
-        selectedOrgId,
-      );
       const success = await loginWithPinOffline(trimmedPin, selectedOrgId);
 
       if (!success) {
@@ -316,12 +301,12 @@ export default function LoginScreen() {
         if (newAttempts >= MAX_ATTEMPTS) {
           setLockoutEnd(Date.now() + LOCKOUT_DURATION_MS);
           setError(
-            `Too many failed attempts. Please wait ${Math.ceil(LOCKOUT_DURATION_MS / 1000)} seconds.`,
+            t("login.errors.tooManyAttemptsWait", { seconds: Math.ceil(LOCKOUT_DURATION_MS / 1000) }),
           );
         } else {
           const remaining = MAX_ATTEMPTS - newAttempts;
           setError(
-            `Invalid PIN. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.`,
+            t("login.errors.invalidPin", { remaining }),
           );
         }
       } else {
@@ -329,11 +314,10 @@ export default function LoginScreen() {
         setAttempts(0);
         setLockoutEnd(null);
         setPin("");
-        console.log("[LoginScreen] Offline PIN login successful");
       }
     } catch (e) {
       console.error("[LoginScreen] Offline PIN verification error:", e);
-      setError("PIN verification failed. Please try again.");
+      setError(t("login.errors.pinVerificationFailed"));
       setPin("");
     } finally {
       setLoading(false);
@@ -408,7 +392,7 @@ export default function LoginScreen() {
             margin: "0 auto 24px",
           }}
           role="img"
-          aria-label="POS Application"
+          aria-label={t("login.posApp")}
         >
           <span style={{ fontSize: 28, fontWeight: "bold", color: "#0D0D0F" }}>
             POS
@@ -425,7 +409,7 @@ export default function LoginScreen() {
           fontSize: 12,
           color: "var(--text-muted)"
         }}>
-          <strong>✨ Completely Free. Forever. No Subscriptions.</strong>
+          {t("login.freeForever")}
         </div>
 
         <h1
@@ -438,21 +422,21 @@ export default function LoginScreen() {
           }}
         >
           {view === "pin"
-            ? `Welcome back!`
+            ? t("login.welcomeBack")
             : view === "offline-org"
-              ? "Select Organization"
+              ? t("login.selectOrg")
               : view === "offline-pin"
-                ? "Enter PIN"
-                : "Sign In"}
+                ? t("login.enterPin")
+                : t("login.title")}
         </h1>
         <p style={{ color: "var(--text-muted)", marginBottom: 32 }}>
           {view === "pin"
-            ? `Enter PIN for ${organization?.name || "your organization"}`
+            ? t("login.enterPinFor", { name: organization?.name || "your organization" })
             : view === "offline-org"
-              ? "Choose your organization to access POS"
+              ? t("login.chooseOrg")
               : view === "offline-pin"
-                ? `Enter PIN for ${offlineOrgs.find((o) => o.id === selectedOrgId)?.name || "your organization"}`
-                : "Enter your credentials to continue"}
+                ? t("login.enterPinFor", { name: offlineOrgs.find((o) => o.id === selectedOrgId)?.name || "your organization" })
+                : t("login.enterCredentials")}
         </p>
 
         {view === "credentials" && (
@@ -489,7 +473,7 @@ export default function LoginScreen() {
                 transition: "all 0.2s",
               }}
             >
-              Email & Password
+              {t("login.emailPassword")}
             </button>
             <button
               type="button"
@@ -513,7 +497,7 @@ export default function LoginScreen() {
                 transition: "all 0.2s",
               }}
             >
-              Email & PIN
+              {t("login.emailPin")}
             </button>
           </div>
         )}
@@ -570,7 +554,7 @@ export default function LoginScreen() {
               ))
             ) : (
               <div style={{ color: "var(--text-muted)", padding: 20 }}>
-                No organizations found. Please register first.
+                {t("login.noOrgs")}
               </div>
             )}
             {offlineOrgs.length === 0 && (
@@ -589,7 +573,7 @@ export default function LoginScreen() {
                   marginTop: 8,
                 }}
               >
-                Register New Organization
+                {t("login.registerOrg")}
               </button>
             )}
           </div>
@@ -613,7 +597,7 @@ export default function LoginScreen() {
                 }
               }}
               placeholder={
-                lockoutEnd ? `Wait ${countdown}s` : "Enter PIN (4-6 digits)"
+                lockoutEnd ? t("login.waitSeconds", { count: countdown }) : t("login.enterPinPlaceholder")
               }
               maxLength={6}
               autoFocus
@@ -658,7 +642,7 @@ export default function LoginScreen() {
                    userSelect: "none",
                  }}
                >
-                 Default PIN?
+                 {t("login.defaultPin")}
                </summary>
                <div
                  style={{
@@ -671,9 +655,9 @@ export default function LoginScreen() {
                  }}
                >
                  <p style={{ marginBottom: 4 }}>
-                   <strong>Default PIN:</strong> 1234 (admin) or 0000 (cashier)
+                   {t("login.defaultPinHint")}
                  </p>
-                 <p>Use PIN for quick offline access after initial email/password login.</p>
+                 <p>{t("login.pinHint")}</p>
                </div>
              </details>
 
@@ -694,7 +678,7 @@ export default function LoginScreen() {
                  transition: "all 0.2s",
                }}
              >
-               {loading ? "Verifying..." : "Enter POS"}
+               {loading ? t("login.verifying") : t("login.enterPos")}
              </button>
             <button
               type="button"
@@ -719,7 +703,7 @@ export default function LoginScreen() {
                 opacity: loading ? 0.6 : 1,
               }}
             >
-              Choose Different Organization
+              {t("login.chooseDiffOrg")}
             </button>
           </form>
         ) : view === "credentials" ? (
@@ -738,7 +722,7 @@ export default function LoginScreen() {
                   display: "block",
                 }}
               >
-                Email Address
+                {t("login.emailLabel")}
               </label>
               <input
                 id="email"
@@ -746,7 +730,7 @@ export default function LoginScreen() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@company.com"
+                placeholder={t("login.emailPlaceholder")}
                 disabled={loading}
                 style={{
                   width: "100%",
@@ -772,7 +756,7 @@ export default function LoginScreen() {
                     display: "block",
                   }}
                 >
-                  PIN
+                  {t("login.pinLabel")}
                 </label>
                 <input
                   id="pin"
@@ -787,7 +771,7 @@ export default function LoginScreen() {
                       handlePinOnlySubmit(e as any);
                     }
                   }}
-                  placeholder="Enter PIN (4-6 digits)"
+                  placeholder={t("login.pinPlaceholder")}
                   maxLength={6}
                   inputMode="numeric"
                   disabled={loading}
@@ -815,23 +799,22 @@ export default function LoginScreen() {
                        userSelect: "none",
                      }}
                    >
-                     Default PIN?
-                   </summary>
-                   <div
-                     style={{
-                       marginTop: 6,
-                       padding: 10,
-                       background: "rgba(46,204,113,0.08)",
-                       borderRadius: 6,
-                       fontSize: 11,
-                       color: "var(--text-muted)",
-                     }}
-                   >
-                     <p style={{ margin: 0 }}>
-                       Default: <strong>1234</strong> (admin) or <strong>0000</strong> (cashier).
-                       Works after first email/password login.
-                     </p>
-                   </div>
+                      {t("login.defaultPin")}
+                    </summary>
+                    <div
+                      style={{
+                        marginTop: 6,
+                        padding: 10,
+                        background: "rgba(46,204,113,0.08)",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      <p style={{ margin: 0 }}>
+                        {t("login.defaultPinHint")} {t("login.pinHint")}
+                      </p>
+                    </div>
                  </details>
                </div>
              ) : (
@@ -846,7 +829,7 @@ export default function LoginScreen() {
                     display: "block",
                   }}
                 >
-                  Password
+                  {t("login.passwordLabel")}
                 </label>
                 <input
                   id="password"
@@ -859,7 +842,7 @@ export default function LoginScreen() {
                       handleCredentialSubmit(e as any);
                     }
                   }}
-                  placeholder="••••••••"
+                  placeholder={t("login.passwordPlaceholder")}
                   disabled={loading}
                   style={{
                     width: "100%",
@@ -908,7 +891,7 @@ export default function LoginScreen() {
                     cursor: "pointer",
                   }}
                 >
-                  Remember me
+                  {t("login.rememberMe")}
                 </label>
               </div>
             )}
@@ -941,7 +924,7 @@ export default function LoginScreen() {
                 transition: "all 0.2s",
               }}
             >
-              {loading ? "Signing in..." : "Enter POS"}
+              {loading ? t("login.signingIn") : t("login.enterPos")}
             </button>
 
             <div
@@ -963,7 +946,7 @@ export default function LoginScreen() {
                     userSelect: "none",
                   }}
                 >
-                  First time user? Click for default credentials
+                  {t("login.firstTimeUser")}
                 </summary>
                 <div
                   style={{
@@ -976,22 +959,22 @@ export default function LoginScreen() {
                   }}
                 >
                   <p style={{ fontWeight: 600, marginBottom: 8, color: "#F5C842" }}>
-                    Fresh Install Default Credentials
+                    {t("login.defaultCredentials")}
                   </p>
                   <p style={{ marginBottom: 4 }}>
-                    <strong>Email:</strong> admin@example.com
+                    {t("login.defaultEmail")}
                   </p>
                   <p style={{ marginBottom: 4 }}>
-                    <strong>Password:</strong> admin123
+                    {t("login.defaultPassword")}
                   </p>
                   <p style={{ marginBottom: 4 }}>
-                    <strong>PIN:</strong> 1234
+                    {t("login.defaultPinValue")}
                   </p>
                   <p style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>
-                    After first login with email/password, use PIN (1234) for quick access.
+                    {t("login.defaultCredHint")}
                   </p>
                   <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    If these don't work, try "Reset & Seed Database" in Settings.
+                    {t("login.defaultCredTrouble")}
                   </p>
                 </div>
               </details>
@@ -1009,7 +992,7 @@ export default function LoginScreen() {
                   opacity: loading ? 0.6 : 1,
                 }}
               >
-                Forgot Password?
+                {t("login.forgotPassword")}
               </button>
               <button
                 type="button"
@@ -1024,10 +1007,7 @@ export default function LoginScreen() {
                   opacity: loading ? 0.6 : 1,
                 }}
               >
-                Don't have an account?{" "}
-                <span style={{ color: "#F5C842", fontWeight: 600 }}>
-                  Register
-                </span>
+                {t("login.noAccount")}
               </button>
             </div>
           </form>
@@ -1051,7 +1031,7 @@ export default function LoginScreen() {
                 }
               }}
               placeholder={
-                lockoutEnd ? `Wait ${countdown}s` : "Enter PIN (4-6 digits)"
+                lockoutEnd ? t("login.waitSeconds", { count: countdown }) : t("login.enterPinPlaceholder")
               }
               maxLength={6}
               autoFocus
@@ -1096,7 +1076,7 @@ export default function LoginScreen() {
                   userSelect: "none",
                 }}
               >
-                Default PIN?
+                {t("login.defaultPin")}
               </summary>
               <div
                 style={{
@@ -1109,10 +1089,10 @@ export default function LoginScreen() {
                 }}
               >
                 <p style={{ marginBottom: 4 }}>
-                  <strong>Default PIN:</strong> 1234 (admin) or 0000 (cashier)
+                  {t("login.defaultPinHint")}
                 </p>
                 <p>
-                  First login must be with email & password. PIN works after initial authentication.
+                  {t("login.firstLoginHint")}
                 </p>
               </div>
             </details>
@@ -1134,7 +1114,7 @@ export default function LoginScreen() {
                 transition: "all 0.2s",
               }}
             >
-              {loading ? "Verifying..." : "Enter POS"}
+              {loading ? t("login.verifying") : t("login.enterPos")}
             </button>
             <button
               type="button"
@@ -1152,7 +1132,7 @@ export default function LoginScreen() {
                 opacity: loading ? 0.6 : 1,
               }}
             >
-              Switch Organization
+              {t("login.switchOrg")}
             </button>
           </form>
         )}

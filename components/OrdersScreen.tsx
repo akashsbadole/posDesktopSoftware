@@ -3,10 +3,12 @@ import { useEffect, useState } from "react";
 import { Search, RotateCcw, ChevronDown, ChevronUp, RefreshCw, Truck, MapPin, Phone, Edit2, Plus, Minus, X, ChevronLeft, ChevronRight, MessageSquare, Ban, Banknote } from "lucide-react";
 import { updateDeliveryStatus, dbCancelOrder, dbAddOrderNote, dbGetOrderNotes, dbCreateRefundRequest, Order, OrderItem, OrderNote } from "@/lib/db";
 import { useOrdersStore, useSettingsStore, useProductsStore, useCartStore, useAuthStore } from "@/lib/stores";
+import { useTranslation } from "@/lib/i18n";
 
 const ITEMS_PER_PAGE = 20;
 
 export default function OrdersScreen() {
+  const t = useTranslation();
   const { activeStoreId } = useSettingsStore();
   const { orders, isLoading, fetchOrders, refundOrder, updateDeliveryStatus: updateStatus, updateOrder, filterStatus, setFilterStatus } = useOrdersStore();
   const { settings, fetchSettings } = useSettingsStore();
@@ -37,7 +39,7 @@ export default function OrdersScreen() {
   const handleRefund = async (id: string) => {
     const order = orders.find(o => o.id === id);
     if (order?.status === "processing") {
-      if (!confirm("This order needs payment. Continue to POS?")) return;
+      if (!confirm(t("orders.needsPayment"))) return;
       clearCart();
       for (const item of order.items) {
         const product = products.find(p => p.id === item.product_id);
@@ -81,7 +83,7 @@ export default function OrdersScreen() {
     setRefundReason("");
     setRefundItems({});
     await dbCreateRefundRequest(id, refundAmount, reason, activeStoreId, selectedItems);
-    alert("Refund request created. Please approve from Refund Requests screen.");
+    alert(t("orders.refundRequestCreated"));
   };
 
   const handleDeliveryStatus = async (id: string, status: string) => {
@@ -217,16 +219,16 @@ export default function OrdersScreen() {
       <div className="h-full flex flex-col p-5">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
-            <button onClick={handleCancelEdit} className="btn-ghost py-2 px-3">← Back</button>
-            <h1 className="font-display text-xl font-bold font-display">Edit Order #{editingOrder.id.slice(-6).toUpperCase()}</h1>
+            <button onClick={handleCancelEdit} className="btn-ghost py-2 px-3">{t("orders.back")}</button>
+            <h1 className="font-display text-xl font-bold font-display">{t("orders.editOrder", { id: editingOrder.id.slice(-6).toUpperCase() })}</h1>
           </div>
-          <button onClick={handleSaveEdit} className="btn-accent py-2 px-4">Save Changes</button>
+          <button onClick={handleSaveEdit} className="btn-accent py-2 px-4">{t("common.saveChanges")}</button>
         </div>
 
         <div className="card p-4 mb-4">
-          <h2 className="font-semibold mb-3">Order Items</h2>
+          <h2 className="font-semibold mb-3">{t("orders.orderItems")}</h2>
           {editItems.length === 0 ? (
-            <div className="text-center py-4" style={{ color: "#4A4A5A" }}>No items in order</div>
+            <div className="text-center py-4" style={{ color: "#4A4A5A" }}>{t("orders.noItems")}</div>
           ) : (
             <div className="space-y-2">
               {editItems.map((item) => (
@@ -255,11 +257,11 @@ export default function OrdersScreen() {
 
         <div className="card p-4 mt-auto">
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span style={{ color: "#9090A8" }}>Subtotal</span><span>{curr}{editSubtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between"><span style={{ color: "#9090A8" }}>Discount</span><span style={{ color: "#2ECC71" }}>-{curr}{editDiscount.toFixed(2)}</span></div>
-            <div className="flex justify-between"><span style={{ color: "#9090A8" }}>Tax</span><span>+{curr}{editTax.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span style={{ color: "#9090A8" }}>{t("common.subtotal")}</span><span>{curr}{editSubtotal.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span style={{ color: "#9090A8" }}>{t("common.discount")}</span><span style={{ color: "#2ECC71" }}>-{curr}{editDiscount.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span style={{ color: "#9090A8" }}>{t("common.tax")}</span><span>+{curr}{editTax.toFixed(2)}</span></div>
             <div className="flex justify-between font-bold text-base pt-2 border-t" style={{ borderColor: "var(--border)" }}>
-              <span>Total</span><span style={{ color: "#F5C842" }}>{curr}{editTotal.toFixed(2)}</span>
+              <span>{t("common.total")}</span><span style={{ color: "#F5C842" }}>{curr}{editTotal.toFixed(2)}</span>
             </div>
           </div>
         </div>
@@ -270,9 +272,9 @@ export default function OrdersScreen() {
   return (
     <div className="h-full flex flex-col p-5">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="font-display text-xl font-bold font-display">Orders</h1>
+        <h1 className="font-display text-xl font-bold font-display">{t("orders.title")}</h1>
         <div className="flex items-center gap-3">
-          <span className="text-sm" style={{ color: "#4A4A5A" }}>{filtered.length} orders</span>
+          <span className="text-sm" style={{ color: "#4A4A5A" }}>{t("orders.count", { count: filtered.length })}</span>
           <button onClick={() => fetchOrders()} className="btn-ghost py-2 px-3"><RefreshCw size={14} className={isLoading ? "spin" : ""} /></button>
         </div>
       </div>
@@ -280,7 +282,7 @@ export default function OrdersScreen() {
       <div className="flex gap-3 mb-4">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#4A4A5A" }} />
-          <input placeholder="Search by ID or customer..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 36 }} />
+          <input placeholder={t("orders.searchPlaceholder")} value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 36 }} />
         </div>
         <div className="flex gap-1">
           {(["all", "processing", "completed", "refunded", "cancelled"] as const).map((s) => (
@@ -291,7 +293,7 @@ export default function OrdersScreen() {
                 border: `1px solid ${filterStatus === s ? "rgba(245,200,66,0.2)" : "#1E1E26"}`,
                 color: filterStatus === s ? "#F5C842" : "#4A4A5A",
               }}>
-              {s === "processing" ? "KOT" : s}
+              {s === "all" ? t("common.all") : s === "processing" ? t("orders.pending") : s === "completed" ? t("orders.completed") : s === "refunded" ? t("orders.refunded") : s === "cancelled" ? t("orders.cancelled") : s}
             </button>
           ))}
         </div>
@@ -305,7 +307,7 @@ export default function OrdersScreen() {
         <div className="flex-1 overflow-y-auto space-y-3">
           {filtered.length === 0 ? (
             <div className="text-center py-12" style={{ color: "#4A4A5A" }}>
-              <p>No orders found</p>
+              <p>{t("orders.noOrders")}</p>
             </div>
           ) : (
             displayedOrders.map((order) => (
@@ -315,11 +317,11 @@ export default function OrdersScreen() {
                     <span className="font-mono text-sm" style={{ color: "#9090A8" }}>#{order.id.slice(-6).toUpperCase()}</span>
                     <span className="px-2 py-0.5 rounded text-xs font-semibold"
                       style={getOrderStatusColor(order.status)}>
-                      {order.status}
+                      {order.status === "completed" ? t("orders.completed") : order.status === "refunded" ? t("orders.refunded") : order.status === "cancelled" ? t("orders.cancelled") : order.status === "processing" ? t("orders.pending") : order.status}
                     </span>
                     <span className="px-2 py-0.5 rounded text-xs font-semibold"
                       style={{ background: "rgba(144,144,168,0.1)", color: "#9090A8" }}>
-                      {order.order_type}
+                      {order.order_type === "dine_in" ? t("pos.dineIn") : order.order_type === "takeaway" ? t("pos.takeaway") : order.order_type === "delivery" ? t("pos.delivery") : order.order_type}
                     </span>
                   </div>
                   <span className="font-semibold" style={{ color: "#F5C842" }}>{curr}{order.total.toFixed(2)}</span>
@@ -334,9 +336,9 @@ export default function OrdersScreen() {
                   <div className="mb-3 p-2 rounded-lg" style={{ background: "rgba(52,152,219,0.06)", border: "1px solid rgba(52,152,219,0.15)" }}>
                     <div className="flex items-center gap-2 mb-2">
                       <Truck size={14} style={{ color: "#3498DB" }} />
-                      <span className="text-xs font-semibold" style={{ color: "#3498DB" }}>Delivery</span>
+                      <span className="text-xs font-semibold" style={{ color: "#3498DB" }}>{t("orders.delivery")}</span>
                       <span className="px-2 py-0.5 rounded text-xs font-semibold" style={getDeliveryStatusColor(order.delivery_status)}>
-                        {order.delivery_status.replace("_", " ")}
+                        {order.delivery_status.replace(/_/g, " ")}
                       </span>
                     </div>
                     {order.delivery_address && <div className="flex items-center gap-1 text-xs" style={{ color: "#9090A8" }}><MapPin size={12} />{order.delivery_address}</div>}
@@ -344,13 +346,13 @@ export default function OrdersScreen() {
                     {order.delivery_status === "pending" && (
                       <button onClick={() => handleDeliveryStatus(order.id, "out_for_delivery")}
                         className="mt-2 btn-ghost text-xs py-1 px-2">
-                        Mark Out for Delivery
+                        {t("orders.markOutForDelivery")}
                       </button>
                     )}
                     {order.delivery_status === "out_for_delivery" && (
                       <button onClick={() => handleDeliveryStatus(order.id, "delivered")}
                         className="mt-2 btn-ghost text-xs py-1 px-2">
-                        Mark Delivered
+                        {t("orders.markDelivered")}
                       </button>
                     )}
                   </div>
@@ -367,7 +369,7 @@ export default function OrdersScreen() {
                       style={{ color: "#9090A8" }}
                     >
                       {expanded === order.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      {expanded === order.id ? "Hide" : "Show"} items
+                      {expanded === order.id ? t("common.hide") : t("common.show")}
                     </button>
                     {order.status === "completed" && (
                       <button
@@ -375,7 +377,7 @@ export default function OrdersScreen() {
                         className="text-xs flex items-center gap-1 px-2 py-1 rounded"
                         style={{ color: "#3498DB", background: "rgba(52,152,219,0.1)" }}
                       >
-                        <Edit2 size={12} /> Edit
+                        <Edit2 size={12} /> {t("common.edit")}
                       </button>
                     )}
                   </div>
@@ -387,7 +389,7 @@ export default function OrdersScreen() {
                       style={{ color: order.status === "processing" ? "#3498DB" : "#E74C3C", background: order.status === "processing" ? "rgba(52,152,219,0.1)" : "rgba(231,76,60,0.1)" }}
                     >
                       {order.status === "processing" ? <Banknote size={12} /> : <RotateCcw size={12} />} 
-                      {order.status === "processing" ? "Pay Now" : "Refund"}
+                      {order.status === "processing" ? t("orders.payNow") : t("orders.refund")}
                     </button>
                   )}
                   {order.status === "completed" && (
@@ -396,7 +398,7 @@ export default function OrdersScreen() {
                       className="text-xs flex items-center gap-1 px-2 py-1 rounded"
                       style={{ color: "#F39C12", background: "rgba(243,156,18,0.1)" }}
                     >
-                      <Ban size={12} /> Cancel
+                      <Ban size={12} /> {t("orders.cancel")}
                     </button>
                   )}
                 </div>
@@ -410,17 +412,17 @@ export default function OrdersScreen() {
                       </div>
                     ))}
                     <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
-                      <div className="flex justify-between text-sm"><span style={{ color: "#9090A8" }}>Subtotal</span><span>{curr}{order.subtotal.toFixed(2)}</span></div>
-                      <div className="flex justify-between text-sm"><span style={{ color: "#9090A8" }}>Tax</span><span>+{curr}{order.tax_amount.toFixed(2)}</span></div>
-                      {order.discount_amount > 0 && <div className="flex justify-between text-sm"><span style={{ color: "#2ECC71" }}>Discount</span><span>-{curr}{order.discount_amount.toFixed(2)}</span></div>}
-                      <div className="flex justify-between font-semibold mt-1"><span>Total</span><span style={{ color: "#F5C842" }}>{curr}{order.total.toFixed(2)}</span></div>
+                      <div className="flex justify-between text-sm"><span style={{ color: "#9090A8" }}>{t("common.subtotal")}</span><span>{curr}{order.subtotal.toFixed(2)}</span></div>
+                      <div className="flex justify-between text-sm"><span style={{ color: "#9090A8" }}>{t("common.tax")}</span><span>+{curr}{order.tax_amount.toFixed(2)}</span></div>
+                      {order.discount_amount > 0 && <div className="flex justify-between text-sm"><span style={{ color: "#2ECC71" }}>{t("common.discount")}</span><span>-{curr}{order.discount_amount.toFixed(2)}</span></div>}
+                      <div className="flex justify-between font-semibold mt-1"><span>{t("common.total")}</span><span style={{ color: "#F5C842" }}>{curr}{order.total.toFixed(2)}</span></div>
                     </div>
 
                     {/* Order Notes */}
                     <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
                       <div className="flex items-center gap-2 mb-2">
                         <MessageSquare size={14} style={{ color: "#9090A8" }} />
-                        <span className="text-xs font-semibold" style={{ color: "#9090A8" }}>Order Notes</span>
+                        <span className="text-xs font-semibold" style={{ color: "#9090A8" }}>{t("orders.orderNotes")}</span>
                       </div>
                       {(orderNotes[order.id] || []).length > 0 && (
                         <div className="space-y-1 mb-2">
@@ -436,13 +438,13 @@ export default function OrdersScreen() {
                         <input
                           value={newNote}
                           onChange={(e) => setNewNote(e.target.value)}
-                          placeholder="Add a note..."
+                          placeholder={t("orders.addNotePlaceholder")}
                           className="flex-1 text-xs"
                           style={{ padding: "6px 10px" }}
                           onKeyDown={(e) => { if (e.key === "Enter") handleAddNote(order.id); }}
                         />
                         <button onClick={() => handleAddNote(order.id)} className="btn-ghost py-1 px-2 text-xs" disabled={!newNote.trim()}>
-                          Add
+                          {t("orders.add")}
                         </button>
                       </div>
                     </div>
@@ -458,7 +460,7 @@ export default function OrdersScreen() {
                 onClick={() => setDisplayLimit(d => d + ITEMS_PER_PAGE)}
                 className="btn-ghost text-sm"
               >
-                Show More ({filtered.length - displayLimit} more)
+                {t("common.showMore", { count: filtered.length - displayLimit })}
               </button>
             </div>
           )}
@@ -474,29 +476,29 @@ export default function OrdersScreen() {
         >
            <div className="card p-6 w-full max-w-md fade-in">
              <div className="flex items-center justify-between mb-4">
-               <h2 className="font-semibold text-base">Cancel Order #{showCancelModal.slice(-6).toUpperCase()}</h2>
-               <button 
-                 onClick={() => { setShowCancelModal(null); setCancelReason(""); }} 
-                 className="btn-ghost py-1 px-3"
-                 aria-label="Close"
-               >
-                 <X size={16} />
-               </button>
-             </div>
-             <div className="mb-4">
-               <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Reason for cancellation *</label>
-               <textarea
-                 value={cancelReason}
-                 onChange={(e) => setCancelReason(e.target.value)}
-                 placeholder="Enter reason..."
-                 rows={3}
-               />
-             </div>
-             <div className="flex gap-2">
-               <button onClick={() => { setShowCancelModal(null); setCancelReason(""); }} className="btn-ghost flex-1">Close</button>
-               <button onClick={() => handleCancelOrder(showCancelModal)} className="btn-danger flex-1" disabled={!cancelReason.trim()}>
-                 Confirm Cancel
-               </button>
+                <h2 className="font-semibold text-base">{t("orders.cancelOrderModal", { id: showCancelModal.slice(-6).toUpperCase() })}</h2>
+                <button 
+                  onClick={() => { setShowCancelModal(null); setCancelReason(""); }} 
+                  className="btn-ghost py-1 px-3"
+                  aria-label={t("common.close")}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="mb-4">
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("orders.cancelReason")}</label>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder={t("orders.cancelReasonPlaceholder")}
+                  rows={3}
+                />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { setShowCancelModal(null); setCancelReason(""); }} className="btn-ghost flex-1">{t("common.close")}</button>
+                <button onClick={() => handleCancelOrder(showCancelModal)} className="btn-danger flex-1" disabled={!cancelReason.trim()}>
+                  {t("common.confirmCancel")}
+                </button>
              </div>
            </div>
          </div>
@@ -511,17 +513,17 @@ export default function OrdersScreen() {
          >
             <div className="card p-6 w-full max-w-md fade-in">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-base">Request Refund</h2>
+                <h2 className="font-semibold text-base">{t("orders.requestRefundModal")}</h2>
                 <button
                   onClick={() => { setShowRefundModal(null); setRefundReason(""); setRefundItems({}); }}
                   className="btn-ghost py-1 px-3"
-                  aria-label="Close"
+                  aria-label={t("common.close")}
                 >
                   <X size={16} />
                 </button>
               </div>
               <div className="mb-4 max-h-40 overflow-y-auto">
-                <label className="text-xs mb-2 block" style={{ color: "#4A4A5A" }}>Select items to refund (leave empty for full refund)</label>
+                <label className="text-xs mb-2 block" style={{ color: "#4A4A5A" }}>{t("orders.refundItemsLabel")}</label>
                 {orders.find(o => o.id === showRefundModal)?.items.map(item => (
                   <div key={item.product_id} className="flex items-center gap-2 mb-2">
                     <input
@@ -561,18 +563,18 @@ export default function OrdersScreen() {
                 ))}
               </div>
               <div className="mb-4">
-                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>Reason for refund *</label>
+                <label className="text-xs mb-1 block" style={{ color: "#4A4A5A" }}>{t("orders.refundReason")}</label>
                 <textarea
                   value={refundReason}
                   onChange={(e) => setRefundReason(e.target.value)}
-                  placeholder="Enter reason..."
+                  placeholder={t("orders.refundReasonPlaceholder")}
                   rows={3}
                 />
               </div>
               <div className="flex gap-2">
-                <button onClick={() => { setShowRefundModal(null); setRefundReason(""); setRefundItems({}); }} className="btn-ghost flex-1">Close</button>
+                <button onClick={() => { setShowRefundModal(null); setRefundReason(""); setRefundItems({}); }} className="btn-ghost flex-1">{t("common.close")}</button>
                 <button onClick={() => handleConfirmRefund(showRefundModal)} className="btn-danger flex-1" disabled={!refundReason.trim()}>
-                  Submit Request
+                  {t("common.submitRequest")}
                 </button>
               </div>
             </div>

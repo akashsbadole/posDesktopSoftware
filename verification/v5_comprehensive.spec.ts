@@ -5,7 +5,7 @@ const ADMIN_PASS = 'admin123';
 const ADMIN_PIN = '1234';
 const APP_URL = 'http://localhost:3000';
 
-async function performLogin(page) {
+async function performLogin(page: any) {
   await page.goto(APP_URL);
 
   const isLoginVisible = await page.isVisible('text=Sign In');

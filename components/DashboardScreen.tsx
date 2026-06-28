@@ -10,8 +10,10 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { useOrdersStore, useSettingsStore, useStoresStore } from "@/lib/stores";
 import SyncControls from "@/components/SyncControls";
+import { useTranslation } from "@/lib/i18n";
 
 export default function DashboardScreen() {
+  const t = useTranslation();
   const { activeStoreId } = useSettingsStore();
   const { stores } = useStoresStore();
   const {
@@ -39,25 +41,25 @@ export default function DashboardScreen() {
 
   const stats = [
     {
-      label: "Today's Revenue",
+      label: t("dashboard.todayRevenue"),
       value: `${curr}${(dashboardData?.revenue || 0).toFixed(0)}`,
       icon: DollarSign,
       color: "#F5C842",
     },
     {
-      label: "Transactions",
+      label: t("dashboard.transactions"),
       value: dashboardData?.transactions || 0,
       icon: ShoppingBag,
       color: "#3498DB",
     },
     {
-      label: "Avg Order",
+      label: t("dashboard.avgOrder"),
       value: `${curr}${(dashboardData?.avg_order || 0).toFixed(0)}`,
       icon: TrendingUp,
       color: "#2ECC71",
     },
     {
-      label: "Items Sold",
+      label: t("dashboard.itemsSold"),
       value: dashboardData?.items_sold || 0,
       icon: Package,
       color: "#9B59B6",
@@ -70,12 +72,12 @@ export default function DashboardScreen() {
     <div className="h-full overflow-y-auto p-5">
       <div className="flex items-center justify-between mb-5">
         <h1 className="font-display text-xl font-bold font-display">
-          Dashboard - {activeStore?.name || "Main Store"}
+          {t("dashboard.dashboardTitle", { store: activeStore?.name || "Main Store" })}
         </h1>
         <div className="flex items-center gap-3">
           <SyncControls />
           <span className="text-xs px-2 py-1 rounded bg-[#1E1E26] text-[#9090A8]">
-            Store ID: {activeStoreId}
+            {t("dashboard.storeId")} {activeStoreId}
           </span>
           <button
             onClick={() => fetchDashboardData()}
@@ -89,13 +91,13 @@ export default function DashboardScreen() {
       {error && (
         <div className="p-4 mb-5 rounded-lg border border-red-500/20 bg-red-500/10 text-red-500 text-sm flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span>Failed to load dashboard data: {error}</span>
+            <span>{t("common.failedToLoad")}: {error}</span>
           </div>
           <button
             onClick={() => fetchDashboardData()}
             className="underline font-medium hover:text-red-400 transition-colors"
           >
-            Try again
+            {t("common.tryAgain")}
           </button>
         </div>
       )}
@@ -134,7 +136,7 @@ export default function DashboardScreen() {
 
       <div className="grid grid-cols-3 gap-4">
         <div className="card p-4">
-          <h2 className="font-semibold mb-4 text-sm">Weekly Revenue</h2>
+          <h2 className="font-semibold mb-4 text-sm">{t("dashboard.weeklyRevenue")}</h2>
           {revenueData.length > 0 ? (
             <ResponsiveContainer width="100%" height={120}>
               <BarChart data={revenueData}>
@@ -145,7 +147,7 @@ export default function DashboardScreen() {
                   contentStyle={{ background: "#141418", border: "1px solid #1E1E26", borderRadius: 4 }}
                   labelStyle={{ color: "#F5C842" }}
                   itemStyle={{ color: "#9090A8" }}
-                  formatter={(value) => [`${curr}${Number(value).toFixed(0)}`, "Revenue"]}
+                  formatter={(value) => [`${curr}${Number(value).toFixed(0)}`, t("dashboard.revenue")]}
                 />
                 <Bar dataKey="revenue" fill="#F5C842" radius={[2, 2, 0, 0]} />
               </BarChart>
@@ -158,7 +160,7 @@ export default function DashboardScreen() {
         </div>
 
         <div className="card p-4">
-          <h2 className="font-semibold mb-4 text-sm">Payment Methods</h2>
+          <h2 className="font-semibold mb-4 text-sm">{t("dashboard.paymentMethods")}</h2>
           {paymentMethodStats.length > 0 ? (
             <ResponsiveContainer width="100%" height={120}>
               <PieChart>
@@ -179,22 +181,22 @@ export default function DashboardScreen() {
                 </Pie>
                 <Tooltip
                   contentStyle={{ background: "#141418", border: "1px solid #1E1E26", borderRadius: 4 }}
-                  formatter={(value) => [`${curr}${Number(value).toFixed(0)}`, "Amount"]}
+                  formatter={(value) => [`${curr}${Number(value).toFixed(0)}`, t("dashboard.amount")]}
                 />
               </PieChart>
             </ResponsiveContainer>
           ) : (
             <div className="text-center text-xs mt-2" style={{ color: "#4A4A5A" }}>
-              No payment data yet
+              {t("dashboard.noPaymentData")}
             </div>
           )}
         </div>
 
         <div className="card p-4">
-          <h2 className="font-semibold mb-4 text-sm">Top Products</h2>
+          <h2 className="font-semibold mb-4 text-sm">{t("dashboard.topProducts")}</h2>
           {topProductsData.length === 0 && (
             <div className="text-sm" style={{ color: "#4A4A5A" }}>
-              No sales data yet
+              {t("dashboard.noSalesData")}
             </div>
           )}
           <div className="space-y-3">
@@ -233,7 +235,7 @@ export default function DashboardScreen() {
 
         <div className="card p-4 col-span-2">
           <h2 className="font-semibold mb-3 text-sm flex items-center gap-2">
-            Low Stock Alerts
+            {t("dashboard.lowStockAlerts")}
             {lowStockData.length > 0 && (
               <span
                 className="px-2 py-0.5 rounded-full text-xs font-bold"
@@ -245,7 +247,7 @@ export default function DashboardScreen() {
           </h2>
           {lowStockData.length === 0 && (
             <div className="text-sm" style={{ color: "#2ECC71" }}>
-              ✓ All products have sufficient stock
+              {t("dashboard.allStockSufficient")}
             </div>
           )}
           <div className="grid grid-cols-4 gap-2">
@@ -266,7 +268,7 @@ export default function DashboardScreen() {
                   className="text-xs mt-0.5 font-semibold"
                   style={{ color: p.stock === 0 ? "#E74C3C" : "#F5C842" }}
                 >
-                  {p.stock === 0 ? "Out of stock" : `${p.stock} left`}
+                  {p.stock === 0 ? t("dashboard.outOfStock") : t("dashboard.stockLeft", { stock: p.stock })}
                 </div>
               </div>
             ))}

@@ -15,6 +15,7 @@ interface CartPanelProps {
   discountAmount: number;
   total: number;
   labels: { [key: string]: string };
+  currencySymbol?: string;
 }
 
 export default function CartPanel({
@@ -28,9 +29,11 @@ export default function CartPanel({
   discountAmount,
   total,
   labels,
+  currencySymbol,
 }: CartPanelProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editQuantity, setEditQuantity] = useState("");
+  const sym = currencySymbol ?? "$";
 
   const handleQuantityEdit = (index: number, currentQuantity: number) => {
     setEditingIndex(index);
@@ -91,7 +94,7 @@ export default function CartPanel({
                       {item.product_name}
                     </h3>
                     <div className="text-xs text-gray-500 mt-1">
-                      ₹{item.price.toFixed(2)} each
+                      {sym}{item.price.toFixed(2)} each
                     </div>
                   </div>
                   <button
@@ -161,11 +164,11 @@ export default function CartPanel({
 
                   <div className="text-right">
                     <div className="font-medium text-gray-900">
-                      ₹{(item.price * item.quantity).toFixed(2)}
+                      {sym}{(item.price * item.quantity).toFixed(2)}
                     </div>
                     {item.discount > 0 && (
                       <div className="text-xs text-green-600">
-                        -₹{item.discount.toFixed(2)}
+                        -{sym}{item.discount.toFixed(2)}
                       </div>
                     )}
                   </div>
@@ -189,13 +192,13 @@ export default function CartPanel({
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600">Subtotal:</span>
-              <span className="font-medium">₹{subtotal.toFixed(2)}</span>
+              <span className="font-medium">{sym}{subtotal.toFixed(2)}</span>
             </div>
 
             {taxAmount > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Tax:</span>
-                <span className="font-medium">₹{taxAmount.toFixed(2)}</span>
+                <span className="font-medium">{sym}{taxAmount.toFixed(2)}</span>
               </div>
             )}
 

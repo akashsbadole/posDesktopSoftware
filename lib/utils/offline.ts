@@ -3,7 +3,10 @@
 
 import CryptoJS from 'crypto-js';
 
-const ENCRYPTION_KEY = 'pos-tauri-encryption-key-2026';
+const ENCRYPTION_KEY =
+  typeof process !== "undefined" && process.env.NEXT_PUBLIC_ENCRYPTION_KEY
+    ? process.env.NEXT_PUBLIC_ENCRYPTION_KEY
+    : "pos-tauri-encryption-key-2026"; // FIXME: Set NEXT_PUBLIC_ENCRYPTION_KEY in production
 
 function decryptData(raw: string): string {
   try {

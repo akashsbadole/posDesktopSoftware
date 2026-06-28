@@ -8,6 +8,7 @@ interface SettingsState {
   isLoading: boolean;
   error: string | null;
   isDarkMode: boolean;
+  fontScale: number;
   lastSyncTime: string | null;
   isSyncing: boolean;
   setLastSyncTime: (time: string) => void;
@@ -15,6 +16,7 @@ interface SettingsState {
   fetchSettings: () => Promise<void>;
   saveSettings: (settings: Partial<Settings>) => Promise<void>;
   setDarkMode: (isDarkMode: boolean) => void;
+  setFontScale: (scale: number) => void;
   updateCurrency: (currency: string, currencySymbol: string) => Promise<void>;
   setActiveStore: (id: string) => void;
 }
@@ -69,6 +71,17 @@ const defaultSettings: Settings = {
   onboarding_completed: false,
   license_key: '',
   hidden_menus: '',
+  store_type: 'general',
+  // Payment Gateway Settings
+  paytm_merchant_id: '',
+  paytm_merchant_key: '',
+  paytm_website: '',
+  paytm_industry_type: '',
+  paytm_channel_id: '',
+  paytm_upi_id: '',
+  razorpay_key_id: '',
+  razorpay_key_secret: '',
+  razorpay_upi_id: '',
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -79,6 +92,7 @@ export const useSettingsStore = create<SettingsState>()(
       isLoading: false,
       error: null,
       isDarkMode: false,
+      fontScale: 1,
       lastSyncTime: null,
       isSyncing: false,
 
@@ -109,12 +123,13 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       setDarkMode: (isDarkMode) => set({ isDarkMode }),
+      setFontScale: (fontScale) => set({ fontScale }),
 
       updateCurrency: async (currency: string, currencySymbol: string) => {
-        const updated = { 
-          ...get().settings, 
-          currency, 
-          currency_symbol: currencySymbol 
+        const updated = {
+          ...get().settings,
+          currency,
+          currency_symbol: currencySymbol
         };
         await dbSaveSettings(updated, get().activeStoreId);
         // Fetch fresh settings from database to ensure consistency
@@ -131,6 +146,7 @@ export const useSettingsStore = create<SettingsState>()(
       name: 'pos-settings-v2',
       partialize: (state) => ({
         isDarkMode: state.isDarkMode,
+        fontScale: state.fontScale,
         activeStoreId: state.activeStoreId
       }),
     }
