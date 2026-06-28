@@ -1187,7 +1187,7 @@ export async function changePin(userId: string, newPin: string): Promise<void> {
 }
 
 export async function getUsers(): Promise<User[]> {
-  return sql<User[]>("get_users");
+  return sql<User[]>("get_users", { organizationId: currentOrganizationId });
 }
 
 export async function dbUpsertUser(user: User): Promise<void> {

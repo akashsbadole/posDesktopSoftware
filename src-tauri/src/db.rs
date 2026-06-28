@@ -48,6 +48,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_general() -> String {
+    "general".to_string()
+}
+
 fn encrypt_value(value: &str) -> String {
     if value.is_empty() {
         return String::new();
@@ -323,6 +327,26 @@ pub struct Settings {
     pub license_key: String,
     #[serde(default)]
     pub hidden_menus: String,
+    #[serde(default = "default_general")]
+    pub store_type: String,
+    #[serde(default)]
+    pub paytm_merchant_id: String,
+    #[serde(default)]
+    pub paytm_merchant_key: String,
+    #[serde(default)]
+    pub paytm_website: String,
+    #[serde(default)]
+    pub paytm_industry_type: String,
+    #[serde(default)]
+    pub paytm_channel_id: String,
+    #[serde(default)]
+    pub paytm_upi_id: String,
+    #[serde(default)]
+    pub razorpay_key_id: String,
+    #[serde(default)]
+    pub razorpay_key_secret: String,
+    #[serde(default)]
+    pub razorpay_upi_id: String,
 }
 
 #[allow(dead_code)]
@@ -726,6 +750,19 @@ pub struct Coupon {
     pub used_count: i32,
     pub valid_from: String,
     pub valid_until: String,
+    pub active: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GiftCard {
+    pub id: String,
+    pub store_id: String,
+    pub code: String,
+    pub balance: f64,
+    pub initial_amount: f64,
+    pub customer_id: Option<String>,
+    pub expires_at: Option<String>,
     pub active: bool,
     pub created_at: String,
 }
@@ -1515,6 +1552,19 @@ impl Database {
                 used_count INTEGER NOT NULL DEFAULT 0,
                 valid_from TEXT NOT NULL,
                 valid_until TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(store_id, code)
+            );
+
+            CREATE TABLE IF NOT EXISTS gift_cards (
+                id TEXT PRIMARY KEY,
+                store_id TEXT NOT NULL DEFAULT 'default',
+                code TEXT NOT NULL,
+                balance REAL NOT NULL DEFAULT 0,
+                initial_amount REAL NOT NULL DEFAULT 0,
+                customer_id TEXT,
+                expires_at TEXT,
                 active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 UNIQUE(store_id, code)
@@ -5106,12 +5156,12 @@ impl Database {
         Ok(None)
     }
 
-    pub fn get_users(&self) -> Result<Vec<User>> {
+    pub fn get_users(&self, organization_id: &str) -> Result<Vec<User>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, organization_id, name, email, role, store_id, pin FROM users")?;
+            .prepare("SELECT id, organization_id, name, email, role, store_id, pin FROM users WHERE organization_id = ?1")?;
         let users = stmt
-            .query_map([], |row| {
+            .query_map(params![organization_id], |row| {
                 Ok(User {
                     id: row.get(0)?,
                     organization_id: row.get(1)?,
@@ -5582,6 +5632,69 @@ impl Database {
         Ok(())
     }
 
+    pub fn create_gift_card(&self, id: &str, code: &str, balance: f64, initial_amount: f64, store_id: &str, customer_id: Option<&str>, expires_at: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO gift_cards (id, code, balance, initial_amount, store_id, customer_id, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![id, code, balance, initial_amount, store_id, customer_id, expires_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_gift_cards(&self, store_id: &str) -> Result<Vec<GiftCard>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, store_id, code, balance, initial_amount, customer_id, expires_at, active, created_at FROM gift_cards WHERE store_id = ?1"
+        )?;
+        let cards = stmt
+            .query_map(params![store_id], |row| {
+                Ok(GiftCard {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    code: row.get(2)?,
+                    balance: row.get(3)?,
+                    initial_amount: row.get(4)?,
+                    customer_id: row.get(5)?,
+                    expires_at: row.get(6)?,
+                    active: row.get::<_, i32>(7)? == 1,
+                    created_at: row.get(8)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(cards)
+    }
+
+    pub fn redeem_gift_card(&self, code: &str, amount: f64, store_id: &str) -> Result<(bool, f64)> {
+        let card: GiftCard = self.conn.query_row(
+            "SELECT id, store_id, code, balance, initial_amount, customer_id, expires_at, active, created_at FROM gift_cards WHERE code = ?1 AND store_id = ?2",
+            params![code, store_id],
+            |row| {
+                Ok(GiftCard {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    code: row.get(2)?,
+                    balance: row.get(3)?,
+                    initial_amount: row.get(4)?,
+                    customer_id: row.get(5)?,
+                    expires_at: row.get(6)?,
+                    active: row.get::<_, i32>(7)? == 1,
+                    created_at: row.get(8)?,
+                })
+            }
+        )?;
+
+        if !card.active {
+            return Ok((false, card.balance));
+        }
+        if card.balance < amount {
+            return Ok((false, card.balance));
+        }
+
+        self.conn.execute(
+            "UPDATE gift_cards SET balance = balance - ?1 WHERE code = ?2 AND store_id = ?3",
+            params![amount, code, store_id],
+        )?;
+        Ok((true, card.balance - amount))
+    }
+
     pub fn get_reservations(&self, date: &str, store_id: &str) -> Result<Vec<Reservation>> {
         let sql = if date.is_empty() {
             "SELECT r.id, r.store_id, r.table_id, t.name, r.customer_name, r.phone, r.date, r.time, r.party_size, r.status, r.notes, r.created_at
@@ -5953,6 +6066,12 @@ impl Database {
                 hashed_pin
             ],
         )?;
+        Ok(())
+    }
+
+    pub fn delete_user(&self, id: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM users WHERE id = ?1", params![id])?;
         Ok(())
     }
 
@@ -6353,6 +6472,10 @@ impl Database {
         s.twilio_token = decrypt_value(&s.twilio_token);
         s.twilio_phone = decrypt_value(&s.twilio_phone);
         s.whatsapp_api_url = decrypt_value(&s.whatsapp_api_url);
+        s.paytm_merchant_key = decrypt_value(&s.paytm_merchant_key);
+        s.paytm_upi_id = decrypt_value(&s.paytm_upi_id);
+        s.razorpay_key_secret = decrypt_value(&s.razorpay_key_secret);
+        s.razorpay_upi_id = decrypt_value(&s.razorpay_upi_id);
         Ok(s)
     }
 
@@ -6407,6 +6530,16 @@ impl Database {
             onboarding_completed: true,
             license_key: "".to_string(),
             hidden_menus: "".to_string(),
+            store_type: "general".to_string(),
+            paytm_merchant_id: "".to_string(),
+            paytm_merchant_key: "".to_string(),
+            paytm_website: "".to_string(),
+            paytm_industry_type: "".to_string(),
+            paytm_channel_id: "".to_string(),
+            paytm_upi_id: "".to_string(),
+            razorpay_key_id: "".to_string(),
+            razorpay_key_secret: "".to_string(),
+            razorpay_upi_id: "".to_string(),
         }
     }
 
@@ -6417,6 +6550,10 @@ impl Database {
         s_enc.twilio_token = encrypt_value(&s.twilio_token);
         s_enc.twilio_phone = encrypt_value(&s.twilio_phone);
         s_enc.whatsapp_api_url = encrypt_value(&s.whatsapp_api_url);
+        s_enc.paytm_merchant_key = encrypt_value(&s.paytm_merchant_key);
+        s_enc.paytm_upi_id = encrypt_value(&s.paytm_upi_id);
+        s_enc.razorpay_key_secret = encrypt_value(&s.razorpay_key_secret);
+        s_enc.razorpay_upi_id = encrypt_value(&s.razorpay_upi_id);
 
         let value = serde_json::to_string(&s_enc).unwrap_or_else(|_| "{}".to_string());
         self.conn.execute(
@@ -7394,6 +7531,29 @@ impl Database {
         let mut stmt = self.conn.prepare("SELECT id, store_id, user_id, user_name, clock_in, clock_out, date FROM staff_attendance WHERE store_id=?1 AND date=?2")?;
         let items = stmt
             .query_map(params![store_id, date], |row| {
+                Ok(StaffAttendance {
+                    id: row.get(0)?,
+                    store_id: row.get(1)?,
+                    user_id: row.get(2)?,
+                    user_name: row.get(3)?,
+                    clock_in: row.get(4)?,
+                    clock_out: row.get(5)?,
+                    date: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+        Ok(items)
+    }
+
+    pub fn get_attendance_by_range(&self, store_id: &str, start_date: &str, end_date: &str) -> Result<Vec<StaffAttendance>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, store_id, user_id, user_name, clock_in, clock_out, date 
+             FROM staff_attendance 
+             WHERE store_id=?1 AND date BETWEEN ?2 AND ?3
+             ORDER BY date DESC, clock_in DESC"
+        )?;
+        let items = stmt
+            .query_map(params![store_id, start_date, end_date], |row| {
                 Ok(StaffAttendance {
                     id: row.get(0)?,
                     store_id: row.get(1)?,

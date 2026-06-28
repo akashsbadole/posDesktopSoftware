@@ -14,6 +14,22 @@ use std::sync::{Arc, Mutex};
 use tauri::{Manager, State};
 use urlencoding;
 
+fn random_code(len: usize) -> String {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    (0..len)
+        .map(|_| {
+            let idx = rng.gen_range(0..36);
+            if idx < 10 {
+                (b'0' + idx) as char
+            } else {
+                (b'a' + idx - 10) as char
+            }
+        })
+        .collect::<String>()
+        .to_uppercase()
+}
+
 #[tauri::command]
 fn check_camera_availability() -> CameraStatus {
     #[cfg(target_os = "windows")]
@@ -91,14 +107,12 @@ fn seed_database() -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn get_all_inventory_transactions(
+fn get_all_inventory_transactions(
     store_id: String,
-    db: State<'_, Arc<Mutex<Database>>>,
 ) -> Result<Vec<InventoryTransaction>, String> {
-    db.lock()
-        .map_err(|e: std::sync::PoisonError<std::sync::MutexGuard<'_, Database>>| e.to_string())?
-        .get_all_inventory_transactions(&store_id)
-        .map_err(|e: rusqlite::Error| e.to_string())
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_all_inventory_transactions(&store_id)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(debug_assertions)]
@@ -762,15 +776,21 @@ fn change_pin(user_id: String, new_pin: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_users() -> Result<Vec<db::User>, String> {
+fn get_users(organization_id: String) -> Result<Vec<db::User>, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.get_users().map_err(|e| e.to_string())
+    db.get_users(&organization_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn upsert_user(user: db::User) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.upsert_user(&user).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_user(id: String) -> Result<(), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.delete_user(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1035,6 +1055,17 @@ fn get_today_attendance(store_id: String) -> Result<Vec<db::StaffAttendance>, St
 }
 
 #[tauri::command]
+fn get_attendance_by_range(
+    store_id: String,
+    start_date: String,
+    end_date: String,
+) -> Result<Vec<db::StaffAttendance>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_attendance_by_range(&store_id, &start_date, &end_date)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn is_clocked_in(user_id: String, store_id: String) -> Result<bool, String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
     db.is_clocked_in(&user_id, &store_id)
@@ -1048,9 +1079,9 @@ fn get_salaries(storeId: String) -> Result<Vec<db::StaffSalary>, String> {
 }
 
 #[tauri::command]
-fn save_salary(salary: db::StaffSalary, storeId: String) -> Result<(), String> {
+fn save_salary(salary: db::StaffSalary) -> Result<(), String> {
     let db = get_db().lock().map_err(|e| e.to_string())?;
-    db.save_salary(&salary, &storeId).map_err(|e| e.to_string())
+    db.save_salary(&salary, &salary.store_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1808,6 +1839,38 @@ fn delete_coupon(id: String, store_id: String) -> Result<(), String> {
     db.delete_coupon(&id, &store_id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn create_gift_card(
+    store_id: String,
+    balance: f64,
+    initial_amount: f64,
+    customer_id: Option<String>,
+    expires_at: Option<String>,
+) -> Result<String, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let code = random_code(8);
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.create_gift_card(&id, &code, balance, initial_amount, &store_id, customer_id.as_deref(), expires_at.as_deref())
+        .map_err(|e| e.to_string())?;
+    Ok(code)
+}
+
+#[tauri::command]
+fn get_gift_cards(store_id: String) -> Result<Vec<db::GiftCard>, String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.get_gift_cards(&store_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn redeem_gift_card(
+    code: String,
+    amount: f64,
+    store_id: String,
+) -> Result<(bool, f64), String> {
+    let db = get_db().lock().map_err(|e| e.to_string())?;
+    db.redeem_gift_card(&code, amount, &store_id).map_err(|e| e.to_string())
+}
+
 // ─── Day End Reconciliation Commands ────────────────────────────────────────
 
 #[tauri::command]
@@ -1908,6 +1971,24 @@ fn save_receipt_to_file(receipt: String, file_name: String) -> Result<String, St
     let path = downloads_dir.join(&file_name);
     std::fs::write(&path, receipt).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn open_whatsapp_share(receipt: String) -> Result<(), String> {
+    let encoded = urlencoding::encode(&receipt);
+    let url = format!("https://wa.me/?text={}", encoded);
+    open::that(&url).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn open_email_share(receipt: String, subject: String) -> Result<(), String> {
+    let encoded_body = urlencoding::encode(&receipt);
+    let encoded_subject = urlencoding::encode(&subject);
+    let url = format!(
+        "mailto:?subject={}&body={}",
+        encoded_subject, encoded_body
+    );
+    open::that(&url).map_err(|e| e.to_string())
 }
 
 // ─── ESC/POS Thermal Printer ──────────────────────────────────────────────────────
@@ -2316,6 +2397,7 @@ fn main() {
             change_pin,
             get_users,
             upsert_user,
+            delete_user,
             register,
             login,
             forgot_password,
@@ -2334,6 +2416,7 @@ fn main() {
             clock_in,
             clock_out,
             get_today_attendance,
+            get_attendance_by_range,
             is_clocked_in,
             get_salaries,
             save_salary,
@@ -2427,7 +2510,12 @@ fn main() {
             validate_coupon,
             use_coupon,
             delete_coupon,
+            create_gift_card,
+            get_gift_cards,
+            redeem_gift_card,
             save_image,
+            open_whatsapp_share,
+            open_email_share,
             get_day_end_reconciliation,
             save_day_end_reconciliation,
             get_gstr1_report,

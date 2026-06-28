@@ -25,6 +25,8 @@ import { Settings, Store as StoreType } from "@/lib/db";
 import { countryPresets, taxSystems } from "@/lib/countries";
 import { invoke } from "@tauri-apps/api/tauri";
 
+const IS_TAURI = typeof window !== "undefined" && "__TAURI__" in window;
+
 const industries = [
   {
     id: "food",
@@ -91,14 +93,16 @@ export default function OnboardingModal() {
     const file = e.target.files?.[0];
     if (file) {
       try {
-        const arrayBuffer = await file.arrayBuffer();
-        const data = Array.from(new Uint8Array(arrayBuffer));
-        const filename = `logo_${Date.now()}.${file.name.split(".").pop()}`;
-        const isTauri = typeof window !== 'undefined' && '__TAURI_IPC__' in window;
-        const path = isTauri
-          ? await invoke<string>("save_image", { data, filename })
-          : URL.createObjectURL(file);
-        setFormData({ ...formData, logoUrl: path });
+        if (IS_TAURI) {
+          const arrayBuffer = await file.arrayBuffer();
+          const data = Array.from(new Uint8Array(arrayBuffer));
+          const filename = `logo_${Date.now()}.${file.name.split(".").pop()}`;
+          const path = await invoke<string>("save_image", { data, filename });
+          setFormData({ ...formData, logoUrl: path });
+        } else {
+          const blobUrl = URL.createObjectURL(file);
+          setFormData({ ...formData, logoUrl: blobUrl });
+        }
       } catch (error) {
         console.error("Failed to upload image:", error);
         alert("Failed to upload image. Please try again.");
