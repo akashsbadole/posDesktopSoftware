@@ -8,6 +8,10 @@ A completely free, production-ready desktop POS billing application with:
 
 **No fees, no subscriptions, no limitations.** All features included for unlimited stores.
 
+## screenshot
+![Dashboard](https://github.com/akashsbadole/posDesktopSoftware/blob/main/Appixen-POS-Billing.png)
+
+
 ---
 
 ## Architecture
